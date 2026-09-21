@@ -3,7 +3,7 @@ import { one, all, run, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, ROLES } from '../middleware/auth.js';
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
 import { hashPassword, tempPassword } from '../utils/security.js';
-import { requireFields, assertEmail, trimOrNull } from '../utils/validate.js';
+import { requireFields, assertEmail, trimOrNull, normalizePhone } from '../utils/validate.js';
 import { generateUsername } from '../utils/username.js';
 import { logActivity } from '../utils/activityLog.js';
 import { publicUser } from './auth.js';
@@ -56,7 +56,7 @@ router.post('/', ah(async (req, res) => {
   await run(
     `INSERT INTO users (id, first_name, last_name, username, email, phone, password_hash, role, program_id, must_change_password)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-    [id, firstName.trim(), lastName.trim(), username, email.trim(), trimOrNull(req.body.phone), await hashPassword(password), role, programId]
+    [id, firstName.trim(), lastName.trim(), username, email.trim(), normalizePhone(req.body.phone), await hashPassword(password), role, programId]
   );
   await logActivity({ category: 'user', action: 'created', actor: req.user, programId, details: `Created ${ROLE_LABELS[role]} account ${username}` });
   const user = await one(`${SELECT_USERS} WHERE u.id = ?`, [id]);
@@ -72,7 +72,7 @@ router.put('/:id', ah(async (req, res) => {
     firstName: req.body.firstName?.trim() || existing.firstName,
     lastName: req.body.lastName?.trim() || existing.lastName,
     email: req.body.email?.trim() || existing.email,
-    phone: req.body.phone !== undefined ? trimOrNull(req.body.phone) : existing.phone,
+    phone: req.body.phone !== undefined ? normalizePhone(req.body.phone, 'Phone number', existing.phone) : existing.phone,
     role: req.body.role || existing.role,
     programId: req.body.programId !== undefined ? trimOrNull(req.body.programId) : existing.programId,
     isActive: req.body.isActive !== undefined ? (req.body.isActive ? 1 : 0) : existing.isActive,

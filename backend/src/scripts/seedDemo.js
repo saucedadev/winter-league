@@ -135,6 +135,9 @@ async function main() {
   // Phase 3: a referee roster, a few pay overrides and unavailable dates,
   // and November auto-filled so the assignor starts with partial coverage.
   const refs = await seedReferees(pwHash, accounts);
+  // A few phone numbers (stored as digits; the app shows them as (312) 555-0142).
+  await db.batch([['dwhitfield', '3125550142'], ['mbell', '8475550187'], ['tgreene', '7735550123'], ['obrooks', '6305550199'], ['acoleman', '7085550164']]
+    .map(([u, ph]) => ({ sql: 'UPDATE users SET phone = ? WHERE username = ?', args: [ph, u] })), 'write');
   await syncSlots(draft.runId, 2);
   const fill = await autoFill({ runId: draft.runId, from: '2026-11-01', to: '2026-11-30', assignedBy: admin.id });
   console.log(`✅ Demo referees: ${refs} on the roster, ${fill.filled} November slots filled, December onward left open for the assignor.`);
@@ -185,6 +188,7 @@ async function seedRequests(runId, programIds) {
     WHERE g.run_id = ? AND g.status = 'scheduled' AND ((h.program_id = ? AND a.program_id = ?) OR (h.program_id = ? AND a.program_id = ?))
       AND g.id != ? ORDER BY g.date LIMIT 1`, [runId, programIds.RYB, programIds.NFH, programIds.NFH, programIds.RYB, g1?.id || '']);
 
+  const taken = new Set();
   for (const [row, userId, programId, status, reason] of [
     [g1, tasha.id, programIds.NFH, 'pending_director', 'Half our team has a school band concert that evening, so we’d be short of players.'],
     [g2, marcus.id, programIds.RYB, 'pending_counterpart', 'Riverbend High is hosting a regional tournament that weekend.'],
@@ -192,8 +196,12 @@ async function seedRequests(runId, programIds) {
     if (!row) continue;
     const game = await getGame(row.id);
     const { options } = await placementOptions(game, { today: '2026-01-01', limit: 20 });
-    const opt = options.find((o) => !o.overTravelCap && o.date > game.date);
+    // Proposals are several days apart (they may involve the same team), so the
+    // demo can approve both without tripping the rest-days rule.
+    const farFromTaken = (d) => [...taken].every((t) => Math.abs(Date.parse(d) - Date.parse(t)) >= 3 * 86400000);
+    const opt = options.find((o) => !o.overTravelCap && o.date > game.date && farFromTaken(o.date));
     if (!opt) continue;
+    taken.add(opt.date);
     const id = newId();
     const stmts = [reqStmt({ id, gameId: game.id, game, opt, reason, userId, programId, status })];
     if (status === 'pending_director') stmts.push(step(id, 'director', programId));

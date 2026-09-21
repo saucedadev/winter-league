@@ -1,4 +1,6 @@
 <script setup>
+import PhoneInput from '../components/PhoneInput.vue';
+import { formatPhone } from '../utils/phone';
 import { computed, onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useProgramContext } from '../stores/programContext';
@@ -86,7 +88,7 @@ async function doDelete() {
               <p class="font-medium">{{ p.name }} <span class="text-text-muted font-normal">{{ p.shortCode }}</span></p>
               <p class="text-xs text-text-muted">{{ p.city || '—' }}{{ p.isActive ? '' : ' · inactive' }}</p>
             </td>
-            <td class="px-3 py-2.5 text-text-muted">{{ p.contactEmail || '—' }}<br v-if="p.contactPhone" />{{ p.contactPhone }}</td>
+            <td class="px-3 py-2.5 text-text-muted">{{ p.contactEmail || '—' }}<br v-if="p.contactPhone" />{{ formatPhone(p.contactPhone) }}</td>
             <td class="px-3 py-2.5 text-right" :class="!p.directorCount && p.isActive && 'text-warning font-medium'">{{ p.directorCount }}</td>
             <td class="px-3 py-2.5 text-right">{{ p.venueCount }}</td>
             <td class="px-3 py-2.5 text-right">{{ p.teamCount }}</td>
@@ -105,7 +107,7 @@ async function doDelete() {
         <div><label class="label" for="pf-code">Short code</label><input id="pf-code" v-model="editor.form.shortCode" class="input uppercase" required maxlength="6" placeholder="NFH" /></div>
         <div class="sm:col-span-3"><label class="label" for="pf-city">City</label><input id="pf-city" v-model="editor.form.city" class="input" /></div>
         <div class="sm:col-span-2"><label class="label" for="pf-email">Contact email</label><input id="pf-email" v-model="editor.form.contactEmail" type="email" class="input" /></div>
-        <div><label class="label" for="pf-phone">Contact phone</label><input id="pf-phone" v-model="editor.form.contactPhone" type="tel" class="input" /></div>
+        <div><label class="label" for="pf-phone">Contact phone</label><PhoneInput id="pf-phone" v-model="editor.form.contactPhone" /></div>
         <label v-if="editor.id" class="sm:col-span-3 flex items-center gap-2 text-sm"><input v-model="editor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Active in the league</label>
         <p class="sm:col-span-3 text-xs text-text-muted">The short code appears on schedules where space is tight.</p>
         <p v-if="formError" class="sm:col-span-3 text-sm text-danger" role="alert">{{ formError }}</p>

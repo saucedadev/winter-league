@@ -3,7 +3,7 @@ import { one, all, run, db, newId } from '../db/client.js';
 import { config } from '../config.js';
 import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/auth.js';
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
-import { requireFields, trimOrNull } from '../utils/validate.js';
+import { requireFields, trimOrNull, normalizePhone } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
 
 const router = Router();
@@ -43,7 +43,7 @@ router.post('/', requireRole('super_admin'), ah(async (req, res) => {
   const id = newId();
   await run(
     'INSERT INTO programs (id, name, short_code, city, contact_email, contact_phone) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, req.body.name.trim(), code, trimOrNull(req.body.city), trimOrNull(req.body.contactEmail), trimOrNull(req.body.contactPhone)]
+    [id, req.body.name.trim(), code, trimOrNull(req.body.city), trimOrNull(req.body.contactEmail), normalizePhone(req.body.contactPhone, 'Contact phone')]
   );
   await logActivity({ category: 'program', action: 'created', actor: req.user, programId: id, details: `Added program ${req.body.name.trim()} (${code})` });
   res.status(201).json({ program: await one('SELECT * FROM programs WHERE id = ?', [id]) });
@@ -67,7 +67,7 @@ router.put('/:id', requireRole('super_admin'), ah(async (req, res) => {
     `UPDATE programs SET name = ?, short_code = ?, city = ?, contact_email = ?, contact_phone = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`,
     [name, code, req.body.city !== undefined ? trimOrNull(req.body.city) : p.city,
       req.body.contactEmail !== undefined ? trimOrNull(req.body.contactEmail) : p.contactEmail,
-      req.body.contactPhone !== undefined ? trimOrNull(req.body.contactPhone) : p.contactPhone,
+      req.body.contactPhone !== undefined ? normalizePhone(req.body.contactPhone, 'Contact phone', p.contactPhone) : p.contactPhone,
       isActive, p.id]
   );
   await logActivity({ category: 'program', action: 'edited', actor: req.user, programId: p.id, details: `Updated program ${name}` });

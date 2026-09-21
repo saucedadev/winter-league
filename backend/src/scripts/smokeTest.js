@@ -78,6 +78,18 @@ const del = await call('DELETE', `/slots/${repeat.data.slots[2].id}?scope=follow
 check('delete "this and following" in series', del.data.deleted === repeat.data.slots.length - 2);
 
 console.log('\nAdmin');
+const ph1 = await call('POST', '/users', { token: admin, body: { firstName: 'Phone', lastName: 'Format', email: 'phone@example.com', phone: '(312) 555-0199', role: 'league_coach', programId: nfh.id } });
+check('formatted phone is stored as digits', ph1.status === 201 && (await call('GET', '/users', { token: admin })).data.users.find((u) => u.email === 'phone@example.com')?.phone === '3125550199');
+const phUser = (await call('GET', '/users', { token: admin })).data.users.find((u) => u.email === 'phone@example.com');
+check('+1 and dots are accepted', (await call('PUT', `/users/${phUser.id}`, { token: admin, body: { phone: '+1 773.555.0100' } })).status === 200
+  && (await call('GET', '/users', { token: admin })).data.users.find((u) => u.id === phUser.id).phone === '7735550100');
+await (await import('../db/client.js')).run("UPDATE users SET phone = '5550101' WHERE id = ?", [phUser.id]); // an old 7-digit entry from before digits-only
+check('an unchanged old phone does not block other edits', (await call('PUT', `/users/${phUser.id}`, { token: admin, body: { firstName: 'Phoned', phone: '5550101' } })).status === 200);
+check('short phone numbers are rejected', (await call('PUT', `/users/${phUser.id}`, { token: admin, body: { phone: '555-0100' } })).status === 400);
+check('clearing the phone is allowed', (await call('PUT', `/users/${phUser.id}`, { token: admin, body: { phone: '' } })).status === 200
+  && (await call('GET', '/users', { token: admin })).data.users.find((u) => u.id === phUser.id).phone === null);
+check('program contact phone is stored as digits', (await call('PUT', `/programs/${nfh.id}`, { token: admin, body: { contactPhone: '(847) 555-0111' } })).status === 200
+  && (await call('GET', '/programs', { token: admin })).data.programs.find((p) => p.id === nfh.id).contactPhone === '8475550111');
 const pubBrand = await call('GET', '/settings/branding');
 check('branding is readable before sign-in', pubBrand.status === 200 && pubBrand.data.branding.appName === 'Winter League' && pubBrand.data.branding.logo === null);
 check('only System Admins can change branding', (await call('PUT', '/settings/branding', { token: pd, body: { appName: 'Hijacked' } })).status === 403);
@@ -89,8 +101,11 @@ const br = await call('PUT', '/settings/branding', { token: admin, body: { appNa
 check('branding saves (name tidied, logo kept)', br.status === 200 && br.data.branding.appName === 'Pacific Youth Conference' && br.data.branding.logo === tinyPng);
 check('new branding is public', (await call('GET', '/settings/branding')).data.branding.appName === 'Pacific Youth Conference');
 check('back to defaults', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Winter League', logo: null } })).data.branding?.logo === null);
-check('Pacific Youth Conference theme can be chosen', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'pacificYouthConference' } })).status === 200
-  && (await call('GET', '/settings/theme')).data.theme === 'pacificYouthConference');
+for (const t of ['pacificEnergy', 'midnightPacific']) {
+  check(`${t} theme can be chosen`, (await call('PUT', '/settings/theme', { token: admin, body: { theme: t } })).status === 200
+    && (await call('GET', '/settings/theme')).data.theme === t);
+}
+check('the old theme id is no longer accepted', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'pacificYouthConference' } })).status === 400);
 check('unknown themes are rejected', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'neonJungle' } })).status === 400);
 await call('PUT', '/settings/theme', { token: admin, body: { theme: 'light' } });
 const nu = await call('POST', '/users', { token: admin, body: { firstName: 'Test', lastName: 'Director', email: 't@example.com', role: 'program_director' } });

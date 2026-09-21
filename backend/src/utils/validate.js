@@ -47,3 +47,18 @@ export function assertStrongPassword(pw) {
     throw badRequest(PASSWORD_RULE);
   }
 }
+
+// Phone numbers are stored as 10 digits (US/Canada) and formatted for display
+// as (123) 456-7890 by the frontend. Accepts any punctuation and an optional
+// leading 1. Empty -> null. Anything that isn't 10 digits is rejected.
+// Pass the stored value as `existing` on updates: an unchanged older number
+// that isn't 10 digits is kept as-is instead of blocking the whole save.
+export function normalizePhone(value, label = 'Phone number', existing = undefined) {
+  if (value === undefined || value === null) return null;
+  let digits = String(value).replace(/\D/g, '');
+  if (existing != null && digits === String(existing).replace(/\D/g, '')) return existing;
+  if (!digits) return null;
+  if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+  if (digits.length !== 10) throw badRequest(`${label} must be 10 digits, like (123) 456-7890.`);
+  return digits;
+}

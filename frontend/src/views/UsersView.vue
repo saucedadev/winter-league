@@ -1,4 +1,5 @@
 <script setup>
+import PhoneInput from '../components/PhoneInput.vue';
 import { useBrandingStore } from '../stores/branding';
 const branding = useBrandingStore();
 import { computed, onMounted, ref } from 'vue';
@@ -140,7 +141,7 @@ async function copyCredentials() {
         <div><label class="label" for="uf-first">First name</label><input id="uf-first" v-model="editor.form.firstName" class="input" required autocomplete="off" /></div>
         <div><label class="label" for="uf-last">Last name</label><input id="uf-last" v-model="editor.form.lastName" class="input" required autocomplete="off" /></div>
         <div class="col-span-2 sm:col-span-1"><label class="label" for="uf-email">Email</label><input id="uf-email" v-model="editor.form.email" type="email" class="input" required autocomplete="off" /></div>
-        <div class="col-span-2 sm:col-span-1"><label class="label" for="uf-phone">Phone <span class="font-normal text-text-muted">(optional)</span></label><input id="uf-phone" v-model="editor.form.phone" type="tel" class="input" autocomplete="off" /></div>
+        <div class="col-span-2 sm:col-span-1"><label class="label" for="uf-phone">Phone <span class="font-normal text-text-muted">(optional)</span></label><PhoneInput id="uf-phone" v-model="editor.form.phone" /></div>
         <div class="col-span-2">
           <label class="label" for="uf-role">Role</label>
           <select id="uf-role" v-model="editor.form.role" class="input" :disabled="editor.self">

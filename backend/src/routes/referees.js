@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { one, all, run, db, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/auth.js';
 import { ah, badRequest, conflict, forbidden, notFound } from '../utils/http.js';
-import { assertDate, assertEmail, isValidDate, requireFields, trimOrNull } from '../utils/validate.js';
+import { assertDate, assertEmail, isValidDate, requireFields, trimOrNull, normalizePhone } from '../utils/validate.js';
 import { hashPassword, tempPassword } from '../utils/security.js';
 import { generateUsername } from '../utils/username.js';
 import { logActivity } from '../utils/activityLog.js';
@@ -86,7 +86,7 @@ router.post('/roster', managers, ah(async (req, res) => {
   await db.batch([
     { sql: `INSERT INTO users (id, first_name, last_name, username, email, phone, password_hash, role, program_id, must_change_password)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'referee', NULL, 1)`,
-      args: [id, b.firstName.trim(), b.lastName.trim(), username, b.email.trim(), trimOrNull(b.phone), await hashPassword(password)] },
+      args: [id, b.firstName.trim(), b.lastName.trim(), username, b.email.trim(), normalizePhone(b.phone), await hashPassword(password)] },
     { sql: 'INSERT INTO referee_profiles (user_id, pay_rate_cents, notes) VALUES (?, ?, ?)', args: [id, rate, trimOrNull(b.notes)] },
   ], 'write');
   await logActivity({ category: 'user', action: 'created', actor: req.user, details: `Added referee ${b.firstName.trim()} ${b.lastName.trim()} (${username})` });
@@ -115,7 +115,7 @@ router.put('/roster/:id', managers, ah(async (req, res) => {
   if (b.phone !== undefined || b.email !== undefined) {
     const email = b.email !== undefined ? b.email.trim() : u.email;
     assertEmail(email);
-    stmts.push({ sql: "UPDATE users SET email = ?, phone = ?, updated_at = datetime('now') WHERE id = ?", args: [email, b.phone !== undefined ? trimOrNull(b.phone) : u.phone, u.id] });
+    stmts.push({ sql: "UPDATE users SET email = ?, phone = ?, updated_at = datetime('now') WHERE id = ?", args: [email, b.phone !== undefined ? normalizePhone(b.phone, 'Phone number', u.phone) : u.phone, u.id] });
   }
   if (b.isActive !== undefined) {
     stmts.push({ sql: "UPDATE users SET is_active = ?, updated_at = datetime('now') WHERE id = ?", args: [b.isActive ? 1 : 0, u.id] });

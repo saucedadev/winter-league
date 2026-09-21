@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* Theme variables mirror src/theme/palette.js (same values as Gym Hive). */
+/* Theme variables mirror src/theme/palette.js. Light, Dark, Regal Opulence, and
+   Midnight Noir match Gym Hive; Pacific Energy and Midnight Pacific are this app's own. */
 :root {
   --color-header: #FFFFFF;
   --color-header-text: #36454F;
@@ -21,6 +22,8 @@
   --color-danger: #E63946;
   --color-warning: #EA6C36;
   --color-pending: #F1C40F;
+  /* "Needs you" highlight: nav request badge + avatar alert dot. */
+  --color-highlight: var(--color-pending);
   --color-unavailable: #3C4142;   /* charcoal — same "closed" meaning as Gym Hive; used for blackouts */
 
   /* Winter League slot categories — darker shades so white text passes WCAG AA. */
@@ -39,7 +42,7 @@ html[data-theme="regalOpulence"] {
   --color-text: #0F5257; --color-text-muted: #6B8E8A; --color-border: #E5D9B6;
   --color-accent: #D4AF37; --color-accent-contrast: #0F5257;
 }
-html[data-theme="pacificYouthConference"] {
+html[data-theme="pacificEnergy"] {
   --color-header: #003366; --color-header-text: #F5F5DC; --color-background: #F5F5DC; --color-surface: #FFFDF7;
   --color-text: #003366; --color-text-muted: #4F6A7E; --color-border: #E4DDC3;
   --color-accent: #007A7A; --color-accent-contrast: #FFFFFF;
@@ -55,7 +58,21 @@ html[data-theme="midnightNoir"] {
   /* Accent == header red here, so header chips use a deeper shade to stay visible. */
   --color-header-accent: #7A1414; --color-header-accent-contrast: #F5F5F7;
 }
-html.dark { --color-slot-border: rgba(255, 255, 255, 0.18); }
+html[data-theme="midnightPacific"] {
+  /* Dark coastal: Midnight Navy page, Deep Ocean cards and header, Foam White text. */
+  --color-header: #112240; --color-header-text: #E6F1FF; --color-background: #0A192F; --color-surface: #112240;
+  --color-text: #E6F1FF; --color-text-muted: #8892B0; --color-border: #233554;
+  /* Electric Teal for everything interactive; text on it is Midnight Navy (14:1). */
+  --color-accent: #64FFDA; --color-accent-contrast: #0A192F;
+  /* Sunset Coral for the header's brand spots, with Midnight Navy text (7:1). */
+  --color-header-accent: #FF7E5F; --color-header-accent-contrast: #0A192F;
+  --color-header-border: #233554;
+  /* Bioluminescent Blue, used sparingly: only the "waiting on you" badge and dot. */
+  --color-highlight: #00FFFF;
+}
+/* color-scheme: dark makes native controls (date-picker icons, dropdown lists,
+   scrollbars) render light-on-dark in every dark theme. */
+html.dark { --color-slot-border: rgba(255, 255, 255, 0.18); color-scheme: dark; }
 
 body {
   background-color: var(--color-background);
@@ -129,6 +146,7 @@ html.dark .card { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px -
   --color-danger: var(--color-danger);
   --color-warning: var(--color-warning);
   --color-pending: var(--color-pending);
+  --color-highlight: var(--color-highlight);
   --color-unavailable: var(--color-unavailable);
   --color-cat-practice: var(--color-cat-practice);
   --color-cat-weeknight: var(--color-cat-weeknight);

@@ -1,5 +1,5 @@
 // Color palettes. The first four match Gym Hive's so the two apps read as
-// siblings; Pacific Youth Conference is Winter League's own. (theme.css holds
+// siblings; Pacific Energy and Midnight Pacific are Winter League's own. (theme.css holds
 // the actual CSS variables; keep the two in step.) Structural roles per theme: header,
 // background, surface, text/textMuted, border, accent/accentContrast.
 //
@@ -24,10 +24,17 @@ export const palette = {
     // highlights on the header, and a gold hairline for a championship touch.
     // Teal is #007A7A (not #008080) so it passes AA as link text on sand;
     // orange only ever sits on navy, with navy text on it.
-    pacificYouthConference: {
-      label: 'Pacific Youth Conference', header: '#003366', headerText: '#F5F5DC', background: '#F5F5DC', surface: '#FFFDF7',
+    pacificEnergy: {
+      label: 'Pacific Energy', header: '#003366', headerText: '#F5F5DC', background: '#F5F5DC', surface: '#FFFDF7',
       text: '#003366', textMuted: '#4F6A7E', border: '#E4DDC3', accent: '#007A7A', accentContrast: '#FFFFFF',
       headerAccent: '#FF6F61', headerAccentContrast: '#003366', headerBorder: '#D4AF37', isDark: false,
+    },
+    // Dark coastal: deep blues as the background, vivid accents on top.
+    // Text on teal and coral is Midnight Navy (Foam White on teal is ~1:1).
+    midnightPacific: {
+      label: 'Midnight Pacific', header: '#112240', headerText: '#E6F1FF', background: '#0A192F', surface: '#112240',
+      text: '#E6F1FF', textMuted: '#8892B0', border: '#233554', accent: '#64FFDA', accentContrast: '#0A192F',
+      headerAccent: '#FF7E5F', headerAccentContrast: '#0A192F', headerBorder: '#233554', highlight: '#00FFFF', isDark: true,
     },
     midnightNoir: {
       label: 'Midnight Noir', header: '#B22222', headerText: '#F5F5F7', background: '#1C1C1C', surface: '#2A2A2A',

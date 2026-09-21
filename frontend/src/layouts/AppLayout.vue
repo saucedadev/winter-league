@@ -72,7 +72,7 @@ function signOut() {
         <RouterLink v-for="n in primaryNav" :key="n.to" :to="n.to"
           class="px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
           :class="isActive(n.to) ? 'bg-header-accent text-header-accent-contrast' : 'text-header-text/75 hover:text-header-text'">
-          {{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-pending text-black !py-0 !px-1.5" :aria-label="`${badge.count} waiting on you`">{{ badge.count }}</span>
+          {{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5" :aria-label="`${badge.count} waiting on you`">{{ badge.count }}</span>
         </RouterLink>
       </nav>
 
@@ -85,7 +85,7 @@ function signOut() {
       <div ref="menuRoot" class="relative">
         <button class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/5" :aria-expanded="menuOpen" aria-haspopup="menu" @click="menuOpen = !menuOpen">
           <span class="relative w-8 h-8 rounded-full bg-header-accent text-header-accent-contrast grid place-items-center text-xs font-bold">
-            <span v-if="badge.count" class="xl:hidden absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-pending ring-2 ring-header" :aria-label="`${badge.count} request(s) waiting on you`" />
+            <span v-if="badge.count" class="xl:hidden absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-highlight ring-2 ring-header" :aria-label="`${badge.count} request(s) waiting on you`" />
             {{ (auth.user?.firstName?.[0] || '') + (auth.user?.lastName?.[0] || '') }}
           </span>
           <span class="hidden sm:block text-left leading-tight whitespace-nowrap">
@@ -102,7 +102,7 @@ function signOut() {
           </div>
           <div class="xl:hidden py-1 border-b border-border">
             <RouterLink v-for="n in primaryNav" :key="n.to" :to="n.to" role="menuitem"
-              class="block px-4 py-2 text-sm hover:bg-background" :class="isActive(n.to) && 'font-semibold text-accent'">{{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-pending text-black !py-0 !px-1.5">{{ badge.count }}</span></RouterLink>
+              class="block px-4 py-2 text-sm hover:bg-background" :class="isActive(n.to) && 'font-semibold text-accent'">{{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5">{{ badge.count }}</span></RouterLink>
           </div>
           <div v-if="adminNav.length" class="py-1 border-b border-border">
             <RouterLink v-for="n in adminNav" :key="n.to" :to="n.to" role="menuitem"

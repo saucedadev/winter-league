@@ -1,4 +1,6 @@
 <script setup>
+import PhoneInput from '../components/PhoneInput.vue';
+import { formatPhone } from '../utils/phone';
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { api, errorMessage } from '../api/client';
@@ -105,7 +107,7 @@ async function save() {
                 <p class="font-medium">{{ r.firstName }} {{ r.lastName }}<span v-if="!r.isActive" class="badge badge-outline ml-2">Inactive</span></p>
                 <p class="text-xs text-text-muted">{{ r.username }} · {{ r.lastLoginAt ? `last signed in ${timestamp(r.lastLoginAt)}` : 'hasn’t signed in yet' }}</p>
               </td>
-              <td class="px-4 py-2.5 text-xs"><p>{{ r.email }}</p><p class="text-text-muted">{{ r.phone || '—' }}</p></td>
+              <td class="px-4 py-2.5 text-xs"><p>{{ r.email }}</p><p class="text-text-muted">{{ formatPhone(r.phone) || '—' }}</p></td>
               <td class="px-4 py-2.5 text-right tabular-nums">{{ r.upcoming }}</td>
               <td class="px-4 py-2.5 text-right tabular-nums">{{ r.worked }}</td>
               <td class="px-4 py-2.5 text-right tabular-nums" :class="r.noShows && 'font-bold'">{{ r.noShows }}</td>
@@ -130,7 +132,7 @@ async function save() {
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="label" for="rf-email">Email</label><input id="rf-email" v-model="editor.form.email" type="email" class="input" required /></div>
-          <div><label class="label" for="rf-phone">Phone <span class="font-normal text-text-muted">(optional)</span></label><input id="rf-phone" v-model="editor.form.phone" type="tel" class="input" /></div>
+          <div><label class="label" for="rf-phone">Phone <span class="font-normal text-text-muted">(optional)</span></label><PhoneInput id="rf-phone" v-model="editor.form.phone" /></div>
         </div>
         <div>
           <label class="label" for="rf-rate">Pay per game <span class="font-normal text-text-muted">(blank = league default, {{ money(data.settings.defaultPayCents) }})</span></label>

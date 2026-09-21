@@ -11,7 +11,7 @@
       try {
         var t = localStorage.getItem('winterleague:theme') || 'light';
         document.documentElement.setAttribute('data-theme', t);
-        if (t === 'dark' || t === 'midnightNoir') document.documentElement.classList.add('dark');
+        if (t === 'dark' || t === 'midnightNoir' || t === 'midnightPacific') document.documentElement.classList.add('dark');
         // First-paint app name from cache, so a renamed conference never flashes the default.
         var b = JSON.parse(localStorage.getItem('winterleague:branding') || '{}');
         if (b.appName) document.title = b.appName;
