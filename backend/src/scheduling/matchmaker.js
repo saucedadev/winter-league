@@ -13,9 +13,12 @@
 //     at most rules.maxGamesPerWeek per week
 //   • the away team's travel is within rules.maxTravelMiles (when venues
 //     have coordinates)
+//   • teams from the same program never play each other (unless
+//     rules.allowSameProgram is on)
+//   • two teams meet at most rules.maxVsSameOpponent times (null = no limit)
 // Soft goals: every team reaches rules.gamesPerTeam, home/away near 50/50,
 // games spread evenly across the season.
-import { roundRobin, milesBetween, weekOf, teamProblems, windowKey } from './core.js';
+import { milesBetween, weekOf, teamProblems, windowKey } from './core.js';
 
 export function buildSchedule({ teams, windows, homes, programBlackouts, rules, programNames = {} }) {
   const warnings = [];
@@ -49,41 +52,102 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   // ---- 1. pairings per division ----
   const matches = [];
   const tooFar = [];
+  const pairingShort = []; // teams the opponent rules left short, with a plain-English reason
   for (const [divisionId, divTeams] of byDivision) {
     if (divTeams.length < 2) {
       warnings.push(`${divTeams[0].divisionName} has only one team (${divTeams[0].name}), so no games were created for it.`);
       continue;
     }
-    const cycle = roundRobin(divTeams);
     const count = new Map(divTeams.map((t) => [t.id, 0]));
+    const met = new Map(); // "idA|idB" -> games scheduled between them
+    const pairKey = (a, b) => (a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`);
+    const sameProgramBlocked = (a, b) => !rules.allowSameProgram && a.programId === b.programId;
+    const meetings = (a, b) => met.get(pairKey(a, b)) || 0;
+
+    // Who each team may ever play: same division, not a sister team (unless
+    // allowed), and within the travel cap.
+    const opponents = new Map(divTeams.map((t) => [t.id, []]));
+    for (let i = 0; i < divTeams.length; i++) {
+      for (let j = i + 1; j < divTeams.length; j++) {
+        const a = divTeams[i];
+        const b = divTeams[j];
+        if (sameProgramBlocked(a, b)) continue;
+        const d = milesBetween(homes[a.programId], homes[b.programId]);
+        if (d != null && d > rules.maxTravelMiles) { tooFar.push({ a, b, d }); continue; }
+        opponents.get(a.id).push(b);
+        opponents.get(b.id).push(a);
+      }
+    }
+    const canStillPlay = (a, b) => count.get(a.id) < rules.gamesPerTeam && count.get(b.id) < rules.gamesPerTeam
+      && (rules.maxVsSameOpponent == null || meetings(a, b) < rules.maxVsSameOpponent);
+    const optionsLeft = (t) => opponents.get(t.id).filter((o) => canStillPlay(t, o)).length;
+
+    // Build rounds (each team plays at most once per round). In each round the
+    // teams furthest behind, with the fewest options, choose first; they pick
+    // the opponent they've met least, so everyone is played once before any
+    // rematch. This stops well-connected teams filling up on each other and
+    // leaving teams with few possible opponents short.
     const divMatches = [];
+    const lastHome = new Map();       // pair -> team suggested as home last time they met
+    const homeSuggested = new Map();  // team -> times suggested as home
     let round = 0;
-    for (let c = 0; c < rules.gamesPerTeam + 2; c++) {
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    while (round < rules.gamesPerTeam * 4) {
+      const busy = new Set();
       let added = 0;
-      for (const pairs of cycle) {
-        let addedThisRound = 0;
-        for (const [x, y] of pairs) {
-          const [a, b] = c % 2 === 0 ? [x, y] : [y, x]; // alternate suggested home each cycle
-          if (count.get(a.id) >= rules.gamesPerTeam || count.get(b.id) >= rules.gamesPerTeam) continue;
-          const d = milesBetween(homes[a.programId], homes[b.programId]);
-          if (d != null && d > rules.maxTravelMiles) {
-            if (c === 0) tooFar.push({ a, b, d });
-            continue;
-          }
-          divMatches.push({ divisionId, a, b, round });
-          count.set(a.id, count.get(a.id) + 1);
-          count.set(b.id, count.get(b.id) + 1);
-          addedThisRound++;
-        }
-        if (addedThisRound) round++;
-        added += addedThisRound;
+      const choosers = divTeams.filter((t) => optionsLeft(t) > 0)
+        .sort((a, b) => count.get(a.id) - count.get(b.id) || optionsLeft(a) - optionsLeft(b) || byName(a, b));
+      for (const t of choosers) {
+        if (busy.has(t.id)) continue;
+        const picks = opponents.get(t.id).filter((o) => !busy.has(o.id) && canStillPlay(t, o))
+          .sort((a, b) => meetings(t, a) - meetings(t, b) || count.get(a.id) - count.get(b.id) || optionsLeft(a) - optionsLeft(b) || byName(a, b));
+        if (!picks.length) continue;
+        const o = picks[0];
+        // Don't take a rematch just because the opponents this team hasn't met
+        // enough are busy this round: sit out, and choose earlier next round.
+        // (The first chooser each round always has a free pick, so rounds
+        // keep making progress.)
+        const fewestMeetings = Math.min(...opponents.get(t.id).filter((x) => canStillPlay(t, x)).map((x) => meetings(t, x)));
+        if (meetings(t, o) > fewestMeetings) continue;
+        // Suggested home: on a rematch, whoever was away last time; otherwise the
+        // team with fewer home suggestions so far. Placement still balances.
+        const prevHome = lastHome.get(pairKey(t, o));
+        const tHosts = prevHome ? prevHome !== t.id : (homeSuggested.get(t.id) || 0) <= (homeSuggested.get(o.id) || 0);
+        const [a, b] = tHosts ? [t, o] : [o, t];
+        lastHome.set(pairKey(t, o), a.id);
+        homeSuggested.set(a.id, (homeSuggested.get(a.id) || 0) + 1);
+        divMatches.push({ divisionId, a, b, round });
+        count.set(t.id, count.get(t.id) + 1);
+        count.set(o.id, count.get(o.id) + 1);
+        met.set(pairKey(t, o), meetings(t, o) + 1);
+        busy.add(t.id); busy.add(o.id);
+        added++;
       }
       if (!added) break;
+      round++;
+    }
+
+    // Explain teams the rules left short of the target, before placement.
+    for (const t of divTeams) {
+      const got = count.get(t.id);
+      if (got >= rules.gamesPerTeam) continue;
+      const others = divTeams.filter((o) => o.id !== t.id);
+      const sister = others.filter((o) => o.programId === t.programId).length;
+      const eligible = opponents.get(t.id).length;
+      const excluded = sister && !rules.allowSameProgram ? ` (not counting ${sister} other team${sister > 1 ? 's' : ''} from its own program)` : '';
+      if (!eligible) {
+        pairingShort.push({ team: t, text: `${t.name} has no possible opponents in ${t.divisionName}${excluded}, so it has no games. Turn on “Teams from the same program can play each other” or move it to another division.` });
+      } else if (rules.maxVsSameOpponent != null && eligible * rules.maxVsSameOpponent < rules.gamesPerTeam) {
+        pairingShort.push({ team: t, text: `${t.name} got ${got} of ${rules.gamesPerTeam} games: it has ${eligible} possible opponent${eligible > 1 ? 's' : ''} in ${t.divisionName}${excluded} and a limit of ${rules.maxVsSameOpponent} game${rules.maxVsSameOpponent > 1 ? 's' : ''} against each. Raise “Most games against the same opponent” or lower “Games per team”.` });
+      }
     }
     const totalRounds = Math.max(round, 1);
     for (const m of divMatches) m.targetWeek = Math.floor((m.round * weeks.length) / totalRounds);
     matches.push(...divMatches);
   }
+  // One line per short team when there are a few; a summary when there are many.
+  if (pairingShort.length <= 6) warnings.push(...pairingShort.map((p) => p.text));
+  else warnings.push(`${pairingShort.length} teams can’t reach ${rules.gamesPerTeam} games under the opponent rules, e.g. ${pairingShort[0].text} Check the Team balance tab for the full list.`);
   for (const { a, b, d } of tooFar) {
     warnings.push(`${a.name} and ${b.name} weren’t paired: their programs are ${d} miles apart (cap ${rules.maxTravelMiles}).`);
   }
@@ -186,7 +250,10 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     teamId: t.id, name: t.name, divisionId: t.divisionId,
     home: homeCount.get(t.id), away: awayCount.get(t.id), games: homeCount.get(t.id) + awayCount.get(t.id),
   }));
-  const short = teamStats.filter((s) => s.games < rules.gamesPerTeam && byDivision.get(s.divisionId).length > 1);
+  // Teams short for other reasons (not enough open gym time, travel), so the
+  // ones already explained above aren't listed twice.
+  const explained = new Set(pairingShort.map((p) => p.team.id));
+  const short = teamStats.filter((s) => s.games < rules.gamesPerTeam && byDivision.get(s.divisionId).length > 1 && !explained.has(s.teamId));
   if (short.length) {
     warnings.push(`${short.length} team${short.length > 1 ? 's' : ''} ended up with fewer than ${rules.gamesPerTeam} games: ${short.slice(0, 6).map((s) => `${s.name} (${s.games})`).join(', ')}${short.length > 6 ? ', …' : ''}.`);
   }

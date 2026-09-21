@@ -8,7 +8,10 @@ export const DEFAULT_RULES = Object.freeze({
   maxTravelMiles: 30,     // straight-line cap between the game venue and the away program's home
   minDaysBetween: 2,      // a team's games must be at least this many days apart (1 = not same day)
   maxGamesPerWeek: 2,     // per team, Monday–Sunday
+  allowSameProgram: false, // may two teams from the same program play each other?
+  maxVsSameOpponent: 2,   // most games between the same two teams (1–6), or null = no limit
 });
+export const MAX_VS_SAME_OPPONENT_LIMIT = 6;
 
 const RULE_LIMITS = {
   gamesPerTeam: [1, 40, 'Games per team'],
@@ -27,6 +30,21 @@ export function normalizeRules(input = {}) {
     const n = Number(input[key]);
     if (!Number.isInteger(n) || n < min || n > max) errors.push(`${label} must be a whole number from ${min} to ${max}.`);
     else out[key] = n;
+  }
+  // Same-program games: a real on/off switch (anything else is an error).
+  if (input.allowSameProgram !== undefined && input.allowSameProgram !== null) {
+    if (typeof input.allowSameProgram !== 'boolean') errors.push('“Teams from the same program can play each other” must be on or off.');
+    else out.allowSameProgram = input.allowSameProgram;
+  }
+  // Rematch limit: 1–6, or "no limit" (null, '', or 'none').
+  if (input.maxVsSameOpponent !== undefined) {
+    const v = input.maxVsSameOpponent;
+    if (v === null || v === '' || v === 'none') out.maxVsSameOpponent = null;
+    else {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > MAX_VS_SAME_OPPONENT_LIMIT) errors.push(`“Most games against the same opponent” must be 1 to ${MAX_VS_SAME_OPPONENT_LIMIT}, or no limit.`);
+      else out.maxVsSameOpponent = n;
+    }
   }
   if (errors.length) {
     const err = new Error(errors.join(' '));

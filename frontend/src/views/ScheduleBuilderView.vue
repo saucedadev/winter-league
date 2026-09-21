@@ -68,7 +68,11 @@ async function generate() {
   } catch (err) { toast.error(errorMessage(err)); }
   finally { generating.value = false; }
 }
-const rulesDirty = computed(() => overview.value && RULE_FIELDS.some((f) => Number(rules.value?.[f.key]) !== overview.value.rules[f.key]));
+const REMATCH_OPTIONS = [1, 2, 3, 4, 5, 6];
+const rulesDirty = computed(() => overview.value && (
+  RULE_FIELDS.some((f) => Number(rules.value?.[f.key]) !== overview.value.rules[f.key])
+  || (rules.value?.maxVsSameOpponent ?? null) !== (overview.value.rules.maxVsSameOpponent ?? null)
+  || !!rules.value?.allowSameProgram !== !!overview.value.rules.allowSameProgram));
 
 // ---- live summary (recomputed from the games, so it reflects edits) ----
 const stats = computed(() => {
@@ -196,7 +200,7 @@ const publishMessage = computed(() => {
         <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
             <h2 class="font-semibold">Matchmaker rules</h2>
-            <p class="text-sm text-text-muted">The matchmaker only pairs teams in the same division and only uses open weeknight and weekend game slots. It never books a court twice or schedules on a blackout day.</p>
+            <p class="text-sm text-text-muted">The matchmaker only pairs teams in the same division and only uses open weeknight and weekend game slots. It never books a court twice, schedules on a blackout day, or goes over the opponent limits below.</p>
           </div>
           <button class="btn btn-primary shrink-0" :disabled="generating" @click="overview.draft ? (confirmRegenerate = true) : generate()">
             {{ generating ? 'Building…' : overview.draft ? 'Regenerate draft' : 'Generate draft' }}
@@ -207,6 +211,27 @@ const publishMessage = computed(() => {
             <label class="label" :for="`rule-${f.key}`">{{ f.label }}</label>
             <input :id="`rule-${f.key}`" v-model.number="rules[f.key]" type="number" :min="f.min" :max="f.max" class="input" />
             <p class="text-xs text-text-muted mt-1">{{ f.help }}</p>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mt-4 pt-4 border-t border-border">
+          <div>
+            <label class="label" for="rule-maxVsSameOpponent">Most games against the same opponent</label>
+            <select id="rule-maxVsSameOpponent" v-model="rules.maxVsSameOpponent" class="input">
+              <option v-for="n in REMATCH_OPTIONS" :key="n" :value="n">{{ n }}</option>
+              <option :value="null">No limit</option>
+            </select>
+            <p class="text-xs text-text-muted mt-1">2 lets each pair meet home and away. In small divisions a low limit can leave teams short of games; the notes will say so.</p>
+          </div>
+          <div class="sm:col-span-1 lg:col-span-2">
+            <p class="label" id="rule-sameProgram-label">Teams from the same program can play each other</p>
+            <button type="button" role="switch" :aria-checked="!!rules.allowSameProgram" aria-labelledby="rule-sameProgram-label"
+              class="inline-flex items-center gap-3 py-1.5" @click="rules.allowSameProgram = !rules.allowSameProgram">
+              <span class="relative w-11 h-6 rounded-full transition-colors" :class="rules.allowSameProgram ? 'bg-accent' : 'bg-border'">
+                <span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-surface shadow transition-transform" :class="rules.allowSameProgram && 'translate-x-5'" />
+              </span>
+              <span class="text-sm font-semibold">{{ rules.allowSameProgram ? 'On' : 'Off' }}</span>
+            </button>
+            <p class="text-xs text-text-muted mt-1">Off: a program’s own teams (e.g. its Competitive and Developmental 6th Grade Girls) never play each other.</p>
           </div>
         </div>
         <p v-if="rulesDirty" class="text-xs mt-3 font-medium">Changed rules are saved when you generate.</p>

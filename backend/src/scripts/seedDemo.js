@@ -195,7 +195,8 @@ async function seedRequests(runId, programIds) {
   ]) {
     if (!row) continue;
     const game = await getGame(row.id);
-    const { options } = await placementOptions(game, { today: '2026-01-01', limit: 20 });
+    // Look for new times after the game's current date (not just the first few of the season).
+    const { options } = await placementOptions(game, { today: game.date, limit: 200 });
     // Proposals are several days apart (they may involve the same team), so the
     // demo can approve both without tripping the rest-days rule.
     const farFromTaken = (d) => [...taken].every((t) => Math.abs(Date.parse(d) - Date.parse(t)) >= 3 * 86400000);

@@ -26,7 +26,8 @@ A 15–20 minute walkthrough that follows one season end to end: directors enter
 *Talking point:* directors only ever see and change their own program. That's enforced on the server, not just hidden in the screens.
 
 ### 2. Building the schedule (Grace Kim, `gkim`, System Admin) — 4 min
-- **Schedule builder.** Walk through the five rules: games per team, game length, travel cap, days between games, and games per week. Click **Generate draft**.
+- **Schedule builder.** Walk through the rules: games per team, game length, travel cap, days between games, games per week, **most games against the same opponent** (default 2), and **teams from the same program can play each other** (default Off, so a program's A and B teams never meet). Click **Generate draft**.
+- Point out any **Notes from the matchmaker** about small divisions (e.g. "got 4 of 8 games: 2 possible opponents and a limit of 2"). That's the rematch limit working as intended; raise it to 4 and regenerate to show the trade-off.
 - Read the summary cards: games placed, home/away balance, longest trip, and anything needing attention. Read one line from **Notes from the matchmaker**.
 - **Team balance** tab: find a bold row, go back to **By date**, and use **Flip** or **Move** on one of that team's games. The Move dialog only offers times that pass every rule.
 - **Publish schedule.** Point out the warning: publishing replaces the current schedule and says how many referee assignments carry over.

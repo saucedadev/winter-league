@@ -132,6 +132,38 @@ check('coach cannot open the schedule builder', (await call('GET', '/schedule/ov
 check('director cannot generate a schedule', (await call('POST', '/schedule/generate', { token: pd, body: {} })).status === 403);
 check('invalid rules rejected', (await call('PUT', '/schedule/rules', { token: admin, body: { gamesPerTeam: 0 } })).status === 400);
 
+console.log('\nOpponent rules');
+check('rematch limit above 6 is rejected', (await call('PUT', '/schedule/rules', { token: admin, body: { maxVsSameOpponent: 7 } })).status === 400);
+check('same-program switch must be on or off', (await call('PUT', '/schedule/rules', { token: admin, body: { allowSameProgram: 'yes' } })).status === 400);
+const defaultRules = (await call('GET', '/schedule/rules', { token: admin })).data.rules;
+check('defaults: same-program games off, at most 2 games per opponent', defaultRules.allowSameProgram === false && defaultRules.maxVsSameOpponent === 2);
+// A division where one program has two teams: add a second Northfield 6th Grade Girls team.
+const g6 = (await call('GET', '/league/divisions', { token: admin })).data.divisions.find((d) => d.name === '6th Grade Girls');
+const sister = await call('POST', '/teams', { token: pd, body: { name: 'Northfield 6th Girls Developmental', divisionId: g6.id } });
+check('director adds a second team in the same division', sister.status === 201, JSON.stringify(sister.data).slice(0, 120));
+teamDiv[sister.data.team.id] = g6.id; // keep the lookups used by later checks current
+teamProg[sister.data.team.id] = nfh.id;
+const teamProgAll = Object.fromEntries((await call('GET', '/teams', { token: admin })).data.teams.map((t) => [t.id, t.programId]));
+async function draftWith(rules) {
+  const r = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2, ...rules } } });
+  const games = (await call('GET', `/schedule/runs/${r.data.draft.id}/games`, { token: admin })).data.games;
+  const meets = {};
+  for (const g of games) { const k = [g.homeTeamId, g.awayTeamId].sort().join('|'); meets[k] = (meets[k] || 0) + 1; }
+  return { draft: r.data.draft, games, most: Math.max(...Object.values(meets)), same: games.filter((g) => teamProgAll[g.homeTeamId] === teamProgAll[g.awayTeamId]).length };
+}
+const dOff = await draftWith({ allowSameProgram: false, maxVsSameOpponent: 2 });
+check('no games between teams from the same program (default)', dOff.same === 0);
+check('no pair meets more than twice (default)', dOff.most <= 2);
+check('the draft explains teams left short by the rules', dOff.draft.warnings.some((w) => w.includes('possible opponent')), dOff.draft.warnings.join(' | ').slice(0, 200));
+const dOn = await draftWith({ allowSameProgram: true, maxVsSameOpponent: 2 });
+check('switching it on allows same-program games', dOn.same > 0);
+const d1 = await draftWith({ maxVsSameOpponent: 1 });
+check('a limit of 1 means no rematches', d1.most === 1 && d1.same === 0);
+const dNone = await draftWith({ maxVsSameOpponent: null });
+check('"No limit" saves and generates', dNone.draft.rules.maxVsSameOpponent === null && dNone.same === 0);
+check('rules saved with the draft are the league rules now', (await call('GET', '/schedule/rules', { token: admin })).data.rules.maxVsSameOpponent === null);
+await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
+
 console.log('\nMatchmaker draft');
 const gen = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2 } } });
 check('draft generated', gen.status === 201 && gen.data.draft.status === 'draft' && gen.data.draft.summary.scheduledGames > 0, JSON.stringify(gen.data).slice(0, 200));
