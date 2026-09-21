@@ -12,7 +12,7 @@ import { logActivity } from '../utils/activityLog.js';
 import {
   getRefSettings, saveRefSettings, normalizeRefSettings, currentPublishedRun, syncSlots, leagueNow, checkInWindow,
   refereeProblems, loadRefereeContext, activeReferees, gamesWithAssignments, notifyUsers, notifyAssignors, gameLine,
-  payRate, milesBetween, autoFill,
+  payRate, milesBetween, autoFill, lowerFirst,
 } from '../referees/data.js';
 
 const router = Router();
@@ -178,7 +178,7 @@ router.put('/assignments/:id', managers, ah(async (req, res) => {
     const ctx = await loadRefereeContext([game.date], [refereeId]);
     const others = (ctx.others.get(refereeId) || []).filter((o) => o.assignmentId !== a.id);
     const p = refereeProblems(game, others, ctx.unavailable.get(refereeId) || []);
-    if (p.blocking.length) throw conflict(`${refName(ref)} can’t take this game: ${p.blocking[0].toLowerCase()}.`, { blocking: p.blocking });
+    if (p.blocking.length) throw conflict(`${refName(ref)} can’t take this game: ${lowerFirst(p.blocking[0])}.`, { blocking: p.blocking });
     warnings = p.warnings;
     await run(`UPDATE referee_assignments SET referee_id = ?, status = 'assigned', assigned_by = ?, assigned_at = datetime('now'),
       checked_in_at = NULL, check_in_method = NULL, check_in_distance_miles = NULL, pay_cents = NULL, updated_at = datetime('now') WHERE id = ?`, [refereeId, req.user.id, a.id]);

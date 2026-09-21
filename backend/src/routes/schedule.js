@@ -217,7 +217,8 @@ router.put('/games/:id', adminOnly, ah(async (req, res) => {
   }
   let referees = null;
   if (game.runStatus === 'published') {
-    await logActivity({ category: 'schedule', action: 'edited', actor: req.user, programId: game.homeProgramId, details: detail });
+    // Both teams' programs see an admin's change to their game.
+    await logActivity({ category: 'schedule', action: 'edited', actor: req.user, programId: game.homeProgramId, programIds: [game.homeProgramId, game.awayProgramId], details: detail });
     // Moves, cancels, and restores affect referee slots; a flip doesn't.
     if (b.action !== 'flip') referees = await onGamesChanged([game.id], req.user);
   }

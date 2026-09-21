@@ -84,6 +84,7 @@ router.delete('/:id', requireRole('super_admin'), ah(async (req, res) => {
   if (Number(used.n) > 0) throw conflict('This program has venues, teams, or users. Deactivate it instead of deleting.');
   await db.batch([
     { sql: 'DELETE FROM blackout_dates WHERE program_id = ?', args: [p.id] },
+    { sql: 'DELETE FROM activity_log_programs WHERE program_id = ?', args: [p.id] },
     { sql: 'DELETE FROM programs WHERE id = ?', args: [p.id] },
   ], 'write');
   await logActivity({ category: 'program', action: 'deleted', actor: req.user, details: `Deleted program ${p.name}` });

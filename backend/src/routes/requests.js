@@ -241,7 +241,8 @@ router.post('/', ah(async (req, res) => {
   await db.batch(stmts, 'write');
 
   const summary = summarize({ ...draft, type: b.type }, game, swapGame);
-  await logActivity({ category: 'request', action: 'created', actor: u, programId: u.programId, details: `Requested: ${summary}` });
+  // Every program with a team in the affected game(s) sees each step of the request.
+  await logActivity({ category: 'request', action: 'created', actor: u, programId: u.programId, programIds: involvedPrograms([game, swapGame].filter(Boolean)), details: `Requested: ${summary}` });
   const text = `${u.firstName} ${u.lastName} requested a schedule change:\n${summary}\nReason: ${reason}`;
   if (status === 'pending_director') await notify({ role: 'program_director', programIds: [u.programId], subject: 'Schedule change request needs your review', text });
   else if (status === 'pending_counterpart') await notify({ role: 'program_director', programIds: counterparts, subject: 'Another program asked to change a game with your team', text });
@@ -304,7 +305,7 @@ router.post('/:id/act', ah(async (req, res) => {
   if (next === 'approved') await onGamesChanged([game.id, swapGame?.id].filter(Boolean), u);
 
   const verb = action === 'deny' ? 'Denied' : next === 'approved' ? 'Approved and applied' : 'Approved';
-  await logActivity({ category: 'request', action: action === 'deny' ? 'denied' : next === 'approved' ? 'applied' : 'approved', actor: u, programId: r.requestingProgramId,
+  await logActivity({ category: 'request', action: action === 'deny' ? 'denied' : next === 'approved' ? 'applied' : 'approved', actor: u, programId: r.requestingProgramId, programIds: involvedPrograms([game, swapGame].filter(Boolean)),
     details: `${verb}${myStep?.stage === 'counterpart' ? ' (as the other program)' : myStep?.stage === 'director' ? ' (as program director)' : ''}: ${summary}` });
 
   if (next === 'denied' || next === 'approved') {
@@ -329,7 +330,7 @@ router.post('/:id/cancel', ah(async (req, res) => {
   await db.execute({ sql: "UPDATE change_requests SET status = 'cancelled', decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", args: [req.user.id, r.id] });
   const game = await getGame(r.gameId);
   const swapGame = r.swapGameId ? await getGame(r.swapGameId) : null;
-  await logActivity({ category: 'request', action: 'cancelled', actor: req.user, programId: r.requestingProgramId, details: `Cancelled request: ${summarize(r, game, swapGame)}` });
+  await logActivity({ category: 'request', action: 'cancelled', actor: req.user, programId: r.requestingProgramId, programIds: involvedPrograms([game, swapGame].filter(Boolean)), details: `Cancelled request: ${summarize(r, game, swapGame)}` });
   res.json({ request: await hydrate(await loadRequest(r.id), req.user) });
 }));
 

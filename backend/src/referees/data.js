@@ -167,6 +167,8 @@ export async function notifyUsers(where, args, subject, text) {
   } catch (err) { console.error('referee notification failed:', err.message); }
 }
 export const notifyAssignors = (subject, text) => notifyUsers("role = 'referee_assignor'", [], subject, text);
+// Lower-case only the first letter, so venue names keep their capitals.
+export const lowerFirst = (s) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 export const gameLine = (g) => `${g.homeTeamName} vs ${g.awayTeamName}, ${g.date} at ${g.startTime ? formatTime12(g.startTime) : 'a time to be set'}, ${g.venueName || 'venue to be set'}${g.courtName ? ` – ${g.courtName}` : ''}`;
 
 // ---------------------------------------------------------------------
@@ -186,21 +188,27 @@ export async function onGamesChanged(gameIds, actor) {
   const stmts = [];
   for (const g of games) {
     for (const a of g.assignments.filter((x) => x.refereeId)) {
+      // Two wordings: one to the referee ("you"), one for the league's activity log.
       let reason = null;
-      if (g.status === 'cancelled') reason = 'the game was cancelled';
-      else if (g.status !== 'scheduled') reason = 'the game was taken off the schedule';
+      let logReason = null;
+      if (g.status === 'cancelled') reason = logReason = 'the game was cancelled';
+      else if (g.status !== 'scheduled') reason = logReason = 'the game was taken off the schedule';
       else {
         const ctx = await loadRefereeContext([g.date], [a.refereeId]);
         const others = (ctx.others.get(a.refereeId) || []).filter((o) => o.assignmentId !== a.id);
         const p = refereeProblems(g, others, ctx.unavailable.get(a.refereeId) || []);
-        if (p.blocking.length) reason = `the new time doesn’t work for you (${p.blocking[0].toLowerCase()})`;
+        if (p.blocking.length) {
+          const why = lowerFirst(p.blocking[0]); // "already working Poynter Middle School at 6:30 PM"
+          reason = `the new time clashes with your schedule (${why})`;
+          logReason = `the new time clashes with their schedule (${why})`;
+        }
       }
       if (reason) {
         removed++;
         stmts.push({ sql: "UPDATE referee_assignments SET referee_id = NULL, status = 'assigned', assigned_by = NULL, assigned_at = NULL, checked_in_at = NULL, check_in_method = NULL, check_in_distance_miles = NULL, pay_cents = NULL, updated_at = datetime('now') WHERE id = ?", args: [a.id] });
         await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You were removed from ${gameLine(g)} because ${reason}.`);
         if (g.status === 'scheduled') await notifyAssignors('A referee slot reopened', `${a.refereeName} was removed from ${gameLine(g)} after a schedule change. The slot needs a new referee.`);
-        await logActivity({ category: 'referee', action: 'unassigned', actor, details: `${a.refereeName} removed from ${g.homeTeamName} vs ${g.awayTeamName}: ${reason}` });
+        await logActivity({ category: 'referee', action: 'unassigned', actor, details: `${a.refereeName} removed from ${g.homeTeamName} vs ${g.awayTeamName}: ${logReason}` });
       } else {
         kept++;
         await notifyUsers('id = ?', [a.refereeId], 'A game you’re working has moved', `This game has a new date, time, or court:\n${gameLine(g)}\nYou’re still assigned.`);

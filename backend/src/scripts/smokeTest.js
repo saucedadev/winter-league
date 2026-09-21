@@ -266,6 +266,30 @@ const s3 = await call('POST', `/requests/${cr.data.request.id}/act`, { token: ad
 check('admin sign-off applies the change', s3.data.request?.status === 'approved' && s3.data.request.game.date === co.date && s3.data.request.game.courtId === co.courtId);
 
 check('approved request still shows where the game was', s3.data.request?.before?.game?.date === vsRyb.date && s3.data.request.before.game.courtId === vsRyb.courtId);
+
+console.log('\nActivity for a request between two programs');
+const cpc = programs.find((x) => x.shortCode === 'CPC');
+const actReq = async (token, extra = '') => (await call('GET', `/activity?category=request${extra}`, { token })).data.entries;
+const nfhSees = await actReq(pd);
+const rybSees = await actReq(mbell);
+const signOff = nfhSees.find((e) => e.action === 'applied' && e.actorName === 'Grace Kim');
+check('the requesting coach’s director sees the admin’s sign-off', !!signOff);
+check('the other program’s director sees it too', !!signOff && rybSees.some((e) => e.id === signOff.id));
+check('both directors see every step of the request', ['created', 'approved', 'applied'].every((act) => nfhSees.some((e) => e.action === act) && rybSees.some((e) => e.action === act)));
+check('the entry lists both programs involved', !!signOff && ['NFH', 'RYB'].every((c) => signOff.programs.some((p) => p.shortCode === c)));
+check('the admin is shown by role, not a program', signOff?.actorRole === 'super_admin' && !signOff.actorProgramCode);
+const rybStep = nfhSees.find((e) => e.actorName === 'Marcus Bell');
+check('Riverbend’s director is shown with RYB, even on the request’s record', rybStep?.actorProgramCode === 'RYB');
+const nfhStep = rybSees.find((e) => e.actorName === 'Dana Whitfield');
+check('Northfield’s director is shown with NFH', nfhStep?.actorProgramCode === 'NFH');
+check('the coach is shown with their program', nfhSees.find((e) => e.action === 'created')?.actorProgramCode === 'NFH');
+check('a program not involved doesn’t see it', !(await actReq(admin, `&programId=${cpc.id}`)).some((e) => e.id === signOff?.id));
+// An admin change to a published game shows up for both teams' directors.
+await call('PUT', `/schedule/games/${vsRyb.id}`, { token: admin, body: { action: 'flip' } });
+const flipNfh = (await call('GET', '/activity?category=schedule', { token: pd })).data.entries[0];
+const flipRyb = (await call('GET', '/activity?category=schedule', { token: mbell })).data.entries[0];
+check('an admin’s change to a game reaches both teams’ directors', !!flipNfh && flipNfh.id === flipRyb?.id && /Swapped home\/away/.test(flipNfh.details));
+await call('PUT', `/schedule/games/${vsRyb.id}`, { token: admin, body: { action: 'flip' } });
 console.log('\nChange requests — swap, deny, cancel');
 const pdGames = (await call('GET', '/schedule/games?mine=1', { token: pd })).data.games.filter((g) => g.canRequest);
 let swapped = false;
