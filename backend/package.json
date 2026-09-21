@@ -1,0 +1,30 @@
+{
+  "name": "winter-league-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "start:render": "node src/scripts/migrate.js && node src/server.js",
+    "migrate": "node src/scripts/migrate.js",
+    "seed": "node src/scripts/seed.js",
+    "seed:demo": "node src/scripts/seedDemo.js",
+    "db:reset": "node src/scripts/resetDb.js",
+    "migrate:prod": "node src/scripts/migrate.js --env=.env.production.local",
+    "seed:prod": "node src/scripts/seed.js --env=.env.production.local",
+    "test:smoke": "node src/scripts/smokeTest.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.14.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.16"
+  }
+}

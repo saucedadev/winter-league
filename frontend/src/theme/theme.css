@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* Theme variables mirror src/theme/palette.js (same values as Gym Hive). */
+:root {
+  --color-header: #FFFFFF;
+  --color-header-text: #36454F;
+  --color-background: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-text: #36454F;
+  --color-text-muted: #6B7280;
+  --color-border: #E2E8F0;
+  --color-accent: #2F6A87;
+  --color-accent-contrast: #FFFFFF;
+  /* Accent used ON the header bar. Same as accent unless a theme's accent matches its header. */
+  --color-header-accent: var(--color-accent);
+  --color-header-accent-contrast: var(--color-accent-contrast);
+
+  --color-success: #10B981;
+  --color-danger: #E63946;
+  --color-warning: #EA6C36;
+  --color-pending: #F1C40F;
+  --color-unavailable: #3C4142;   /* charcoal — same "closed" meaning as Gym Hive; used for blackouts */
+
+  /* Winter League slot categories — darker shades so white text passes WCAG AA. */
+  --color-cat-practice: #047857;
+  --color-cat-weeknight: #2563EB;
+  --color-cat-weekend: #7C3AED;
+  --color-slot-border: rgba(0, 0, 0, 0.15);
+}
+
+html[data-theme="dark"] {
+  --color-header: #242440; --color-header-text: #F1F5F9; --color-background: #1A1A2E; --color-surface: #242440;
+  --color-text: #F1F5F9; --color-text-muted: #94A3B8; --color-border: #33334D;
+}
+html[data-theme="regalOpulence"] {
+  --color-header: #B22222; --color-header-text: #FFFDD0; --color-background: #FFFDD0; --color-surface: #FFFFFF;
+  --color-text: #0F5257; --color-text-muted: #6B8E8A; --color-border: #E5D9B6;
+  --color-accent: #D4AF37; --color-accent-contrast: #0F5257;
+}
+html[data-theme="midnightNoir"] {
+  --color-header: #B22222; --color-header-text: #F5F5F7; --color-background: #1C1C1C; --color-surface: #2A2A2A;
+  --color-text: #F5F5F7; --color-text-muted: #708090; --color-border: #3A3A3A;
+  --color-accent: #B22222; --color-accent-contrast: #F5F5F7;
+  /* Accent == header red here, so header chips use a deeper shade to stay visible. */
+  --color-header-accent: #7A1414; --color-header-accent-contrast: #F5F5F7;
+}
+html.dark { --color-slot-border: rgba(255, 255, 255, 0.18); }
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Shared card treatment (Gym Hive): hairline border + layered soft shadow. */
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 20px -6px rgba(0, 0, 0, 0.08);
+}
+html.dark .card { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px -8px rgba(0, 0, 0, 0.55); }
+.card-blocky { border-radius: 0.375rem; }
+
+/* Form controls — one definition so every screen matches. */
+.input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.input:focus { outline: none; box-shadow: 0 0 0 2px var(--color-accent); border-color: transparent; }
+.label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.25rem; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem; border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem; font-size: 0.875rem; font-weight: 600; transition: filter .15s ease, background-color .15s ease; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary { background: var(--color-accent); color: var(--color-accent-contrast); }
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-secondary { border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--color-accent); }
+.btn-danger { background: var(--color-danger); color: #fff; }
+.btn-ghost { color: var(--color-text-muted); padding: 0.375rem 0.5rem; }
+.btn-ghost:hover { color: var(--color-text); }
+
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Blackout overlay: charcoal diagonal hatch so a blacked-out slot still shows its color underneath. */
+.hatch-blackout {
+  background-image: repeating-linear-gradient(135deg, rgba(60, 65, 66, 0.85) 0 6px, rgba(60, 65, 66, 0.55) 6px 12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+@theme inline {
+  --color-header: var(--color-header);
+  --color-header-text: var(--color-header-text);
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-border: var(--color-border);
+  --color-accent: var(--color-accent);
+  --color-accent-contrast: var(--color-accent-contrast);
+  --color-header-accent: var(--color-header-accent);
+  --color-header-accent-contrast: var(--color-header-accent-contrast);
+  --color-success: var(--color-success);
+  --color-danger: var(--color-danger);
+  --color-warning: var(--color-warning);
+  --color-pending: var(--color-pending);
+  --color-unavailable: var(--color-unavailable);
+  --color-cat-practice: var(--color-cat-practice);
+  --color-cat-weeknight: var(--color-cat-weeknight);
+  --color-cat-weekend: var(--color-cat-weekend);
+}
