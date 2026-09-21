@@ -14,6 +14,8 @@
   /* Accent used ON the header bar. Same as accent unless a theme's accent matches its header. */
   --color-header-accent: var(--color-accent);
   --color-header-accent-contrast: var(--color-accent-contrast);
+  /* Line under the header. Same as other borders unless a theme sets it. */
+  --color-header-border: var(--color-border);
 
   --color-success: #10B981;
   --color-danger: #E63946;
@@ -36,6 +38,15 @@ html[data-theme="regalOpulence"] {
   --color-header: #B22222; --color-header-text: #FFFDD0; --color-background: #FFFDD0; --color-surface: #FFFFFF;
   --color-text: #0F5257; --color-text-muted: #6B8E8A; --color-border: #E5D9B6;
   --color-accent: #D4AF37; --color-accent-contrast: #0F5257;
+}
+html[data-theme="pacificYouthConference"] {
+  --color-header: #003366; --color-header-text: #F5F5DC; --color-background: #F5F5DC; --color-surface: #FFFDF7;
+  --color-text: #003366; --color-text-muted: #4F6A7E; --color-border: #E4DDC3;
+  --color-accent: #007A7A; --color-accent-contrast: #FFFFFF;
+  /* Sunset orange lives only on the navy header, with navy text on it (4.6:1). */
+  --color-header-accent: #FF6F61; --color-header-accent-contrast: #003366;
+  --color-header-border: #D4AF37;
+  --color-slot-border: rgba(0, 51, 102, 0.18);
 }
 html[data-theme="midnightNoir"] {
   --color-header: #B22222; --color-header-text: #F5F5F7; --color-background: #1C1C1C; --color-surface: #2A2A2A;
@@ -113,6 +124,7 @@ html.dark .card { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px -
   --color-accent-contrast: var(--color-accent-contrast);
   --color-header-accent: var(--color-header-accent);
   --color-header-accent-contrast: var(--color-header-accent-contrast);
+  --color-header-border: var(--color-header-border);
   --color-success: var(--color-success);
   --color-danger: var(--color-danger);
   --color-warning: var(--color-warning);

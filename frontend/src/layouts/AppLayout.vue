@@ -62,7 +62,7 @@ function signOut() {
 
 <template>
   <div class="min-h-screen flex flex-col">
-    <header class="h-16 border-b border-border bg-header text-header-text flex items-center px-4 md:px-6 gap-3 sticky top-0 z-30">
+    <header class="h-16 border-b border-header-border bg-header text-header-text flex items-center px-4 md:px-6 gap-3 sticky top-0 z-30">
       <RouterLink to="/" class="shrink-0" aria-label="Winter League home"><BrandMark on-header /></RouterLink>
 
       <nav class="hidden xl:flex items-center gap-0.5 ml-2 min-w-0" aria-label="Main">

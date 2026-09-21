@@ -1,5 +1,6 @@
-// Single source of truth for color palettes — identical to Gym Hive's so
-// the two apps read as siblings. Structural roles per theme: header,
+// Color palettes. The first four match Gym Hive's so the two apps read as
+// siblings; Pacific Youth Conference is Winter League's own. (theme.css holds
+// the actual CSS variables; keep the two in step.) Structural roles per theme: header,
 // background, surface, text/textMuted, border, accent/accentContrast.
 //
 // Category + status colors are deliberately NOT themed: they carry
@@ -18,6 +19,15 @@ export const palette = {
     regalOpulence: {
       label: 'Regal Opulence', header: '#B22222', headerText: '#FFFDD0', background: '#FFFDD0', surface: '#FFFFFF',
       text: '#0F5257', textMuted: '#6B8E8A', border: '#E5D9B6', accent: '#D4AF37', accentContrast: '#0F5257', isDark: false,
+    },
+    // Coastal/nautical: navy header, sand page, teal actions, sunset-orange
+    // highlights on the header, and a gold hairline for a championship touch.
+    // Teal is #007A7A (not #008080) so it passes AA as link text on sand;
+    // orange only ever sits on navy, with navy text on it.
+    pacificYouthConference: {
+      label: 'Pacific Youth Conference', header: '#003366', headerText: '#F5F5DC', background: '#F5F5DC', surface: '#FFFDF7',
+      text: '#003366', textMuted: '#4F6A7E', border: '#E4DDC3', accent: '#007A7A', accentContrast: '#FFFFFF',
+      headerAccent: '#FF6F61', headerAccentContrast: '#003366', headerBorder: '#D4AF37', isDark: false,
     },
     midnightNoir: {
       label: 'Midnight Noir', header: '#B22222', headerText: '#F5F5F7', background: '#1C1C1C', surface: '#2A2A2A',

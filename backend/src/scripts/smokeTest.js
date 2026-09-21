@@ -78,6 +78,10 @@ const del = await call('DELETE', `/slots/${repeat.data.slots[2].id}?scope=follow
 check('delete "this and following" in series', del.data.deleted === repeat.data.slots.length - 2);
 
 console.log('\nAdmin');
+check('Pacific Youth Conference theme can be chosen', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'pacificYouthConference' } })).status === 200
+  && (await call('GET', '/settings/theme')).data.theme === 'pacificYouthConference');
+check('unknown themes are rejected', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'neonJungle' } })).status === 400);
+await call('PUT', '/settings/theme', { token: admin, body: { theme: 'light' } });
 const nu = await call('POST', '/users', { token: admin, body: { firstName: 'Test', lastName: 'Director', email: 't@example.com', role: 'program_director' } });
 check('director requires a program', nu.status === 400);
 const nu2 = await call('POST', '/users', { token: admin, body: { firstName: 'Test', lastName: 'Director', email: 't@example.com', role: 'program_director', programId: nfh.id } });

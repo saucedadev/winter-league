@@ -16,7 +16,7 @@ The same backend code talks to the local SQLite file or to Turso. Only `DATABASE
 - **League structure:** seasons, divisions, up to 16 programs (`MAX_PROGRAMS`), venues with courts (lat/long stored for the Phase 2 travel rule), teams.
 - **Program Director screens:** Gym slots week board (Practice / Weeknight game / Weekend game block), weekly repeats that skip blackout dates, "this and following weeks" edits, blackout dates per venue or whole program.
 - **Program isolation:** a Program Director can only read and write their own program. This is enforced on the server, not just hidden in the UI.
-- **Themes:** the same four sitewide themes as Gym Hive (Light, Dark, Regal Opulence, Midnight Noir), chosen by the System Admin.
+- **Themes:** Gym Hive's four sitewide themes (Light, Dark, Regal Opulence, Midnight Noir) plus the league's own **Pacific Youth Conference** theme (navy, teal, sand, sunset orange, and a gold accent line), chosen by the System Admin.
 - Referee payments are intentionally out of scope.
 
 ## Phase 2 – Scheduling (in draft form)

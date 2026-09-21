@@ -4,8 +4,9 @@ import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/
 import { ah, badRequest } from '../utils/http.js';
 
 const router = Router();
-// Same four themes as Gym Hive so the two apps look like siblings.
-const VALID_THEMES = ['light', 'dark', 'regalOpulence', 'midnightNoir'];
+// Gym Hive's four themes (so the two apps look like siblings), plus the
+// league's own Pacific Youth Conference theme.
+const VALID_THEMES = ['light', 'dark', 'regalOpulence', 'pacificYouthConference', 'midnightNoir'];
 
 // Public: the login page renders in the sitewide theme before sign-in.
 router.get('/theme', ah(async (req, res) => {
