@@ -9,6 +9,7 @@ import {
   getRules, saveRules, generateDraft, GAME_SELECT, GAME_ORDER, shapeGame, getGame,
   checkPlacement, placementOptions, placementUpdate, todayStr, describeGame, activeSeason, publishedRun,
 } from '../scheduling/data.js';
+import { onGamesChanged, syncSlots, carryOverAssignments, upcomingAssignmentCount, leagueNow } from '../referees/data.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -66,7 +67,8 @@ router.get('/overview', adminOnly, ah(async (req, res) => {
     publishedRun(season.id),
     one("SELECT COUNT(*) AS n FROM change_requests WHERE status IN ('pending_director', 'pending_counterpart', 'pending_admin')"),
   ]);
-  res.json({ season, rules: await getRules(), draft: shapeRun(draft), published: shapeRun(published), openRequests: Number(openRequests.n) });
+  const assignedAhead = published ? await upcomingAssignmentCount(published.id, leagueNow().date) : 0;
+  res.json({ season, rules: await getRules(), draft: shapeRun(draft), published: shapeRun(published), openRequests: Number(openRequests.n), assignedAhead });
 }));
 
 // ---------------------------------------------------------------------
@@ -213,10 +215,13 @@ router.put('/games/:id', adminOnly, ah(async (req, res) => {
     warnings = check.warnings;
     detail = `${game.status === 'unscheduled' ? 'Placed' : 'Moved'} ${game.homeTeamName} vs ${game.awayTeamName} to ${b.date} ${b.startTime} at ${check.court.venueName} – ${check.court.name}${check.flip ? ' (home/away swapped)' : ''}`;
   }
+  let referees = null;
   if (game.runStatus === 'published') {
     await logActivity({ category: 'schedule', action: 'edited', actor: req.user, programId: game.homeProgramId, details: detail });
+    // Moves, cancels, and restores affect referee slots; a flip doesn't.
+    if (b.action !== 'flip') referees = await onGamesChanged([game.id], req.user);
   }
-  res.json({ game: await getGame(game.id), warnings });
+  res.json({ game: await getGame(game.id), warnings, referees });
 }));
 
 // ---------------------------------------------------------------------
@@ -227,8 +232,10 @@ router.post('/runs/:id/publish', adminOnly, ah(async (req, res) => {
   if (!r) throw notFound('Schedule');
   if (r.status !== 'draft') throw conflict('Only a draft can be published.');
   const current = await publishedRun(r.seasonId);
+  const assignedAhead = current ? await upcomingAssignmentCount(current.id, leagueNow().date) : 0;
   if (current && req.body?.replace !== true) {
-    throw conflict('A schedule is already published for this season. Publishing this draft will replace it and cancel any open change requests.', { code: 'REPLACE_REQUIRED' });
+    throw conflict(`A schedule is already published for this season. Publishing this draft will replace it and cancel any open change requests.${assignedAhead ? ` ${assignedAhead} upcoming referee assignment${assignedAhead === 1 ? '' : 's'} will carry over only where a game is unchanged (same teams, date, time, and court).` : ''}`,
+      { code: 'REPLACE_REQUIRED', assignedAhead });
   }
   const stmts = [];
   if (current) {
@@ -241,10 +248,17 @@ router.post('/runs/:id/publish', adminOnly, ah(async (req, res) => {
   }
   stmts.push({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [req.user.id, r.id] });
   await db.batch(stmts, 'write');
+  // Module C: every published game gets its referee slots; carry referees
+  // over to unchanged games when replacing an earlier schedule.
+  const carry = current ? await carryOverAssignments(current.id, r.id, leagueNow().date) : { carried: 0, dropped: 0 };
+  if (!current) await syncSlots(r.id);
+  if (carry.dropped) {
+    await logActivity({ category: 'referee', action: 'unassigned', actor: req.user, details: `${carry.dropped} referee assignment(s) didn’t carry over to the new schedule because their games changed` });
+  }
   const counts = await one("SELECT SUM(status = 'scheduled') AS scheduled, SUM(status = 'unscheduled') AS unscheduled FROM games WHERE run_id = ?", [r.id]);
   await logActivity({ category: 'schedule', action: 'published', actor: req.user,
     details: `Published the schedule: ${counts.scheduled || 0} games${counts.unscheduled ? ` (${counts.unscheduled} unplaced pairings left off)` : ''}${current ? ', replacing the previous schedule' : ''}` });
-  res.json({ published: shapeRun(await one('SELECT * FROM schedule_runs WHERE id = ?', [r.id])) });
+  res.json({ published: shapeRun(await one('SELECT * FROM schedule_runs WHERE id = ?', [r.id])), referees: carry });
 }));
 
 router.delete('/runs/:id', adminOnly, ah(async (req, res) => {

@@ -6,7 +6,7 @@ import { ah } from '../utils/http.js';
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent, requireRole('super_admin', 'program_director'));
 
-const CATEGORIES = ['program', 'season', 'division', 'venue', 'team', 'slot', 'blackout', 'user'];
+const CATEGORIES = ['program', 'season', 'division', 'venue', 'team', 'slot', 'blackout', 'user', 'schedule', 'request', 'referee'];
 
 // ---- GET /api/activity?category=&before=&limit= ----
 // Directors see only their own program's entries; user-account entries

@@ -29,6 +29,18 @@ The same backend code talks to the local SQLite file or to Turso. Only `DATABASE
 
 Scheduling code lives in `backend/src/scheduling/`: `core.js` (pure rule helpers), `matchmaker.js` (pure draft builder, no database access), and `data.js` (loading inputs, saving drafts, and the placement checker shared by admin edits and requests).
 
+## Phase 3 – Referees & rollout
+
+- **Referee slots.** When a schedule is published, every game gets referee slots (2 by default; set under Referees → Settings). Slots are topped up automatically when games are placed or restored.
+- **Assigning (Referee Assignor and System Admin).** **Assignments** shows the published games a week at a time. Click a slot to see every referee, with the reason anyone can't take it: already working at that time, a date they marked unavailable, or back-to-back at a different gym. **Auto-fill** (this week or all upcoming) fills open slots with whoever has the fewest games so far, and never double-books anyone or uses a conflict. Referees get an email for each new game.
+- **Roster and pay.** The assignor adds referees on **Referees**; each gets a username and temporary password. Pay is a league default (default $40 per game) with an optional per-referee rate. The rate is locked in when a game is checked in, so later rate changes don't rewrite what's owed. Deactivating a referee removes them from their upcoming games.
+- **For referees.** **My games** is built for a phone: each game shows directions, partners, and a **Can't make it** button (before game day; the assignor is emailed). Referees list **Dates I can't work**, and both auto-fill and the assignor's list respect them. **Check-in** opens 60 minutes before tip-off and closes 3 hours after (both adjustable). If the phone shares its location, the distance from the gym is recorded; check-in works without it.
+- **Attendance and payouts.** On or after game day the assignor can **Mark as worked** or **Mark no-show**. **Payouts** previews what each referee is owed for a date range, warns about assigned games nobody confirmed, and exports a summary CSV and a per-game detail CSV. No money moves through the app.
+- **Schedule changes.** A moved or swapped game keeps its referees if they're still free; anyone who now has a conflict is removed, and they and the assignor are emailed. Cancelled games release their referees. Republishing a schedule warns first, and referees stay on any game whose teams, date, time, and court didn't change.
+- **Rollout.** Program Directors get a setup checklist on their dashboard (gyms, coordinates, teams, coaches, game slots, blackouts). The assignor gets a referee-coverage card. **[DEMO.md](./DEMO.md)** is a walkthrough script for the Program Directors' meeting.
+
+Referee code lives in `backend/src/referees/data.js` (slots, conflicts, check-in windows, auto-fill, and the hooks the schedule code calls) and `backend/src/routes/referees.js`.
+
 ## Run it locally
 
 ```bash
@@ -49,7 +61,7 @@ Sign in as:
 
 - `ladmin` / `ChangeMe123!` — the seeded System Admin (you'll be asked to change the password).
 - Demo accounts, all with password `WinterDemo2026`: `gkim` (System Admin), `dwhitfield` and `mbell` (Program Directors), `tgreene` and `lortega` (League Coaches), `pnair` (Referee Assignor), `obrooks` (Referee).
-- The demo comes with a published schedule and two open change requests. One is waiting on `dwhitfield` to endorse a coach's request, and one is waiting on her to agree to Riverbend's request. Sign in as `gkim` and open **Schedule builder** to generate a new draft.
+- The demo comes with a published schedule, 8 referees (`obrooks`, `acoleman`, `rchen`, `sdelgado`, `mhayes`, `cnovak`, `dokafor`, `jpike`) with November already assigned, and two open change requests. One is waiting on `dwhitfield` to endorse a coach's request, and one is waiting on her to agree to Riverbend's request. Sign in as `gkim` and open **Schedule builder** to generate a new draft, or as `pnair` to assign referees. The demo league differs slightly each time you reset, because record IDs are random.
 
 ## Backend scripts
 
@@ -63,7 +75,7 @@ Sign in as:
 | `npm run migrate:prod`  | Run migrations against Turso using `.env.production.local`. |
 | `npm run seed:prod`     | Seed the production Turso database using `.env.production.local`. |
 | `npm run start:render`  | What Render runs: migrate, then start the server. |
-| `npm run test:smoke`    | 75 API checks (auth, program isolation, slot rules, matchmaker rules, approval chain). Run against freshly reset demo data with the API up. |
+| `npm run test:smoke`    | 119 API checks (auth, program isolation, slot rules, matchmaker rules, approval chain, referee assignment, check-in, payouts). Run against freshly reset demo data with the API up in normal mode (not demo check-in mode). |
 
 ## Deploying
 

@@ -126,7 +126,10 @@ async function update(g, body, msg) {
     const { data } = await api.put(`/schedule/games/${g.id}`, body);
     const i = games.value.findIndex((x) => x.id === g.id);
     if (i >= 0) games.value[i] = data.game;
-    toast.success(msg + (data.warnings?.length ? ` Note: ${data.warnings.join(' ')}` : ''));
+    const refs = data.referees;
+    const refNote = refs && (refs.kept || refs.removed)
+      ? ` Referees: ${refs.kept ? `${refs.kept} kept and notified` : ''}${refs.kept && refs.removed ? ', ' : ''}${refs.removed ? `${refs.removed} removed and notified` : ''}.` : '';
+    toast.success(msg + refNote + (data.warnings?.length ? ` Note: ${data.warnings.join(' ')}` : ''));
     editing.value = null;
     if (body.courtId) games.value.sort((a, b) => (a.date || '9').localeCompare(b.date || '9') || (a.startTime || '').localeCompare(b.startTime || ''));
   } catch (err) {
@@ -143,8 +146,9 @@ const busy = ref(false);
 async function publish() {
   busy.value = true;
   try {
-    await api.post(`/schedule/runs/${overview.value.draft.id}/publish`, { replace: !!overview.value.published });
-    toast.success('Schedule published. Everyone can see it now.');
+    const { data } = await api.post(`/schedule/runs/${overview.value.draft.id}/publish`, { replace: !!overview.value.published });
+    const r = data.referees || {};
+    toast.success(`Schedule published. Everyone can see it now.${r.carried || r.dropped ? ` ${r.carried} referee assignment${r.carried === 1 ? '' : 's'} carried over${r.dropped ? `; ${r.dropped} need reassigning` : ''}.` : ''}`);
     confirmPublish.value = false;
     await loadOverview();
     view.value = 'published';
@@ -169,6 +173,8 @@ const publishMessage = computed(() => {
   let m = `${s.placed} games will be visible to every coach, director, and referee.`;
   if (s.unplaced) m += ` ${s.unplaced} unplaced pairing${s.unplaced === 1 ? '' : 's'} will be left off.`;
   if (overview.value?.published) m += ' This replaces the current published schedule, and any open change requests on it are cancelled.';
+  const n = overview.value?.assignedAhead || 0;
+  if (overview.value?.published && n) m += ` ${n} upcoming referee assignment${n === 1 ? '' : 's'} carry over only to games that didn’t change (same teams, date, time, and court). The rest need reassigning.`;
   return m;
 });
 </script>

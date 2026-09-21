@@ -29,6 +29,10 @@ export const config = {
     .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean),
   maxPrograms: Number(process.env.MAX_PROGRAMS) || 16,
+  // Game dates/times are local league time; check-in windows are judged in this zone.
+  leagueTimezone: process.env.LEAGUE_TIMEZONE || 'America/Chicago',
+  // For live demos only: lets referees check in to any upcoming game regardless of time.
+  demoCheckInAnytime: process.env.DEMO_CHECKIN_ANYTIME === 'true',
   email: {
     provider: process.env.EMAIL_PROVIDER || 'console',
     from: process.env.EMAIL_FROM || 'Winter League <no-reply@example.com>',

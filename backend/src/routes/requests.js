@@ -12,12 +12,13 @@ import { Router } from 'express';
 import { one, all, db, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, isSuperAdmin } from '../middleware/auth.js';
 import { ah, badRequest, conflict, forbidden, notFound } from '../utils/http.js';
-import { assertDate, assertTime, trimOrNull } from '../utils/validate.js';
+import { assertDate, assertTime, trimOrNull, formatTime12 } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
 import { sendEmail } from '../utils/email.js';
 import { config } from '../config.js';
 import { getGame, checkPlacement, placementUpdate, todayStr, describeGame } from '../scheduling/data.js';
 import { canRequestFor } from './schedule.js';
+import { onGamesChanged } from '../referees/data.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent, requireRole('super_admin', 'program_director', 'league_coach'));
@@ -62,7 +63,7 @@ function involvedPrograms(games) {
 
 function summarize(r, game, swapGame) {
   if (r.type === 'swap') return `Swap ${describeGame(game)} with ${describeGame(swapGame)}`;
-  return `Move ${describeGame(game)} to ${r.proposedDate} ${r.proposedStartTime}`;
+  return `Move ${describeGame(game)} to ${r.proposedDate} at ${formatTime12(r.proposedStartTime)}`;
 }
 
 // What the signed-in user can do with this request right now.
@@ -300,6 +301,7 @@ router.post('/:id/act', ah(async (req, res) => {
     stmts.push({ sql: "UPDATE change_requests SET status = ?, updated_at = datetime('now') WHERE id = ?", args: [next, r.id] });
   }
   await db.batch(stmts, 'write');
+  if (next === 'approved') await onGamesChanged([game.id, swapGame?.id].filter(Boolean), u);
 
   const verb = action === 'deny' ? 'Denied' : next === 'approved' ? 'Approved and applied' : 'Approved';
   await logActivity({ category: 'request', action: action === 'deny' ? 'denied' : next === 'approved' ? 'applied' : 'approved', actor: u, programId: r.requestingProgramId,

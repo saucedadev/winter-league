@@ -139,6 +139,8 @@ Under **Environment** add:
 | `JWT_EXPIRES_IN` | `8h` |
 | `APP_URL` | `http://localhost:5174` **for now** (you'll replace it in step 4) |
 | `MAX_PROGRAMS` | `16` |
+| `LEAGUE_TIMEZONE` | `America/Chicago` (optional; the time zone game times are in, used for referee check-in windows) |
+| `DEMO_CHECKIN_ANYTIME` | `false` (optional; see **Live demos** under “Upgrading an existing deployment to Phase 3”) |
 | `EMAIL_PROVIDER` | `console` to start, or `brevo` (see below) |
 | `EMAIL_FROM` | `Winter League <no-reply@yourdomain.com>` |
 | `BREVO_SMTP_USER` | only if `EMAIL_PROVIDER=brevo` |
@@ -237,11 +239,18 @@ The API only accepts browser requests from origins listed in `APP_URL`, and uses
 | Turso `401` / `UNAUTHORIZED` in the Render log | Token missing, mistyped, or revoked | `turso db tokens create winter-league` and update `DATABASE_AUTH_TOKEN`. |
 | Signed out every time the tab is closed | Expected: tokens live in `sessionStorage` (same as Gym Hive, for Safari/iOS reliability) | — |
 | First request after a while takes ~1 minute | Render free tier woke from sleep | Upgrade the instance, or accept it during testing. |
+| Referees told check-in hasn’t opened (or has closed) at tip-off | `LEAGUE_TIMEZONE` doesn’t match where games are played | Set it to the league’s zone, e.g. `America/New_York`, and redeploy. |
 | Forgot-password email never arrives | `EMAIL_PROVIDER=console` | Read the link from the Render log, or switch to `brevo` with SMTP credentials. |
 
 ## Upgrading an existing deployment to Phase 2
 
 Nothing new to configure. Push the code and Render's `npm run start:render` applies `002_scheduling.sql` before the server starts. Then sign in as the System Admin, open **Schedule builder**, check the rules, generate a draft, review it, and publish. Venues need latitude/longitude for the travel cap to be checked; the builder lists any program whose venues don't have them.
+
+## Upgrading an existing deployment to Phase 3
+
+Push the code. Render applies `003_referees.sql` before the server starts. Optionally set `LEAGUE_TIMEZONE` if the league isn't on Central time. Then sign in as the Referee Assignor, add referees under **Referees**, check **Settings** (referees per game, default pay, check-in window), and use **Assignments** to fill games. Referee slots are created for the games already on the published schedule the first time the Assignments page or dashboard loads.
+
+**Live demos:** check-in normally only opens on game day. For a demo before the season starts, set `DEMO_CHECKIN_ANYTIME=true` on Render, redeploy, run the demo, then set it back to `false` and redeploy. While it's on, referees can check in to any upcoming game, and those check-ins count toward payouts. Reset or clear demo check-ins before the real season (the assignor can use **Clear attendance** on each).
 
 ## Routine operations
 

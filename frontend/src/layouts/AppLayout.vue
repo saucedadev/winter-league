@@ -19,7 +19,11 @@ const menuRoot = ref(null);
 const role = computed(() => auth.user?.role);
 const primaryNav = computed(() => [
   { to: '/', label: 'Dashboard', show: true },
+  { to: '/my-games', label: 'My games', show: role.value === 'referee' },
   { to: '/schedule', label: 'Schedule', show: true, exact: true },
+  { to: '/assignments', label: 'Assignments', show: role.value === 'referee_assignor' },
+  { to: '/referees', label: 'Referees', show: role.value === 'referee_assignor' },
+  { to: '/payouts', label: 'Payouts', show: role.value === 'referee_assignor' },
   { to: '/requests', label: 'Requests', show: ['super_admin', 'program_director', 'league_coach'].includes(role.value), badge: true },
   { to: '/slots', label: 'Gym slots', show: auth.canManage },
   { to: '/blackouts', label: 'Blackouts', show: auth.canManage },
@@ -29,6 +33,9 @@ const primaryNav = computed(() => [
 
 const adminNav = computed(() => [
   { to: '/schedule/builder', label: 'Schedule builder', show: auth.isSuperAdmin },
+  { to: '/assignments', label: 'Referee assignments', show: auth.isSuperAdmin },
+  { to: '/referees', label: 'Referees', show: auth.isSuperAdmin },
+  { to: '/payouts', label: 'Referee payouts', show: auth.isSuperAdmin },
   { to: '/programs', label: 'Programs', show: auth.isSuperAdmin },
   { to: '/league', label: 'League setup', show: auth.isSuperAdmin },
   { to: '/users', label: 'Users', show: auth.isSuperAdmin },

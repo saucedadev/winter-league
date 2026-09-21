@@ -8,6 +8,7 @@ import { addDays } from '../utils/validate.js';
 import { seedBase } from './seed.js';
 import { generateDraft, getRules, getGame, placementOptions } from '../scheduling/data.js';
 import { snapshotOf } from '../routes/requests.js';
+import { syncSlots, autoFill } from '../referees/data.js';
 
 if (!config.databaseUrl.startsWith('file:') && !process.argv.includes('--force')) {
   console.error('❌ seed:demo only runs against a local SQLite database. (Use --force to override — not recommended.)');
@@ -130,9 +131,39 @@ async function main() {
   await db.execute({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [admin.id, draft.runId] });
   const requests = await seedRequests(draft.runId, programIds);
   console.log(`✅ Demo schedule: ${draft.summary.scheduledGames} games published, ${requests} sample change requests.`);
+
+  // Phase 3: a referee roster, a few pay overrides and unavailable dates,
+  // and November auto-filled so the assignor starts with partial coverage.
+  const refs = await seedReferees(pwHash, accounts);
+  await syncSlots(draft.runId, 2);
+  const fill = await autoFill({ runId: draft.runId, from: '2026-11-01', to: '2026-11-30', assignedBy: admin.id });
+  console.log(`✅ Demo referees: ${refs} on the roster, ${fill.filled} November slots filled, December onward left open for the assignor.`);
   console.log(`\n   Demo accounts (password for all: ${DEMO_PASSWORD})`);
   for (const a of accounts) console.log(`     ${a.username.padEnd(12)} ${a.role}`);
   console.log('');
+}
+
+async function seedReferees(pwHash, accounts) {
+  const REFS = [
+    ['Avery', 'Coleman', 5000, null], ['Jordan', 'Pike', null, null], ['Sam', 'Delgado', null, ['2026-11-14', '2026-11-15', 'Out of town']],
+    ['Riley', 'Chen', 4500, null], ['Morgan', 'Hayes', null, null], ['Casey', 'Novak', null, ['2026-11-19', '2026-11-19', 'Work shift']],
+    ['Drew', 'Okafor', null, null],
+  ];
+  const stmts = [];
+  const obrooks = await one("SELECT id FROM users WHERE username = 'obrooks'");
+  stmts.push({ sql: 'INSERT INTO referee_profiles (user_id, pay_rate_cents) VALUES (?, NULL)', args: [obrooks.id] });
+  stmts.push({ sql: 'INSERT INTO referee_unavailability (id, user_id, start_date, end_date, note) VALUES (?, ?, ?, ?, ?)', args: [newId(), obrooks.id, '2026-11-07', '2026-11-07', 'Family wedding'] });
+  for (const [first, last, rate, off] of REFS) {
+    const id = newId();
+    const username = (first[0] + last).toLowerCase();
+    stmts.push({ sql: `INSERT INTO users (id, first_name, last_name, username, email, password_hash, role, program_id, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, 'referee', NULL, 0)`, args: [id, first, last, username, `${username}@example.com`, pwHash] });
+    stmts.push({ sql: 'INSERT INTO referee_profiles (user_id, pay_rate_cents) VALUES (?, ?)', args: [id, rate] });
+    if (off) stmts.push({ sql: 'INSERT INTO referee_unavailability (id, user_id, start_date, end_date, note) VALUES (?, ?, ?, ?, ?)', args: [newId(), id, ...off] });
+    accounts.push({ username, role: 'referee' });
+  }
+  await db.batch(stmts, 'write');
+  return REFS.length + 1;
 }
 
 async function seedRequests(runId, programIds) {

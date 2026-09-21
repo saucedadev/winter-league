@@ -207,5 +207,138 @@ check('affected game is flagged', (await call('GET', `/schedule/games/${liveNfh.
 await call('DELETE', `/blackouts/${bo2.data.blackout.id}`, { token: pd });
 check('team with games cannot be deleted', (await call('DELETE', `/teams/${liveNfh.homeTeamId}`, { token: pd })).status === 409);
 
+// =====================================================================
+// Phase 3 — referees (Module C)
+// =====================================================================
+const assignor = await login('pnair');
+const refA = await login('obrooks');
+const refB = await login('acoleman');
+const meA = (await call('GET', '/auth/me', { token: refA })).data.user;
+const meB = (await call('GET', '/auth/me', { token: refB })).data.user;
+
+console.log('\nReferee access');
+check('referee cannot open the roster', (await call('GET', '/referees/roster', { token: refA })).status === 403);
+check('director cannot assign referees', (await call('GET', '/referees/games', { token: pd })).status === 403);
+check('coach cannot see referee pages', (await call('GET', '/referees/me/assignments', { token: coach })).status === 403);
+check('invalid referee settings rejected', (await call('PUT', '/referees/settings', { token: assignor, body: { refereesPerGame: 9 } })).status === 400);
+const roster = (await call('GET', '/referees/roster', { token: assignor })).data;
+check('roster lists the demo referees', roster.referees.filter((r) => r.isActive).length >= 8);
+check('unavailable dates show on the roster', roster.referees.find((r) => r.id === meA.id).unavailable.length >= 1);
+
+console.log('\nAssigning');
+const rg = (await call('GET', '/referees/games', { token: assignor })).data;
+check('every published game has two referee slots', rg.games.length > 0 && rg.games.every((g) => g.assignments.length === 2));
+// Find an open game where at least one referee is actually free (busy
+// time slots can have every referee already working).
+let openSlotGame = null;
+let cand = [];
+for (const g of rg.games.filter((x) => x.assignments.every((a) => !a.refereeId))) {
+  cand = (await call('GET', `/referees/assignments/${g.assignments[0].id}/candidates`, { token: assignor })).data.candidates;
+  if (cand.some((c) => !c.blocking.length)) { openSlotGame = g; break; }
+}
+check('some upcoming games still need referees', !!openSlotGame);
+check('candidates listed for an open slot', cand.length >= 8);
+const pick = cand.find((c) => !c.blocking.length);
+const as1 = await call('PUT', `/referees/assignments/${openSlotGame.assignments[0].id}`, { token: assignor, body: { refereeId: pick.id } });
+check('assignor assigns a referee', as1.status === 200 && as1.data.game.assignments[0].refereeId === pick.id);
+check('same referee twice on one game is refused', (await call('PUT', `/referees/assignments/${openSlotGame.assignments[1].id}`, { token: assignor, body: { refereeId: pick.id } })).status === 409);
+const sameTime = rg.games.find((g) => g.id !== openSlotGame.id && g.date === openSlotGame.date && g.startTime < openSlotGame.endTime && openSlotGame.startTime < g.endTime);
+check('a same-time game exists to test double-booking', !!sameTime);
+const clashSlot = sameTime.assignments.find((a) => a.refereeId !== pick.id);
+check('double-booking a referee at the same time is refused', (await call('PUT', `/referees/assignments/${clashSlot.id}`, { token: assignor, body: { refereeId: pick.id } })).status === 409);
+const unavGame = (await call('GET', '/referees/games?from=2026-11-07&to=2026-11-07', { token: assignor })).data.games[0];
+const unavSlot = unavGame.assignments.find((a) => a.refereeId !== meA.id);
+check('an unavailable referee is refused', (await call('PUT', `/referees/assignments/${unavSlot.id}`, { token: assignor, body: { refereeId: meA.id } })).status === 409);
+
+const fill = await call('POST', '/referees/auto-fill', { token: assignor, body: { from: '2026-12-01', to: '2027-01-31' } });
+check('auto-fill fills open slots', fill.status === 200 && fill.data.filled > 0);
+const after = (await call('GET', '/referees/games', { token: assignor })).data.games;
+let doubleBooked = false;
+const refDay = new Map();
+for (const g of after) for (const a of g.assignments.filter((x) => x.refereeId)) {
+  const k = `${a.refereeId}|${g.date}`;
+  for (const o of refDay.get(k) || []) if (o.startTime < g.endTime && g.startTime < o.endTime) doubleBooked = true;
+  refDay.set(k, [...(refDay.get(k) || []), g]);
+}
+check('no referee is ever double-booked', !doubleBooked);
+check('no game has the same referee twice', after.every((g) => { const ids = g.assignments.map((a) => a.refereeId).filter(Boolean); return new Set(ids).size === ids.length; }));
+
+console.log('\nReferee self-service');
+const mine = (await call('GET', '/referees/me/assignments', { token: refB })).data.assignments;
+check('referee sees their games', mine.length > 0);
+const futureOne = mine.find((m) => m.canDecline);
+check('check-in is closed before game day', (await call('POST', `/referees/me/assignments/${futureOne.id}/check-in`, { token: refB, body: {} })).status === 409);
+check('decline needs a reason', (await call('POST', `/referees/me/assignments/${futureOne.id}/decline`, { token: refB, body: {} })).status === 400);
+check('referee cannot touch someone else’s game', (await call('POST', `/referees/me/assignments/${futureOne.id}/decline`, { token: refA, body: { reason: 'Not mine' } })).status === 403);
+const dec = await call('POST', `/referees/me/assignments/${futureOne.id}/decline`, { token: refB, body: { reason: 'School event' } });
+check('referee declines a future game', dec.status === 200);
+const reopened = (await call('GET', `/referees/games?from=${futureOne.game.date}&to=${futureOne.game.date}`, { token: assignor })).data.games.find((g) => g.id === futureOne.game.id);
+check('declined slot reopens', reopened.assignments.find((a) => a.id === futureOne.id).refereeId === null);
+const un = await call('POST', '/referees/me/unavailability', { token: refB, body: { startDate: futureOne.game.date, endDate: futureOne.game.date, note: 'School event' } });
+check('referee marks a date unavailable', un.status === 201);
+const c2 = (await call('GET', `/referees/assignments/${futureOne.id}/candidates`, { token: assignor })).data.candidates.find((c) => c.id === meB.id);
+check('assignor sees the unavailable date', c2.blocking.some((b) => b.startsWith('Marked unavailable')));
+
+console.log('\nSchedule changes and referees');
+const covered = after.find((g) => g.assignments.every((a) => a.refereeId) && g.date > '2026-12-01');
+const mopts = (await call('GET', `/schedule/games/${covered.id}/options`, { token: admin })).data.options;
+const mv2 = await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { courtId: mopts[0].courtId, date: mopts[0].date, startTime: mopts[0].startTime, endTime: mopts[0].endTime } });
+check('moving a game reports referees kept or removed', mv2.status === 200 && mv2.data.referees && mv2.data.referees.kept + mv2.data.referees.removed === 2);
+const cx = await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { action: 'cancel' } });
+const afterCancel = (await call('GET', '/referees/me/assignments', { token: refB })).data.assignments.concat((await call('GET', '/referees/me/assignments', { token: refA })).data.assignments);
+check('cancelling a game releases its referees', cx.status === 200 && !afterCancel.some((a) => a.game.id === covered.id));
+await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { action: 'restore' } });
+const restored = (await call('GET', `/referees/games?from=${mv2.data.game.date}&to=${mv2.data.game.date}`, { token: assignor })).data.games.find((g) => g.id === covered.id);
+check('restored game has open referee slots again', restored && restored.assignments.length === 2 && restored.assignments.every((a) => !a.refereeId));
+
+console.log('\nCheck-in and payouts (a game today)');
+const tz = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  .formatToParts(new Date()).reduce((o, p) => ({ ...o, [p.type]: p.value }), {});
+const todayLocal = `${tz.year}-${tz.month}-${tz.day}`;
+const nowMin = Number(tz.hour) * 60 + Number(tz.minute);
+const startMin = Math.min(Math.max(nowMin - 30, 0), 22 * 60 + 55) - (Math.min(Math.max(nowMin - 30, 0), 22 * 60 + 55) % 5);
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const season = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
+check('season can start today for this test', (await call('PUT', `/league/seasons/${season.id}`, { token: admin, body: { startDate: todayLocal } })).status === 200);
+const nfhVenues = (await call('GET', `/venues?programId=${nfh.id}`, { token: pd })).data.venues;
+const todayCourt = nfhVenues[0].courts[0];
+const todaySlot = await call('POST', '/slots', { token: pd, body: { courtId: todayCourt.id, date: todayLocal, startTime: hhmm(startMin), endTime: hhmm(startMin + 60), category: 'WEEKNIGHT_GAME' } });
+check('director adds a game slot today', todaySlot.status === 201, JSON.stringify(todaySlot.data).slice(0, 160));
+const nfhGame = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.status === 'scheduled' && !g.hasOpenRequest && g.date > todayLocal);
+const toToday = await call('PUT', `/schedule/games/${nfhGame.id}`, { token: admin, body: { courtId: todayCourt.id, date: todayLocal, startTime: hhmm(startMin), endTime: hhmm(startMin + 60) } });
+check('admin moves a game to today', toToday.status === 200, JSON.stringify(toToday.data).slice(0, 200));
+const tg = (await call('GET', `/referees/games?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data.games.find((g) => g.id === nfhGame.id);
+for (const [i, who] of [[0, meA.id], [1, meB.id]]) {
+  if (tg.assignments[i].refereeId !== who) await call('PUT', `/referees/assignments/${tg.assignments[i].id}`, { token: assignor, body: { refereeId: null } });
+}
+const ra = await call('PUT', `/referees/assignments/${tg.assignments[0].id}`, { token: assignor, body: { refereeId: meA.id } });
+const rb = await call('PUT', `/referees/assignments/${tg.assignments[1].id}`, { token: assignor, body: { refereeId: meB.id } });
+check('both referees assigned to today’s game', ra.status === 200 && rb.status === 200, JSON.stringify(ra.data).slice(0, 160));
+const myToday = (await call('GET', '/referees/me/assignments', { token: refA })).data.assignments.find((m) => m.game.id === nfhGame.id);
+check('check-in is open around tip-off', myToday?.canCheckIn === true, myToday?.checkInNote || '');
+const ci = await call('POST', `/referees/me/assignments/${myToday.id}/check-in`, { token: refA, body: { latitude: 42.1, longitude: -87.78 } });
+check('referee checks in with location', ci.status === 200 && ci.data.distanceMiles != null && ci.data.distanceMiles < 1);
+check('referee cannot decline on game day', (await call('POST', `/referees/me/assignments/${myToday.id}/decline`, { token: refA, body: { reason: 'Late' } })).status === 409);
+const ns = await call('PUT', `/referees/assignments/${tg.assignments[1].id}/status`, { token: assignor, body: { status: 'no_show' } });
+check('assignor marks a no-show', ns.data.game?.assignments[1].status === 'no_show');
+check('attendance cannot be confirmed for future games', (await call('PUT', `/referees/assignments/${after.find((g) => g.date > todayLocal && g.assignments[0].refereeId).assignments[0].id}/status`, { token: assignor, body: { status: 'checked_in' } })).status === 400);
+const pay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data;
+const rateA = roster.referees.find((r) => r.id === meA.id).payRateCents ?? roster.settings.defaultPayCents;
+check('payout counts the checked-in game only', pay.totals.games === 1 && pay.summary[0].refereeId === meA.id && pay.totals.totalCents === rateA);
+check('rate change does not rewrite what is owed', (await call('PUT', '/referees/settings', { token: assignor, body: { ...roster.settings, defaultPayCents: 9900 } })).status === 200
+  && (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data.totals.totalCents === rateA);
+const csvRes = await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${todayLocal}&format=csv&type=detail`, { headers: { Authorization: `Bearer ${assignor}` } });
+const csvText = await csvRes.text();
+check('payout CSV downloads', csvRes.headers.get('content-type')?.includes('text/csv') && csvText.includes('Owen Brooks') && csvText.includes('Referee check-in'));
+check('referees cannot export payouts', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: refA })).status === 403);
+
+console.log('\nRepublishing keeps referees on unchanged games');
+const regen = await call('POST', '/schedule/generate', { token: admin, body: {} });
+const needs = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: {} });
+check('republish warns about referee assignments', needs.data.code === 'REPLACE_REQUIRED' && needs.data.assignedAhead > 0);
+const rep = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { replace: true } });
+check('unchanged games keep their referees', rep.status === 200 && rep.data.referees.carried > 0, JSON.stringify(rep.data.referees));
+check('worked games still count for pay after republishing', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data.totals.games === 1);
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

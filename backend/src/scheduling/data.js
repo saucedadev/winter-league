@@ -1,5 +1,5 @@
 import { one, all, db, newId } from '../db/client.js';
-import { addDays } from '../utils/validate.js';
+import { addDays, formatTime12 } from '../utils/validate.js';
 import { DEFAULT_RULES, normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes } from './core.js';
 import { buildSchedule } from './matchmaker.js';
 
@@ -176,7 +176,7 @@ export async function checkPlacement(game, target, { excludeIds = [], rules, tod
   const courtClash = await one(`SELECT start_time, end_time FROM games WHERE run_id = ? AND status = 'scheduled' AND court_id = ? AND date = ?
     AND start_time < ? AND end_time > ? AND id NOT IN (${ph}) LIMIT 1`,
   [game.runId, court.id, target.date, target.endTime, target.startTime, ...exclude]);
-  if (courtClash) errors.push(`Another game is already on that court at ${courtClash.startTime}.`);
+  if (courtClash) errors.push(`Another game is already on that court at ${formatTime12(courtClash.startTime)}.`);
 
   for (const t of [home, away]) {
     const tg = await all(`SELECT date FROM games WHERE run_id = ? AND status = 'scheduled' AND (home_team_id = ? OR away_team_id = ?)
@@ -251,7 +251,7 @@ export function placementUpdate(game, target, check) {
 
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
-export const describeGame = (g) => `${g.homeTeamName} vs ${g.awayTeamName}${g.date ? ` on ${g.date} ${g.startTime}` : ''}`;
+export const describeGame = (g) => `${g.homeTeamName} vs ${g.awayTeamName}${g.date ? ` on ${g.date} at ${formatTime12(g.startTime)}` : ''}`;
 
 export async function activeSeason() {
   return one('SELECT * FROM seasons WHERE is_active = 1');

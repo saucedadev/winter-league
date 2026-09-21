@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/auth';
 const SA = ['super_admin'];
 const MANAGERS = ['super_admin', 'program_director'];
 const TEAM_VIEWERS = ['super_admin', 'program_director', 'league_coach'];
+const REF_MANAGERS = ['super_admin', 'referee_assignor'];
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
@@ -26,6 +27,10 @@ const routes = [
       { path: 'schedule', component: () => import('../views/ScheduleView.vue'), meta: { title: 'Schedule' } },
       { path: 'schedule/builder', component: () => import('../views/ScheduleBuilderView.vue'), meta: { roles: SA, title: 'Schedule builder' } },
       { path: 'requests', component: () => import('../views/RequestsView.vue'), meta: { roles: TEAM_VIEWERS, title: 'Change requests' } },
+      { path: 'assignments', component: () => import('../views/AssignmentsView.vue'), meta: { roles: REF_MANAGERS, title: 'Referee assignments' } },
+      { path: 'referees', component: () => import('../views/RefereesView.vue'), meta: { roles: REF_MANAGERS, title: 'Referees' } },
+      { path: 'payouts', component: () => import('../views/PayoutsView.vue'), meta: { roles: REF_MANAGERS, title: 'Referee payouts' } },
+      { path: 'my-games', component: () => import('../views/MyGamesView.vue'), meta: { roles: ['referee'], title: 'My games' } },
       { path: 'activity', component: () => import('../views/ActivityView.vue'), meta: { roles: MANAGERS, title: 'Activity' } },
     ],
   },

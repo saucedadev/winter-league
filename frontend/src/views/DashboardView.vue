@@ -3,6 +3,9 @@ import { computed, onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import UpcomingGamesCard from '../components/UpcomingGamesCard.vue';
+import RefCoverageCard from '../components/RefCoverageCard.vue';
+import MyNextGamesCard from '../components/MyNextGamesCard.vue';
+import SetupChecklistCard from '../components/SetupChecklistCard.vue';
 import { CATEGORY, dateRange, todayISO } from '../utils/format';
 
 const auth = useAuthStore();
@@ -76,7 +79,10 @@ const greeting = computed(() => {
       </section>
 
       <!-- Managers -->
-      <UpcomingGamesCard v-if="data.schedule && (data.schedule.published || auth.isSuperAdmin)" :schedule="data.schedule" class="mb-6" />
+      <SetupChecklistCard v-if="data.setup" :setup="data.setup" class="mb-6" />
+      <MyNextGamesCard v-if="auth.user.role === 'referee'" class="mb-6" />
+      <RefCoverageCard v-if="data.referees" :referees="data.referees" class="mb-6" />
+      <UpcomingGamesCard v-if="data.schedule && (data.schedule.published || auth.isSuperAdmin) && auth.user.role !== 'referee'" :schedule="data.schedule" class="mb-6" />
 
       <div v-if="auth.canManage" class="grid grid-cols-1 gap-6 lg:grid-cols-5 [&>*]:min-w-0">
         <section class="card p-5 lg:col-span-3">
@@ -155,7 +161,7 @@ const greeting = computed(() => {
       </div>
 
       <!-- Coaches and officials -->
-      <section v-else-if="!data.schedule?.published" class="card p-6 max-w-2xl">
+      <section v-else-if="!data.schedule?.published && auth.user.role === 'league_coach'" class="card p-6 max-w-2xl">
         <template v-if="auth.user.role === 'league_coach'">
           <h2 class="font-semibold">Your program</h2>
           <p class="text-sm text-text-muted mt-1">Your game schedule will appear here once the league publishes it. Until then you can look up your program’s teams and venues.</p>

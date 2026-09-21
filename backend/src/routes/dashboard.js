@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { requireAuth, requirePasswordCurrent, isSuperAdmin } from '../middleware/auth.js';
 import { ah } from '../utils/http.js';
 import { GAME_SELECT, shapeGame } from '../scheduling/data.js';
+import { currentPublishedRun, syncSlots, leagueNow } from '../referees/data.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -69,8 +70,44 @@ router.get('/', ah(async (req, res) => {
     }
   }
 
+  // Phase 3: referee coverage for the assignor (and System Admin).
+  let referees = null;
+  if (['super_admin', 'referee_assignor'].includes(u.role)) {
+    const pubRun = await currentPublishedRun();
+    const t = leagueNow().date;
+    const soon = new Date(`${t}T00:00:00Z`); soon.setUTCDate(soon.getUTCDate() + 14);
+    referees = { published: !!pubRun, roster: Number((await one("SELECT COUNT(*) AS n FROM users WHERE role = 'referee' AND is_active = 1")).n) };
+    if (pubRun) {
+      await syncSlots(pubRun.id);
+      const c = await one(`SELECT
+          SUM(g.date >= ?) AS slots,
+          SUM(a.referee_id IS NULL AND g.date >= ?) AS open,
+          SUM(a.referee_id IS NULL AND g.date BETWEEN ? AND ?) AS open_soon,
+          SUM(a.referee_id IS NOT NULL AND a.status = 'assigned' AND g.date < ?) AS unconfirmed
+        FROM referee_assignments a JOIN games g ON g.id = a.game_id
+        WHERE g.run_id = ? AND g.status = 'scheduled'`,
+      [t, t, t, soon.toISOString().slice(0, 10), t, pubRun.id]);
+      Object.assign(referees, { slots: Number(c.slots || 0), open: Number(c.open || 0), openSoon: Number(c.openSoon || 0), unconfirmed: Number(c.unconfirmed || 0) });
+    }
+  }
+
+  // Phase 3 rollout: a setup checklist for Program Directors.
+  let setup = null;
+  if (u.role === 'program_director' && programId) {
+    setup = await one(`SELECT
+        (SELECT COUNT(*) FROM venues WHERE program_id = ? AND is_active = 1) AS venues,
+        (SELECT COUNT(*) FROM venues WHERE program_id = ? AND is_active = 1 AND (latitude IS NULL OR longitude IS NULL)) AS venues_missing_coords,
+        (SELECT COUNT(*) FROM teams WHERE program_id = ? AND is_active = 1) AS teams,
+        (SELECT COUNT(*) FROM teams WHERE program_id = ? AND is_active = 1 AND head_coach_user_id IS NULL) AS teams_without_coach,
+        (SELECT COUNT(*) FROM gym_slots WHERE program_id = ? AND category IN ('WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK') ${season ? 'AND season_id = ?' : ''}) AS game_slots,
+        (SELECT COUNT(*) FROM blackout_dates WHERE program_id = ?) AS blackouts`,
+    [programId, programId, programId, programId, programId, ...(season ? [season.id] : []), programId]);
+  }
+
   res.json({
     schedule,
+    referees,
+    setup,
     season: season ? { ...season, isActive: true } : null,
     counts,
     maxPrograms: config.maxPrograms,

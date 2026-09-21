@@ -15,8 +15,8 @@ const hasMore = ref(false);
 const category = ref('');
 const loading = ref(false);
 
-const CATEGORY_LABELS = { slot: 'Gym slots', blackout: 'Blackouts', venue: 'Venues', team: 'Teams', program: 'Programs', season: 'Seasons', division: 'Divisions', user: 'Users' };
-const chips = auth.isSuperAdmin ? Object.keys(CATEGORY_LABELS) : ['slot', 'blackout', 'venue', 'team'];
+const CATEGORY_LABELS = { slot: 'Gym slots', blackout: 'Blackouts', venue: 'Venues', team: 'Teams', program: 'Programs', season: 'Seasons', division: 'Divisions', user: 'Users', schedule: 'Schedule', request: 'Change requests', referee: 'Referees' };
+const chips = auth.isSuperAdmin ? Object.keys(CATEGORY_LABELS) : ['slot', 'blackout', 'venue', 'team', 'request'];
 
 async function load(more = false) {
   loading.value = true;

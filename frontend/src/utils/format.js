@@ -41,3 +41,5 @@ export const hoursBetween = (a, b) => {
   const m = (t) => { const [h, mm] = t.split(':').map(Number); return h * 60 + mm; };
   return (m(b) - m(a)) / 60;
 };
+
+export const money = (cents) => (cents == null ? '' : `$${(cents / 100).toFixed(2)}`);
