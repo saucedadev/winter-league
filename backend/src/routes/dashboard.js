@@ -3,6 +3,7 @@ import { one, all } from '../db/client.js';
 import { config } from '../config.js';
 import { requireAuth, requirePasswordCurrent, isSuperAdmin } from '../middleware/auth.js';
 import { ah } from '../utils/http.js';
+import { GAME_SELECT, shapeGame } from '../scheduling/data.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -47,7 +48,29 @@ router.get('/', ah(async (req, res) => {
       FROM programs p WHERE p.is_active = 1 ORDER BY p.name COLLATE NOCASE`, [season.id]);
   }
 
+  // Phase 2: schedule status + the next few games that matter to this user.
+  let schedule = null;
+  if (season) {
+    const pub = await one("SELECT id, published_at FROM schedule_runs WHERE season_id = ? AND status = 'published'", [season.id]);
+    const draft = isSuperAdmin(u) ? await one("SELECT id, created_at FROM schedule_runs WHERE season_id = ? AND status = 'draft'", [season.id]) : null;
+    schedule = { published: !!pub, publishedAt: pub?.publishedAt || null, hasDraft: !!draft, draftCreatedAt: draft?.createdAt || null, upcoming: [], gameCount: 0, openRequests: 0 };
+    if (pub) {
+      const mine = u.role === 'league_coach' ? ['(ht.head_coach_user_id = ? OR at.head_coach_user_id = ?)', [u.id, u.id]]
+        : programId ? ['(ht.program_id = ? OR at.program_id = ?)', [programId, programId]] : ['1 = 1', []];
+      schedule.upcoming = (await all(`${GAME_SELECT} WHERE g.run_id = ? AND g.status = 'scheduled' AND g.date >= ? AND ${mine[0]}
+        ORDER BY g.date, g.start_time LIMIT 6`, [pub.id, today, ...mine[1]])).map(shapeGame);
+      schedule.gameCount = Number((await one(`SELECT COUNT(*) AS n FROM games g JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
+        WHERE g.run_id = ? AND g.status = 'scheduled' AND ${mine[0]}`, [pub.id, ...mine[1]])).n);
+      if (isSuperAdmin(u) || programId) {
+        schedule.openRequests = Number((await one(`SELECT COUNT(*) AS n FROM change_requests r WHERE r.status IN ('pending_director', 'pending_counterpart', 'pending_admin')
+          ${programId ? 'AND (r.requesting_program_id = ? OR EXISTS (SELECT 1 FROM change_request_steps s WHERE s.request_id = r.id AND s.program_id = ?))' : ''}`,
+        programId ? [programId, programId] : [])).n);
+      }
+    }
+  }
+
   res.json({
+    schedule,
     season: season ? { ...season, isActive: true } : null,
     counts,
     maxPrograms: config.maxPrograms,

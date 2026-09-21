@@ -24,7 +24,9 @@ const BLACKOUT_REASON = `(SELECT b.reason FROM blackout_dates b
    ORDER BY b.venue_id IS NULL LIMIT 1)`;
 
 const SELECT = `SELECT g.*, c.name AS court_name, v.id AS venue_id, v.name AS venue_name,
-  p.name AS program_name, p.short_code, ${BLACKOUT_REASON} AS blackout_reason
+  p.name AS program_name, p.short_code, ${BLACKOUT_REASON} AS blackout_reason,
+  (SELECT COUNT(*) FROM games gm JOIN schedule_runs sr ON sr.id = gm.run_id
+     WHERE gm.gym_slot_id = g.id AND gm.status = 'scheduled' AND sr.status = 'published') AS game_count
   FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id JOIN programs p ON p.id = g.program_id`;
 
 function assertSlotBody(b) {
@@ -61,6 +63,14 @@ async function findBlackout(programId, venueId, date) {
   return one(
     `SELECT reason FROM blackout_dates WHERE program_id = ? AND (venue_id IS NULL OR venue_id = ?)
      AND ? BETWEEN start_date AND end_date LIMIT 1`, [programId, venueId, date]);
+}
+
+// Published games live in gym slots; the slot can't change underneath them.
+async function assertNoPublishedGames(slotIds, what) {
+  const ph = slotIds.map(() => '?').join(',');
+  const r = await one(`SELECT COUNT(*) AS n FROM games g JOIN schedule_runs sr ON sr.id = g.run_id
+    WHERE sr.status = 'published' AND g.status = 'scheduled' AND g.gym_slot_id IN (${ph})`, slotIds);
+  if (Number(r.n) > 0) throw conflict(`Can’t ${what}: ${r.n} published game${r.n > 1 ? 's are' : ' is'} scheduled in it. Ask the league admin to move ${r.n > 1 ? 'them' : 'it'} first.`);
 }
 
 const overlapMsg = (o) => `overlaps ${formatTime12(o.startTime)}–${formatTime12(o.endTime)} (${CATEGORIES[o.category]})`;
@@ -159,6 +169,8 @@ router.put('/:id', ah(async (req, res) => {
   };
   assertSlotBody(next);
   await courtForProgram(next.courtId, s.programId);
+  const moved = next.courtId !== s.courtId || next.date !== s.date || next.startTime !== s.startTime || next.endTime !== s.endTime || next.category !== s.category;
+  if (moved) await assertNoPublishedGames([s.id], 'change this slot');
   const season = await one('SELECT * FROM seasons WHERE id = ?', [s.seasonId]);
   if (next.date < season.startDate || next.date > season.endDate) throw badRequest(`That date is outside the ${season.name} season (${season.startDate} to ${season.endDate}).`);
   const o = await findOverlap(next.courtId, next.date, next.startTime, next.endTime, s.id);
@@ -179,9 +191,17 @@ router.delete('/:id', ah(async (req, res) => {
   if (!s) throw notFound('Gym slot');
   assertCanManageProgram(req, s.programId);
   const following = req.query.scope === 'following' && s.seriesId;
-  const r = following
-    ? await run('DELETE FROM gym_slots WHERE series_id = ? AND date >= ?', [s.seriesId, s.date])
-    : await run('DELETE FROM gym_slots WHERE id = ?', [s.id]);
+  const ids = following
+    ? (await all('SELECT id FROM gym_slots WHERE series_id = ? AND date >= ?', [s.seriesId, s.date])).map((x) => x.id)
+    : [s.id];
+  await assertNoPublishedGames(ids, following ? 'delete these slots' : 'delete this slot');
+  const ph = ids.map(() => '?').join(',');
+  // Draft games in these slots go back to "unscheduled" for the admin to re-place.
+  const [, r] = await db.batch([
+    { sql: `UPDATE games SET status = 'unscheduled', court_id = NULL, gym_slot_id = NULL, date = NULL, start_time = NULL, end_time = NULL,
+            note = 'Its gym slot was deleted.', updated_at = datetime('now') WHERE gym_slot_id IN (${ph})`, args: ids },
+    { sql: `DELETE FROM gym_slots WHERE id IN (${ph})`, args: ids },
+  ], 'write');
   await logActivity({ category: 'slot', action: 'deleted', actor: req.user, programId: s.programId,
     details: following ? `Deleted ${r.rowsAffected} repeating slots from ${s.date} onward` : `Deleted a ${CATEGORIES[s.category].toLowerCase()} slot on ${s.date}` });
   res.json({ deleted: r.rowsAffected });

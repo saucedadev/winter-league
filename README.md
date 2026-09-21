@@ -19,6 +19,16 @@ The same backend code talks to the local SQLite file or to Turso. Only `DATABASE
 - **Themes:** the same four sitewide themes as Gym Hive (Light, Dark, Regal Opulence, Midnight Noir), chosen by the System Admin.
 - Referee payments are intentionally out of scope.
 
+## Phase 2 – Scheduling (in draft form)
+
+- **Matchmaker (Module B).** The System Admin opens **Schedule builder**, checks the rules, and generates a draft. The matchmaker is a deliberately simple, deterministic heuristic: it builds a round-robin within each division, then places each game in an open weeknight or weekend game slot at the home team's program. Hard rules it never breaks: same-division games only, no court booked twice, no program blackout days, minimum days between a team's games, maximum games per team per week, and the travel cap (straight-line miles from the away program to the gym). A second pass evens out home/away. Anything it can't place is listed under **Unplaced** instead of being dropped.
+- **Rules** (System Admin, saved in `app_settings`): games per team (default 8), game length (60 min; each game slot is split into back-to-back games), travel cap (30 mi), days between a team's games (2), games per team per week (2).
+- **Review and publish.** The builder shows placed/unplaced counts, home/away balance, travel, and blackout conflicts, and lets the admin Move, Place, Flip home/away, Unplace, or (once published) Cancel/Restore any game. Every edit is checked against the same rules. Publishing makes the schedule visible to everyone; publishing a newer draft replaces it (after confirmation) and cancels open requests on the old one.
+- **Change requests (Module D).** From **Schedule**, a coach or director picks *Request change* on one of their own games and either moves it to another open time or swaps it with another of their games. Approval chain: the requesting program's director endorses (coach requests only) → every other program involved agrees → the System Admin signs off, at which point the change is re-checked against the live schedule and applied. Denials need a note; the requester or their director can withdraw. Every step is logged and emailed.
+- **Live-schedule protection.** Gym slots holding published games can't be deleted or changed; slot cards show how many games they hold. New blackouts report which published games they hit, and those games are flagged. Teams with scheduled games can't be deleted (deactivate them instead).
+
+Scheduling code lives in `backend/src/scheduling/`: `core.js` (pure rule helpers), `matchmaker.js` (pure draft builder, no database access), and `data.js` (loading inputs, saving drafts, and the placement checker shared by admin edits and requests).
+
 ## Run it locally
 
 ```bash
@@ -39,6 +49,7 @@ Sign in as:
 
 - `ladmin` / `ChangeMe123!` — the seeded System Admin (you'll be asked to change the password).
 - Demo accounts, all with password `WinterDemo2026`: `gkim` (System Admin), `dwhitfield` and `mbell` (Program Directors), `tgreene` and `lortega` (League Coaches), `pnair` (Referee Assignor), `obrooks` (Referee).
+- The demo comes with a published schedule and two open change requests. One is waiting on `dwhitfield` to endorse a coach's request, and one is waiting on her to agree to Riverbend's request. Sign in as `gkim` and open **Schedule builder** to generate a new draft.
 
 ## Backend scripts
 
@@ -47,12 +58,12 @@ Sign in as:
 | `npm run dev`           | Start the API with auto-restart on file changes. |
 | `npm run migrate`       | Apply any new migrations in `src/db/migrations/`. Safe to run repeatedly. |
 | `npm run seed`          | Create the first System Admin, starter divisions and default theme. Idempotent and production-safe. |
-| `npm run seed:demo`     | Local demo data. Refuses to run against Turso. |
+| `npm run seed:demo`     | Local demo data, including a published schedule and sample requests. Refuses to run against Turso. |
 | `npm run db:reset`      | Delete the local database file and rebuild it (migrate + seed + demo). Local only. **Restart `npm run dev` afterwards.** |
 | `npm run migrate:prod`  | Run migrations against Turso using `.env.production.local`. |
 | `npm run seed:prod`     | Seed the production Turso database using `.env.production.local`. |
 | `npm run start:render`  | What Render runs: migrate, then start the server. |
-| `npm run test:smoke`    | 28 API checks (auth, program isolation, slot rules). Run with the API up and demo data loaded. |
+| `npm run test:smoke`    | 75 API checks (auth, program isolation, slot rules, matchmaker rules, approval chain). Run against freshly reset demo data with the API up. |
 
 ## Deploying
 

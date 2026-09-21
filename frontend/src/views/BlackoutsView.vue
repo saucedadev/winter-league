@@ -62,7 +62,9 @@ async function save() {
     const f = editor.value.form;
     const { data } = editor.value.id ? await api.put(`/blackouts/${editor.value.id}`, f) : await api.post('/blackouts', f);
     const n = data.blackout.affectedSlots;
+    const gm = data.affectedGames;
     toast.success(`Blackout saved.${n ? ` ${n} gym slot${n === 1 ? ' is' : 's are'} now marked blacked out.` : ''}`);
+    if (gm) toast.show(`${gm} published game${gm === 1 ? ' falls' : 's fall'} on these dates. The league admin will see ${gm === 1 ? 'it' : 'them'} flagged in the schedule builder.`, 'error', 8000);
     editor.value = null;
     await load();
   } catch (err) { formError.value = errorMessage(err); }

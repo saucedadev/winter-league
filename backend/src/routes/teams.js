@@ -87,6 +87,9 @@ router.delete('/:id', managers, ah(async (req, res) => {
   const t = await one('SELECT * FROM teams WHERE id = ?', [req.params.id]);
   if (!t) throw notFound('Team');
   assertCanManageProgram(req, t.programId);
+  const games = await one(`SELECT COUNT(*) AS n FROM games g JOIN schedule_runs r ON r.id = g.run_id
+    WHERE r.status IN ('draft', 'published') AND (g.home_team_id = ? OR g.away_team_id = ?)`, [t.id, t.id]);
+  if (Number(games.n) > 0) throw conflict(`${t.name} has ${games.n} game(s) on the schedule. Mark the team inactive instead.`);
   await run('DELETE FROM teams WHERE id = ?', [t.id]);
   await logActivity({ category: 'team', action: 'deleted', actor: req.user, programId: t.programId, details: `Deleted team ${t.name}` });
   res.json({ ok: true });

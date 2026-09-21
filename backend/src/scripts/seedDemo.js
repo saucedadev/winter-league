@@ -6,6 +6,8 @@ import { db, one, all, newId } from '../db/client.js';
 import { hashPassword } from '../utils/security.js';
 import { addDays } from '../utils/validate.js';
 import { seedBase } from './seed.js';
+import { generateDraft, getRules, getGame, placementOptions } from '../scheduling/data.js';
+import { snapshotOf } from '../routes/requests.js';
 
 if (!config.databaseUrl.startsWith('file:') && !process.argv.includes('--force')) {
   console.error('❌ seed:demo only runs against a local SQLite database. (Use --force to override — not recommended.)');
@@ -119,9 +121,56 @@ async function main() {
 
   await db.batch(stmts, 'write');
   console.log(`✅ Demo data: 1 season, ${PROGRAMS.length} programs, ${slotCount} gym slots.`);
+
+  // Phase 2: generate and publish a schedule, then file two sample change
+  // requests so every approval screen has something in it.
+  const season = await one('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+  const admin = await one("SELECT id FROM users WHERE username = 'gkim'");
+  const draft = await generateDraft(season, await getRules(), admin.id);
+  await db.execute({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [admin.id, draft.runId] });
+  const requests = await seedRequests(draft.runId, programIds);
+  console.log(`✅ Demo schedule: ${draft.summary.scheduledGames} games published, ${requests} sample change requests.`);
   console.log(`\n   Demo accounts (password for all: ${DEMO_PASSWORD})`);
   for (const a of accounts) console.log(`     ${a.username.padEnd(12)} ${a.role}`);
   console.log('');
+}
+
+async function seedRequests(runId, programIds) {
+  let made = 0;
+  const reqStmt = (r) => ({
+    sql: `INSERT INTO change_requests (id, game_id, type, proposed_court_id, proposed_date, proposed_start_time, proposed_end_time,
+          reason, snapshot, requested_by, requesting_program_id, status) VALUES (?, ?, 'reschedule', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [r.id, r.gameId, r.opt.courtId, r.opt.date, r.opt.startTime, r.opt.endTime, r.reason, snapshotOf(r.game), r.userId, r.programId, r.status],
+  });
+  const step = (requestId, stage, programId) => ({ sql: 'INSERT INTO change_request_steps (id, request_id, stage, program_id) VALUES (?, ?, ?, ?)', args: [newId(), requestId, stage, programId] });
+
+  // 1) Coach Tasha Greene (Northfield) asks to move one of her team's games -> waits on Dana (NFH director).
+  const tasha = await one("SELECT id FROM users WHERE username = 'tgreene'");
+  const g1 = await one(`SELECT g.id FROM games g JOIN teams t ON t.id IN (g.home_team_id, g.away_team_id)
+    WHERE g.run_id = ? AND g.status = 'scheduled' AND t.head_coach_user_id = ? ORDER BY g.date LIMIT 1 OFFSET 2`, [runId, tasha.id]);
+  // 2) Marcus Bell (Riverbend director) asks to move a Riverbend-vs-Northfield game -> waits on Northfield.
+  const marcus = await one("SELECT id FROM users WHERE username = 'mbell'");
+  const g2 = await one(`SELECT g.id FROM games g JOIN teams h ON h.id = g.home_team_id JOIN teams a ON a.id = g.away_team_id
+    WHERE g.run_id = ? AND g.status = 'scheduled' AND ((h.program_id = ? AND a.program_id = ?) OR (h.program_id = ? AND a.program_id = ?))
+      AND g.id != ? ORDER BY g.date LIMIT 1`, [runId, programIds.RYB, programIds.NFH, programIds.NFH, programIds.RYB, g1?.id || '']);
+
+  for (const [row, userId, programId, status, reason] of [
+    [g1, tasha.id, programIds.NFH, 'pending_director', 'Half our team has a school band concert that evening, so we’d be short of players.'],
+    [g2, marcus.id, programIds.RYB, 'pending_counterpart', 'Riverbend High is hosting a regional tournament that weekend.'],
+  ]) {
+    if (!row) continue;
+    const game = await getGame(row.id);
+    const { options } = await placementOptions(game, { today: '2026-01-01', limit: 20 });
+    const opt = options.find((o) => !o.overTravelCap && o.date > game.date);
+    if (!opt) continue;
+    const id = newId();
+    const stmts = [reqStmt({ id, gameId: game.id, game, opt, reason, userId, programId, status })];
+    if (status === 'pending_director') stmts.push(step(id, 'director', programId));
+    for (const p of [...new Set([game.homeProgramId, game.awayProgramId])].filter((p) => p !== programId)) stmts.push(step(id, 'counterpart', p));
+    await db.batch(stmts, 'write');
+    made++;
+  }
+  return made;
 }
 
 main().then(() => process.exit(0)).catch((err) => { console.error('❌ Demo seed failed:', err.message); process.exit(1); });

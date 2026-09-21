@@ -239,6 +239,10 @@ The API only accepts browser requests from origins listed in `APP_URL`, and uses
 | First request after a while takes ~1 minute | Render free tier woke from sleep | Upgrade the instance, or accept it during testing. |
 | Forgot-password email never arrives | `EMAIL_PROVIDER=console` | Read the link from the Render log, or switch to `brevo` with SMTP credentials. |
 
+## Upgrading an existing deployment to Phase 2
+
+Nothing new to configure. Push the code and Render's `npm run start:render` applies `002_scheduling.sql` before the server starts. Then sign in as the System Admin, open **Schedule builder**, check the rules, generate a draft, review it, and publish. Venues need latitude/longitude for the travel cap to be checked; the builder lists any program whose venues don't have them.
+
 ## Routine operations
 
 - **Ship a change:** push to `main`. Render and Vercel both redeploy; Render applies new migrations first.

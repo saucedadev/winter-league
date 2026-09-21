@@ -274,6 +274,7 @@ watch(editor, () => { confirmDelete.value = false; });
                 <span class="block opacity-90">{{ CATEGORY[s.category].short }}<template v-if="showProgramCode"> · {{ s.shortCode }}</template></span>
                 <span class="block opacity-90 truncate" :title="s.venueName">{{ s.venueName }}</span>
                 <span class="block opacity-90 truncate">{{ s.courtName }}</span>
+                <span v-if="s.gameCount" class="block mt-1 font-semibold">{{ s.gameCount }} game{{ s.gameCount === 1 ? '' : 's' }} scheduled</span>
                 <span v-if="s.isBlackedOut" class="block mt-1 font-semibold">Blacked out: {{ s.blackoutReason }}</span>
                 <span v-else-if="s.notes" class="block mt-1 italic opacity-90 truncate">{{ s.notes }}</span>
               </span>

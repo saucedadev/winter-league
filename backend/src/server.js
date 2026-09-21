@@ -16,6 +16,8 @@ import blackoutRoutes from './routes/blackouts.js';
 import dashboardRoutes from './routes/dashboard.js';
 import activityRoutes from './routes/activity.js';
 import settingsRoutes from './routes/settings.js';
+import scheduleRoutes from './routes/schedule.js';
+import requestRoutes from './routes/requests.js';
 
 const app = express();
 app.set('trust proxy', 1); // Render sits behind a proxy; needed for rate limiting by real IP
@@ -50,6 +52,8 @@ app.use('/api/blackouts', blackoutRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/schedule', scheduleRoutes);
+app.use('/api/requests', requestRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

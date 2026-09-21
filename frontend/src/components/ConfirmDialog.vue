@@ -5,6 +5,7 @@ defineProps({
   message: { type: String, required: true },
   confirmLabel: { type: String, default: 'Delete' },
   busy: { type: Boolean, default: false },
+  tone: { type: String, default: 'danger' }, // 'danger' | 'primary'
 });
 defineEmits(['confirm', 'close']);
 </script>
@@ -15,7 +16,7 @@ defineEmits(['confirm', 'close']);
     <slot />
     <template #footer>
       <button class="btn btn-secondary" @click="$emit('close')">Cancel</button>
-      <button class="btn btn-danger" :disabled="busy" @click="$emit('confirm')">{{ busy ? 'Working…' : confirmLabel }}</button>
+      <button class="btn" :class="tone === 'primary' ? 'btn-primary' : 'btn-danger'" :disabled="busy" @click="$emit('confirm')">{{ busy ? 'Working…' : confirmLabel }}</button>
     </template>
   </Modal>
 </template>

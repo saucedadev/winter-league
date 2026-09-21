@@ -35,6 +35,18 @@ router.get('/', ah(async (req, res) => {
   res.json({ blackouts });
 }));
 
+// Published games that a blackout now covers. Games are never moved
+// automatically; the response tells the user so the league can fix them.
+async function affectedGames(programId, venueId, startDate, endDate) {
+  const r = await one(`SELECT COUNT(*) AS n FROM games g JOIN schedule_runs sr ON sr.id = g.run_id
+    JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id
+    JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
+    WHERE sr.status = 'published' AND g.status = 'scheduled' AND g.date BETWEEN ? AND ?
+      AND ${venueId ? 'v.id = ?' : '(v.program_id = ? OR ht.program_id = ? OR at.program_id = ?)'}`,
+  venueId ? [startDate, endDate, venueId] : [startDate, endDate, programId, programId, programId]);
+  return Number(r.n);
+}
+
 router.post('/', ah(async (req, res) => {
   requireFields(req.body, ['startDate', 'endDate', 'reason']);
   const programId = resolveWriteProgram(req, req.body.programId);
@@ -46,7 +58,7 @@ router.post('/', ah(async (req, res) => {
   const b = await one(`${SELECT} WHERE b.id = ?`, [id]);
   await logActivity({ category: 'blackout', action: 'created', actor: req.user, programId,
     details: `Blacked out ${b.venueName || 'all venues'} ${b.startDate === b.endDate ? `on ${b.startDate}` : `from ${b.startDate} to ${b.endDate}`}: ${b.reason}` });
-  res.status(201).json({ blackout: b });
+  res.status(201).json({ blackout: b, affectedGames: await affectedGames(programId, venueId, b.startDate, b.endDate) });
 }));
 
 router.put('/:id', ah(async (req, res) => {
@@ -62,7 +74,7 @@ router.put('/:id', ah(async (req, res) => {
   await validate(b.programId, next);
   await run('UPDATE blackout_dates SET venue_id = ?, start_date = ?, end_date = ?, reason = ? WHERE id = ?', [next.venueId, next.startDate, next.endDate, next.reason, b.id]);
   await logActivity({ category: 'blackout', action: 'edited', actor: req.user, programId: b.programId, details: `Updated blackout: ${next.reason}` });
-  res.json({ blackout: await one(`${SELECT} WHERE b.id = ?`, [b.id]) });
+  res.json({ blackout: await one(`${SELECT} WHERE b.id = ?`, [b.id]), affectedGames: await affectedGames(b.programId, next.venueId, next.startDate, next.endDate) });
 }));
 
 router.delete('/:id', ah(async (req, res) => {
