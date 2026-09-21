@@ -58,6 +58,8 @@ npm install
 npm run dev           # http://localhost:5174  (proxies /api to :4100)
 ```
 
+If the frontend stops with **"Port 5174 is already in use"**, an earlier dev server is still running (often in another terminal). Close it and run `npm run dev` again. To find it: `lsof -i :5174` on Mac/Linux, or `netstat -ano | findstr :5174` on Windows. The frontend is pinned to 5174 on purpose, because the backend only accepts requests from the addresses in `APP_URL`.
+
 Sign in as:
 
 - `ladmin` / `ChangeMe123!` — the seeded System Admin (you'll be asked to change the password).
