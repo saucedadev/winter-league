@@ -226,16 +226,18 @@ async function seedRequests(runId, programIds, plan) {
     WHERE g.run_id = ? AND g.status = 'scheduled' AND t.head_coach_user_id = ? ORDER BY g.date LIMIT 20 OFFSET 2`, [runId, tasha.id]);
   // 2) The asking program's director asks to move one of its games against the other program -> waits on that program.
   const asker = await one("SELECT id FROM users WHERE role = 'program_director' AND program_id = ? ORDER BY username LIMIT 1", [askingProgram]);
-  const askerVenue = await one('SELECT name FROM venues WHERE program_id = ? ORDER BY name LIMIT 1', [askingProgram]);
   const g2List = asker ? await all(`SELECT g.id FROM games g JOIN teams h ON h.id = g.home_team_id JOIN teams a ON a.id = g.away_team_id
     WHERE g.run_id = ? AND g.status = 'scheduled' AND ((h.program_id = ? AND a.program_id = ?) OR (h.program_id = ? AND a.program_id = ?))
     ORDER BY g.date LIMIT 20`, [runId, askingProgram, otherProgram, otherProgram, askingProgram]) : [];
 
   const taken = new Set();
   const usedGames = new Set();
-  for (const [candidates, userId, programId, status, reason] of [
+  for (const [candidates, userId, programId, status, reasonFor, fits = () => true] of [
     [g1List, tasha.id, coachProgram, 'pending_director', 'Half our team has a school band concert that evening, so we’d be short of players.'],
-    [g2List, asker?.id, askingProgram, 'pending_counterpart', `${askerVenue?.name || 'Our gym'} is hosting a tournament that weekend.`],
+    // The director's gym is booked, so: a game hosted at one of the asking
+    // program's own venues, the reason names that venue, and the new time is
+    // somewhere else.
+    [g2List, asker?.id, askingProgram, 'pending_counterpart', (g) => `${g.venueName} is hosting a tournament that weekend.`, (g, o) => g.venueProgramId === askingProgram && o.venueId !== g.venueId],
   ]) {
     if (!userId) continue;
     // Proposals are several days apart (they may involve the same team), so the
@@ -248,13 +250,14 @@ async function seedRequests(runId, programIds, plan) {
       const g = await getGame(c.id);
       // New times after the game's current date (not just the first few of the season).
       const { options } = await placementOptions(g, { today: g.date, limit: 200 });
-      opt = options.find((o) => !o.overTravelCap && o.date > g.date && farFromTaken(o.date));
+      opt = options.find((o) => !o.overTravelCap && o.date > g.date && farFromTaken(o.date) && fits(g, o));
       if (opt) { game = g; break; }
     }
     if (!game) { console.log(`   ⚠️  Couldn't find a free time for the ${status === 'pending_director' ? 'coach' : 'director'}'s sample request, so it was skipped.`); continue; }
     usedGames.add(game.id);
     taken.add(opt.date);
     const id = newId();
+    const reason = typeof reasonFor === 'function' ? reasonFor(game) : reasonFor;
     const stmts = [reqStmt({ id, gameId: game.id, game, opt, reason, userId, programId, status })];
     if (status === 'pending_director') stmts.push(step(id, 'director', programId));
     for (const p of [...new Set([game.homeProgramId, game.awayProgramId])].filter((p) => p !== programId)) stmts.push(step(id, 'counterpart', p));

@@ -2,7 +2,7 @@
 import PhoneInput from '../components/PhoneInput.vue';
 import { useBrandingStore } from '../stores/branding';
 const branding = useBrandingStore();
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useProgramContext } from '../stores/programContext';
@@ -37,14 +37,70 @@ async function load() {
 }
 onMounted(load);
 
+// The list scrolls inside a window that fills the space left below the
+// filters, so the page itself doesn't scroll and the filters and column
+// headers stay visible. Re-measured when the window size or layout changes.
+const listViewport = ref(null);
+function fitList() {
+  const el = listViewport.value;
+  if (!el) return;
+  const top = el.getBoundingClientRect().top + window.scrollY;
+  el.style.maxHeight = `${Math.max(288, window.innerHeight - top - 32)}px`;
+}
+let resizeObs;
+watch(listViewport, (el) => {
+  resizeObs?.disconnect();
+  if (!el) return;
+  fitList();
+  resizeObs = new ResizeObserver(fitList);
+  resizeObs.observe(document.body);
+});
+onMounted(() => window.addEventListener('resize', fitList));
+onBeforeUnmount(() => { window.removeEventListener('resize', fitList); resizeObs?.disconnect(); });
+
+// ---- sorting ----
+// Click a column header to sort by it; click again to reverse. Name sorts by
+// last name. Last sign-in starts newest-first, with "Never" as the oldest.
+// Accounts with no program ("League-wide") come after named programs.
+const sortKey = ref('name');
+const sortDir = ref('asc');
+const FIRST_DIR = { name: 'asc', role: 'asc', program: 'asc', lastLogin: 'desc' };
+function sortBy(key) {
+  if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+  else { sortKey.value = key; sortDir.value = FIRST_DIR[key]; }
+}
+const ariaSort = (key) => (sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending');
+const text = (a, b) => (a || '').localeCompare(b || '', undefined, { sensitivity: 'base' });
+const byName = (a, b) => text(a.lastName, b.lastName) || text(a.firstName, b.firstName) || text(a.username, b.username);
+const COMPARE = {
+  name: byName,
+  role: (a, b) => text(ROLE_LABELS[a.role], ROLE_LABELS[b.role]),
+  program: (a, b) => text(a.programName, b.programName),
+  lastLogin: (a, b) => (a.lastLoginAt || '').localeCompare(b.lastLoginAt || ''),
+};
+
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
+  const dir = sortDir.value === 'asc' ? 1 : -1;
+  const cmp = COMPARE[sortKey.value];
   return users.value.filter((u) =>
     (showInactive.value || u.isActive) &&
     (!roleFilter.value || u.role === roleFilter.value) &&
     (!ctx.programId || u.programId === ctx.programId || !u.programId) &&
-    (!q || `${u.firstName} ${u.lastName} ${u.username} ${u.email}`.toLowerCase().includes(q)));
+    (!q || `${u.firstName} ${u.lastName} ${u.username} ${u.email}`.toLowerCase().includes(q)))
+    // Ties always fall back to name order (A–Z), whichever way the column is sorted.
+    .sort((a, b) => {
+      // "League-wide" (no program) always sorts after named programs.
+      if (sortKey.value === 'program' && !a.programName !== !b.programName) return a.programName ? -1 : 1;
+      return dir * cmp(a, b) || byName(a, b);
+    });
 });
+const SORT_COLUMNS = [
+  { key: 'name', label: 'Name', cls: 'px-4' },
+  { key: 'role', label: 'Role', cls: 'px-3' },
+  { key: 'program', label: 'Program', cls: 'px-3' },
+  { key: 'lastLogin', label: 'Last sign-in', cls: 'px-3' },
+];
 
 const editor = ref(null);
 const saving = ref(false);
@@ -98,26 +154,32 @@ async function copyCredentials() {
       <button class="btn btn-primary" @click="open()">Add user</button>
     </PageHeader>
 
-    <div class="card card-blocky px-3 py-2.5 mb-4 flex flex-wrap items-center gap-3">
-      <input v-model="search" type="search" class="input !w-full sm:!w-64" placeholder="Search name, username, email" aria-label="Search users" />
-      <select v-model="roleFilter" class="input !w-auto" aria-label="Filter by role">
-        <option value="">All roles</option>
-        <option v-for="(label, key) in ROLE_LABELS" :key="key" :value="key">{{ label }}</option>
-      </select>
-      <label class="text-sm flex items-center gap-2"><input v-model="showInactive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Show inactive</label>
-      <span class="text-xs text-text-muted ml-auto">{{ filtered.length }} shown</span>
-    </div>
-
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
-    <div v-else class="card card-blocky overflow-x-auto">
+    <!-- One card: the filters and column headers stay put while only the list
+         of users scrolls inside a window sized to the screen. -->
+    <div v-else class="card card-blocky flex flex-col overflow-hidden">
+      <div class="px-3 py-2.5 flex flex-wrap items-center gap-3 border-b border-border">
+        <input v-model="search" type="search" class="input !w-full sm:!w-64" placeholder="Search name, username, email" aria-label="Search users" />
+        <select v-model="roleFilter" class="input !w-auto" aria-label="Filter by role">
+          <option value="">All roles</option>
+          <option v-for="(label, key) in ROLE_LABELS" :key="key" :value="key">{{ label }}</option>
+        </select>
+        <label class="text-sm flex items-center gap-2"><input v-model="showInactive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Show inactive</label>
+        <span class="text-xs text-text-muted ml-auto" aria-live="polite">{{ filtered.length }} shown</span>
+      </div>
+      <div ref="listViewport" class="overflow-auto users-viewport" tabindex="0" aria-label="User list">
       <table class="w-full text-sm">
-        <thead class="text-left text-text-muted border-b border-border">
+        <thead class="text-left text-text-muted">
           <tr>
-            <th class="px-4 py-2.5 font-medium">Name</th>
-            <th class="px-3 py-2.5 font-medium">Role</th>
-            <th class="px-3 py-2.5 font-medium">Program</th>
-            <th class="px-3 py-2.5 font-medium">Last sign-in</th>
-            <th class="px-3 py-2.5" />
+            <th v-for="c in SORT_COLUMNS" :key="c.key" :aria-sort="ariaSort(c.key)" :class="c.cls"
+              class="py-1.5 font-medium sticky top-0 z-10 bg-surface shadow-[inset_0_-1px_0_var(--color-border)]">
+              <button type="button" class="inline-flex items-center gap-1 py-1 -mx-1 px-1 rounded hover:text-text whitespace-nowrap"
+                :class="sortKey === c.key && 'text-text font-semibold'" @click="sortBy(c.key)">
+                {{ c.label }}
+                <span aria-hidden="true" class="text-[0.7rem] w-3 text-center" :class="sortKey === c.key ? '' : 'opacity-40'">{{ sortKey !== c.key ? '↕' : sortDir === 'asc' ? '▲' : '▼' }}</span>
+              </button>
+            </th>
+            <th class="px-3 py-1.5 sticky top-0 z-10 bg-surface shadow-[inset_0_-1px_0_var(--color-border)]"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -134,6 +196,7 @@ async function copyCredentials() {
           <tr v-if="!filtered.length"><td colspan="5" class="px-4 py-6 text-center text-text-muted">No accounts match.</td></tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <Modal v-if="editor" :title="editor.id ? 'Edit account' : 'Add user'" @close="editor = null">
@@ -180,3 +243,10 @@ async function copyCredentials() {
     </Modal>
   </div>
 </template>
+
+<style scoped>
+/* The scrolling window fills the rest of the screen below the page title,
+   so the whole page never needs to scroll; the filters and column headers
+   above it stay visible. */
+.users-viewport { max-height: max(18rem, calc(100dvh - 16rem)); } /* first paint; fitList() then sizes it exactly */
+</style>
