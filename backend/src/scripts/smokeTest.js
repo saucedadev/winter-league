@@ -18,6 +18,19 @@ function check(label, cond, extra = '') {
 }
 const login = async (u, p = 'WinterDemo2026') => (await call('POST', '/auth/login', { body: { username: u, password: p } })).data.token;
 
+// These checks depend on the built-in test league (Northfield, Riverbend,
+// dwhitfield, mbell, ...), not the demo spreadsheet. Stop early and say so.
+{
+  const probe = await call('POST', '/auth/login', { body: { username: 'dwhitfield', password: 'WinterDemo2026' } });
+  const progs = probe.data?.token ? (await call('GET', '/programs', { token: probe.data.token })).data.programs || [] : [];
+  if (!progs.some((p) => p.shortCode === 'NFH')) {
+    console.error('❌ The smoke tests need the built-in test league, but the database has a different league loaded');
+    console.error('   (probably the demo spreadsheet). Load the test league, restart the API, and run again:');
+    console.error('     npm run db:reset:test');
+    process.exit(1);
+  }
+}
+
 console.log('\nAuth');
 check('health endpoint', (await call('GET', '/health')).data.ok === true);
 check('wrong password rejected', (await call('POST', '/auth/login', { body: { username: 'gkim', password: 'nope' } })).status === 401);

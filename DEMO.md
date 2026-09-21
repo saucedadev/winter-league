@@ -6,19 +6,21 @@ A 15–20 minute walkthrough that follows one season end to end: directors enter
 
 **Where to run it.** Use your own machine, or a separate throwaway deployment. **Never** load demo data into the real league database.
 
-- **On your laptop (simplest):** in `backend/.env` set `DEMO_CHECKIN_ANYTIME=true`, then run `npm run db:reset` and restart `npm run dev` in both folders.
+- **On your laptop (simplest):** in `backend/.env` set `DEMO_CHECKIN_ANYTIME=true`, then run `npm run db:reset` and restart `npm run dev` in both folders. The reset loads the programs, venues, and directors from the demo spreadsheet (`backend/demo-data/`) and prints every login, plus a "For the DEMO.md walkthrough" list of who plays each part below.
 - **Hosted demo:** create a second Turso database (e.g. `winter-league-demo`) and a second Render service pointing at it, with `DEMO_CHECKIN_ANYTIME=true`. Load it from your machine with a `.env.demo.local` file:
   `node src/scripts/migrate.js --env=.env.demo.local` then `node src/scripts/seedDemo.js --env=.env.demo.local --force`.
 
 **Why demo mode:** check-in normally opens only on game day, 60 minutes before tip-off. Demo mode opens it for every upcoming game so you can show it in September. Turn it off afterwards.
 
-**Tabs.** Each browser tab keeps its own sign-in, so open one tab per person ahead of time: `dwhitfield`, `mbell`, `gkim`, `tgreene`, `pnair`, and `acoleman`. For the referee, a phone (hosted demo) or the browser's phone view (F12 → device toolbar) makes the point best.
+**Tabs.** Each browser tab keeps its own sign-in, so open one tab per person ahead of time: `msauceda`, `dlumpkin`, `gkim`, `tgreene`, `pnair`, and `acoleman`. For the referee, a phone (hosted demo) or the browser's phone view (F12 → device toolbar) makes the point best.
 
 **Rehearse once.** The demo league is generated fresh on every reset, so team pairings and dates differ slightly each time. The steps below don't depend on specific games.
 
+**If the spreadsheet changes,** the people above may change too. Directors 1 and 2 are the directors of the first two programs on the Programs sheet, and Tasha coaches for the first program. The reset's "For the DEMO.md walkthrough" list always names them.
+
 ## The walkthrough
 
-### 1. What directors do (Dana Whitfield, `dwhitfield`, Northfield) — 3 min
+### 1. What directors do (Misty Sauceda, `msauceda`, Glencoe) — 3 min
 - **Dashboard → Get your program ready.** A checklist of everything the league needs: gyms with map coordinates, teams, coaches, game slots, and blackouts.
 - **Gym slots.** The week board with Practice, Weeknight game, and Weekend game block slots. Add a slot with **Repeat weekly** and point out that it skips blackout dates by itself. Slot cards show how many games are scheduled in them.
 - **Blackouts.** Thanksgiving and winter break are already in. Blackouts hide the gym time underneath them without deleting it.
@@ -35,12 +37,12 @@ A 15–20 minute walkthrough that follows one season end to end: directors enter
 *Talking point:* the matchmaker produces a draft for a person to review, not a final answer. That's deliberate.
 
 ### 3. A coach asks for a change (Tasha Greene, `tgreene`) — 2 min
-- **Schedule → My teams.** Choose **Request change** on a game against Riverbend, pick **Move this game**, choose a new time, and give a reason.
+- **Schedule → My teams.** Choose **Request change** on a game against Forest Grove, pick **Move this game**, choose a new time, and give a reason.
 - Point out the line under the reason explaining the path: her director, then the other program, then the league.
 
 ### 4. The approval chain — 3 min
-- **Dana (`dwhitfield`) → Requests.** The nav badge shows it's waiting on her. Click **Endorse**.
-- **Marcus (`mbell`) → Requests.** Click **Agree** as the other program.
+- **Misty (`msauceda`) → Requests.** The nav badge shows what's waiting on her: the new request plus two sample ones. Click **Endorse** on Tasha's.
+- **Dan (`dlumpkin`, Forest Grove) → Requests.** Click **Agree** as the other program.
 - **Grace (`gkim`) → Requests.** Click **Approve & apply**. The game moves, and the **Decided** tab shows what it was and where it went.
 
 *Talking point:* at every step the change is re-checked against the live schedule. If something else took that slot in the meantime, sign-off stops and says why.

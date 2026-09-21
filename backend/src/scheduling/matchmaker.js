@@ -127,6 +127,62 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       round++;
     }
 
+    // End-of-pairing repair. Rounds can finish with a few teams short while
+    // their only remaining options are each other (already at the rematch
+    // limit) or teams that are full. Swap them into an existing game instead:
+    //   two short teams A, B + existing game C–D  ->  A–C and B–D
+    //   one team A short by 2+ + existing game C–D ->  A–C and A–D
+    // C and D keep the same number of games; every rule is re-checked.
+    const isOpponent = (x, y) => opponents.get(x.id).includes(y);
+    const underLimit = (x, y) => rules.maxVsSameOpponent == null || meetings(x, y) < rules.maxVsSameOpponent;
+    const legal = (x, y) => x !== y && isOpponent(x, y) && underLimit(x, y);
+    const addMatch = (x, y, r) => {
+      const [a, b] = (homeSuggested.get(x.id) || 0) <= (homeSuggested.get(y.id) || 0) ? [x, y] : [y, x];
+      divMatches.push({ divisionId, a, b, round: r });
+      homeSuggested.set(a.id, (homeSuggested.get(a.id) || 0) + 1);
+      count.set(x.id, count.get(x.id) + 1); count.set(y.id, count.get(y.id) + 1);
+      met.set(pairKey(x, y), meetings(x, y) + 1);
+    };
+    const removeMatch = (m) => {
+      divMatches.splice(divMatches.indexOf(m), 1);
+      homeSuggested.set(m.a.id, homeSuggested.get(m.a.id) - 1);
+      count.set(m.a.id, count.get(m.a.id) - 1); count.set(m.b.id, count.get(m.b.id) - 1);
+      met.set(pairKey(m.a, m.b), meetings(m.a, m.b) - 1);
+    };
+    const nearbyRound = (r) => (r + 1 < Math.max(round, 1) ? r + 1 : Math.max(r - 1, 0));
+    for (let guard = 0; guard < divTeams.length * rules.gamesPerTeam; guard++) {
+      const short = divTeams.filter((t) => count.get(t.id) < rules.gamesPerTeam);
+      let fixed = false;
+      for (let i = 0; i < short.length && !fixed; i++) {
+        const A = short[i];
+        for (let j = i + 1; j < short.length && !fixed; j++) {
+          const B = short[j];
+          if (legal(A, B)) { addMatch(A, B, Math.max(round - 1, 0)); fixed = true; break; }
+          for (const m of divMatches) {
+            const { a: C, b: D } = m;
+            if ([C, D].includes(A) || [C, D].includes(B)) continue;
+            const pairs = legal(A, C) && legal(B, D) ? [[A, C], [B, D]] : legal(A, D) && legal(B, C) ? [[A, D], [B, C]] : null;
+            if (!pairs) continue;
+            removeMatch(m);
+            addMatch(...pairs[0], m.round); addMatch(...pairs[1], nearbyRound(m.round));
+            fixed = true;
+            break;
+          }
+        }
+        if (!fixed && rules.gamesPerTeam - count.get(A.id) >= 2) {
+          for (const m of divMatches) {
+            const { a: C, b: D } = m;
+            if (C === A || D === A || !legal(A, C) || !legal(A, D)) continue;
+            removeMatch(m);
+            addMatch(A, C, m.round); addMatch(A, D, nearbyRound(m.round));
+            fixed = true;
+            break;
+          }
+        }
+      }
+      if (!fixed) break;
+    }
+
     // Explain teams the rules left short of the target, before placement.
     for (const t of divTeams) {
       const got = count.get(t.id);

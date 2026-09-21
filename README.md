@@ -63,8 +63,30 @@ If the frontend stops with **"Port 5174 is already in use"**, an earlier dev ser
 Sign in as:
 
 - `ladmin` / `ChangeMe123!` — the seeded System Admin (you'll be asked to change the password).
-- Demo accounts, all with password `WinterDemo2026`: `gkim` (System Admin), `dwhitfield` and `mbell` (Program Directors), `tgreene` and `lortega` (League Coaches), `pnair` (Referee Assignor), `obrooks` (Referee).
-- The demo comes with a published schedule, 8 referees (`obrooks`, `acoleman`, `rchen`, `sdelgado`, `mhayes`, `cnovak`, `dokafor`, `jpike`) with November already assigned, and two open change requests. One is waiting on `dwhitfield` to endorse a coach's request, and one is waiting on her to agree to Riverbend's request. Sign in as `gkim` and open **Schedule builder** to generate a new draft, or as `pnair` to assign referees. The demo league differs slightly each time you reset, because record IDs are random.
+- Demo accounts, all with password `WinterDemo2026`. The reset prints the full list; the ones you'll use most:
+  - `gkim` (System Admin), `pnair` (Referee Assignor), `obrooks` and `acoleman` (Referees).
+  - `tgreene` and `lortega` (League Coaches).
+  - Program Directors from the demo spreadsheet, e.g. `msauceda` (Glencoe) and `dlumpkin` (Forest Grove).
+- The demo comes with a published schedule, 8 referees (`obrooks`, `acoleman`, `rchen`, `sdelgado`, `mhayes`, `cnovak`, `dokafor`, `jpike`) with November already assigned, and two open change requests waiting on the first program's director. Sign in as `gkim` and open **Schedule builder** to generate a new draft, or as `pnair` to assign referees. Schedules differ slightly each time you reset, because record IDs are random.
+
+## Demo data from a spreadsheet
+
+The demo league's **programs, venues, and Program Directors** come from `backend/demo-data/WinterLeague-ProgramVenueDirector-DemoData.xlsx`, read every time you run `npm run db:reset`. To change the demo league, edit that file (or replace it with one that has the same sheet and column names) and reset again.
+
+| Sheet | Columns |
+|---|---|
+| **Programs** | Program · Short code (2–6 letters/numbers) · City · Contact (email) · Contact phone |
+| **Venues** | Program · Venue Name · Street address · City · State · Zip · Latitude · Longitude · Courts (e.g. `Main Gym, Aux Gym`) |
+| **Directors** | First name · Last name · Email · Phone · Role (`Program Director`) · Program |
+
+- **Columns are found by their header,** so their order doesn't matter. Program names on Venues and Directors must match the Programs sheet.
+- **The file is checked before anything is deleted.** If it has a problem, the reset stops and lists each one by sheet and row (e.g. "Venues row 9: program 'Centry Youth Basketball' isn't on the Programs sheet"), and your current database is left as it was. Check a file without resetting: `node src/scripts/seedDemo.js --check`.
+- **Email addresses are replaced with safe placeholders** (e.g. `misty.sauceda@demo.example`) so a demo can never email the real people. Keep the real addresses with `npm run db:reset -- --real-emails`, but only when email sending is off (`EMAIL_PROVIDER=console`).
+- **Generated around the spreadsheet:** director logins (first initial + last name, e.g. `msauceda`), teams (each program enters 5 of 6 divisions; the 1st and 4th programs field a Competitive and a Developmental 6th Grade Girls team), gym slots on every court, blackouts, a published schedule, referee assignments for November, and two sample change requests. `tgreene` coaches for the 1st program and `lortega` for the 2nd.
+- **Unchanged whatever the spreadsheet says:** the referees, the Referee Assignor, the System Admins, and the coaches' accounts.
+- A different file: `npm run db:reset -- --file=path/to/league.xlsx`.
+
+**Automated tests use a separate built-in test league** (Northfield, Riverbend, `dwhitfield`, `mbell`, …), so editing the spreadsheet never breaks them. Before `npm run test:smoke`, load it with `npm run db:reset:test` and restart the API; the tests stop with a reminder if the spreadsheet league is loaded instead.
 
 ## Backend scripts
 
@@ -73,12 +95,14 @@ Sign in as:
 | `npm run dev`           | Start the API with auto-restart on file changes. |
 | `npm run migrate`       | Apply any new migrations in `src/db/migrations/`. Safe to run repeatedly. |
 | `npm run seed`          | Create the first System Admin, starter divisions and default theme. Idempotent and production-safe. |
-| `npm run seed:demo`     | Local demo data, including a published schedule and sample requests. Refuses to run against Turso. |
-| `npm run db:reset`      | Delete the local database file and rebuild it (migrate + seed + demo). Local only. **Restart `npm run dev` afterwards.** |
+| `npm run seed:demo`     | Demo league from the demo spreadsheet, including a published schedule and sample requests. Refuses to run against Turso. |
+| `npm run db:reset`      | Check the demo spreadsheet, then delete the local database file and rebuild it (migrate + seed + demo). Local only. **Restart `npm run dev` afterwards.** |
+| `npm run db:reset:test` | The same, but with the built-in test league the smoke tests need. |
 | `npm run migrate:prod`  | Run migrations against Turso using `.env.production.local`. |
 | `npm run seed:prod`     | Seed the production Turso database using `.env.production.local`. |
 | `npm run start:render`  | What Render runs: migrate, then start the server. |
-| `npm run test:smoke`    | 119 API checks (auth, program isolation, slot rules, matchmaker rules, approval chain, referee assignment, check-in, payouts). Run against freshly reset demo data with the API up in normal mode (not demo check-in mode). |
+| `npm run test:smoke`    | 148 API checks (auth, program isolation, slot rules, matchmaker and opponent rules, approval chain, referee assignment, check-in, payouts, branding, phone numbers). Run after `npm run db:reset:test`, with the API up in normal mode (not demo check-in mode). |
+| `npm run test:demo-data` | 18 checks that the demo spreadsheet loads correctly and that broken files are rejected with clear messages. Needs no API or database. |
 
 ## Deploying
 

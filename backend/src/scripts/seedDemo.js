@@ -1,6 +1,17 @@
-// LOCAL DEVELOPMENT ONLY — fills the database with realistic demo data:
-// a season, six programs, venues/courts, teams, weekly gym slots, blackouts,
-// and one account per role. Refuses to run against Turso unless --force.
+// Fills the database with a demo league. By default the programs, venues,
+// and Program Directors come from the demo spreadsheet in demo-data/; teams,
+// gym slots, blackouts, a published schedule, referees, and sample change
+// requests are generated around them. The referee roster, the Referee
+// Assignor (pnair), the System Admin (gkim), and two coaches (tgreene,
+// lortega) are the same whichever dataset is used.
+//
+//   npm run seed:demo                        spreadsheet in demo-data/
+//   npm run seed:demo -- --file=<path.xlsx>  a different spreadsheet
+//   npm run seed:demo -- --real-emails       keep the spreadsheet's real email addresses
+//   npm run seed:demo -- --dataset=test      built-in test league (for npm run test:smoke)
+//
+// Refuses to run against Turso unless --force.
+import path from 'node:path';
 import { config } from '../config.js';
 import { db, one, all, newId } from '../db/client.js';
 import { hashPassword } from '../utils/security.js';
@@ -9,6 +20,8 @@ import { seedBase } from './seed.js';
 import { generateDraft, getRules, getGame, placementOptions } from '../scheduling/data.js';
 import { snapshotOf } from '../routes/requests.js';
 import { syncSlots, autoFill } from '../referees/data.js';
+import { testLeagueDataset } from './demoData/testLeague.js';
+import { DEFAULT_DEMO_FILE } from './demoFile.js';
 
 if (!config.databaseUrl.startsWith('file:') && !process.argv.includes('--force')) {
   console.error('❌ seed:demo only runs against a local SQLite database. (Use --force to override — not recommended.)');
@@ -16,24 +29,27 @@ if (!config.databaseUrl.startsWith('file:') && !process.argv.includes('--force')
 }
 
 const DEMO_PASSWORD = 'WinterDemo2026';
-
-const PROGRAMS = [
-  { name: 'Northfield Hawks', code: 'NFH', city: 'Northfield' },
-  { name: 'Riverbend Youth Basketball', code: 'RYB', city: 'Riverbend' },
-  { name: 'Cedar Park Cyclones', code: 'CPC', city: 'Cedar Park' },
-  { name: 'Lakeview Lightning', code: 'LVL', city: 'Lakeview' },
-  { name: 'Oak Hollow Owls', code: 'OHO', city: 'Oak Hollow' },
-  { name: 'Westgate Wolves', code: 'WGW', city: 'Westgate' },
+const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+// Accounts every dataset shares; spreadsheet directors never get these usernames.
+const REFEREE_ROSTER = [
+  ['Avery', 'Coleman', 5000, null], ['Jordan', 'Pike', null, null], ['Sam', 'Delgado', null, ['2026-11-14', '2026-11-15', 'Out of town']],
+  ['Riley', 'Chen', 4500, null], ['Morgan', 'Hayes', null, null], ['Casey', 'Novak', null, ['2026-11-19', '2026-11-19', 'Work shift']],
+  ['Drew', 'Okafor', null, null],
 ];
+const SHARED_USERNAMES = ['tgreene', 'lortega', 'pnair', 'obrooks', 'gkim', ...REFEREE_ROSTER.map(([f, l]) => (f[0] + l).toLowerCase())];
 
-const VENUES = {
-  NFH: [{ name: 'Northfield Middle School', courts: ['North court', 'South court'], lat: 42.099, lng: -87.781 }, { name: 'Hawks Community Center', courts: ['Main court'], lat: 42.105, lng: -87.77 }],
-  RYB: [{ name: 'Riverbend High School', courts: ['Main gym', 'Aux gym'], lat: 41.95, lng: -87.89 }],
-  CPC: [{ name: 'Cedar Park Elementary', courts: ['Main court'], lat: 41.88, lng: -87.95 }, { name: 'Cyclone Fieldhouse', courts: ['Court 1', 'Court 2', 'Court 3'], lat: 41.87, lng: -87.94 }],
-  LVL: [{ name: 'Lakeview Recreation Center', courts: ['Main court'], lat: 41.94, lng: -87.65 }],
-  OHO: [{ name: 'Oak Hollow Junior High', courts: ['Main gym'], lat: 41.79, lng: -87.8 }],
-  WGW: [{ name: 'Westgate Academy', courts: ['East court', 'West court'], lat: 41.86, lng: -88.02 }],
-};
+async function loadDataset() {
+  const which = arg('dataset') || 'spreadsheet';
+  if (which === 'test') return testLeagueDataset();
+  if (which !== 'spreadsheet') throw new Error(`Unknown --dataset=${which}. Use "spreadsheet" (default) or "test".`);
+  const { spreadsheetDataset } = await import('./demoData/spreadsheetLeague.js');
+  let existing = [];
+  try { existing = (await all('SELECT username FROM users')).map((u) => u.username); } catch { /* no tables yet (checking before a reset) */ }
+  return spreadsheetDataset(path.resolve(arg('file') || DEFAULT_DEMO_FILE), {
+    realEmails: process.argv.includes('--real-emails'),
+    reservedUsernames: [...SHARED_USERNAMES, ...existing],
+  });
+}
 
 async function main() {
   await seedBase({ quiet: true });
@@ -41,6 +57,11 @@ async function main() {
     console.log('ℹ️  Demo data already present — nothing to do. (npm run db:reset starts fresh.)');
     return;
   }
+  const data = await loadDataset();
+  console.log(`📄 Demo league from the ${data.label}`);
+  for (const w of data.warnings || []) console.log(`   ⚠️  ${w}`);
+  if (data.realEmails) console.log('   ⚠️  Using the spreadsheet’s REAL email addresses. If email sending is on, these people will receive notifications.');
+
   const stmts = [];
   const add = (sql, args) => stmts.push({ sql, args });
 
@@ -49,41 +70,49 @@ async function main() {
   add('INSERT INTO seasons (id, name, start_date, end_date, is_active) VALUES (?, ?, ?, ?, 1)', [seasonId, 'Winter 2026–27', seasonStart, '2027-02-28']);
 
   const divisions = await all('SELECT id, name FROM divisions ORDER BY sort_order');
-  const div = (n) => divisions.find((d) => d.name === n).id;
+  const div = (n) => {
+    const d = divisions.find((x) => x.name === n);
+    if (!d) throw new Error(`Division "${n}" doesn't exist. Check League setup.`);
+    return d.id;
+  };
   const pwHash = await hashPassword(DEMO_PASSWORD);
   const accounts = [];
-  const user = (first, last, username, role, programId) => {
+  const userIds = {};
+  const user = ({ first, last, username, role, programId, email, phone = null }) => {
     const id = newId();
-    add(`INSERT INTO users (id, first_name, last_name, username, email, password_hash, role, program_id, must_change_password)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`, [id, first, last, username, `${username}@example.com`, pwHash, role, programId]);
-    accounts.push({ username, role });
+    add(`INSERT INTO users (id, first_name, last_name, username, email, phone, password_hash, role, program_id, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`, [id, first, last, username, email || `${username}@example.com`, phone, pwHash, role, programId]);
+    accounts.push({ username, role, name: `${first} ${last}`, programId });
+    userIds[username] = id;
     return id;
   };
 
   const programIds = {};
-  for (const p of PROGRAMS) {
+  const programNames = {};
+  for (const p of data.programs) {
     programIds[p.code] = newId();
-    add('INSERT INTO programs (id, name, short_code, city, contact_email) VALUES (?, ?, ?, ?, ?)',
-      [programIds[p.code], p.name, p.code, p.city, `director@${p.code.toLowerCase()}.example.com`]);
+    programNames[programIds[p.code]] = p.name;
+    add('INSERT INTO programs (id, name, short_code, city, contact_email, contact_phone) VALUES (?, ?, ?, ?, ?, ?)',
+      [programIds[p.code], p.name, p.code, p.city, p.contactEmail, p.contactPhone]);
   }
 
-  user('Dana', 'Whitfield', 'dwhitfield', 'program_director', programIds.NFH);
-  user('Marcus', 'Bell', 'mbell', 'program_director', programIds.RYB);
-  const coachA = user('Tasha', 'Greene', 'tgreene', 'league_coach', programIds.NFH);
-  const coachB = user('Luis', 'Ortega', 'lortega', 'league_coach', programIds.NFH);
-  user('Priya', 'Nair', 'pnair', 'referee_assignor', null);
-  user('Owen', 'Brooks', 'obrooks', 'referee', null);
-  user('Grace', 'Kim', 'gkim', 'super_admin', null);
+  for (const d of data.directors) {
+    user({ first: d.first, last: d.last, username: d.username, role: 'program_director', programId: programIds[d.programCode], email: d.email, phone: d.phone });
+  }
+  user({ first: 'Tasha', last: 'Greene', username: 'tgreene', role: 'league_coach', programId: programIds[data.coaches.tgreene], phone: '7735550123' });
+  user({ first: 'Luis', last: 'Ortega', username: 'lortega', role: 'league_coach', programId: programIds[data.coaches.lortega] });
+  user({ first: 'Priya', last: 'Nair', username: 'pnair', role: 'referee_assignor', programId: null });
+  user({ first: 'Owen', last: 'Brooks', username: 'obrooks', role: 'referee', programId: null, phone: '6305550199' });
+  user({ first: 'Grace', last: 'Kim', username: 'gkim', role: 'super_admin', programId: null });
 
-  // Teams: every program fields a few divisions.
-  const teamDivs = ['5th Grade Boys', '6th Grade Boys', '7th Grade Boys', '6th Grade Girls', '8th Grade Girls'];
-  for (const p of PROGRAMS) {
-    teamDivs.forEach((d, i) => {
-      if ((i + p.code.charCodeAt(0)) % 5 === 4) return; // not every program has every division
-      const coach = p.code === 'NFH' && i === 0 ? coachA : p.code === 'NFH' && i === 1 ? coachB : null;
+  // Teams
+  let teamCount = 0;
+  for (const p of data.programs) {
+    for (const t of data.teams(p)) {
       add('INSERT INTO teams (id, program_id, division_id, name, head_coach_user_id) VALUES (?, ?, ?, ?, ?)',
-        [newId(), programIds[p.code], div(d), `${p.name.split(' ')[0]} ${d.replace(' Grade', '')}`, coach]);
-    });
+        [newId(), programIds[p.code], div(t.division), t.name, t.coach ? userIds[t.coach] : null]);
+      teamCount++;
+    }
   }
 
   // Venues, courts, and 10 weeks of weekly slots.
@@ -93,11 +122,13 @@ async function main() {
     { offset: 5, start: '09:00', end: '15:00', category: 'WEEKEND_GAME_BLOCK' },// Sat
   ];
   let slotCount = 0;
-  for (const p of PROGRAMS) {
-    VENUES[p.code].forEach((v, vi) => {
+  let venueCount = 0;
+  for (const p of data.programs) {
+    p.venues.forEach((v, vi) => {
       const venueId = newId();
-      add('INSERT INTO venues (id, program_id, name, city, state, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [venueId, programIds[p.code], v.name, p.city, 'IL', v.lat, v.lng]);
+      venueCount++;
+      add('INSERT INTO venues (id, program_id, name, address, city, state, zip, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [venueId, programIds[p.code], v.name, v.address, v.city, v.state, v.zip, v.lat, v.lng]);
       v.courts.forEach((c, ci) => {
         const courtId = newId();
         add('INSERT INTO courts (id, venue_id, name, sort_order) VALUES (?, ?, ?, ?)', [courtId, venueId, c, ci]);
@@ -121,7 +152,7 @@ async function main() {
   }
 
   await db.batch(stmts, 'write');
-  console.log(`✅ Demo data: 1 season, ${PROGRAMS.length} programs, ${slotCount} gym slots.`);
+  console.log(`✅ Demo data: 1 season, ${data.programs.length} programs, ${venueCount} venues, ${teamCount} teams, ${slotCount} gym slots.`);
 
   // Phase 2: generate and publish a schedule, then file two sample change
   // requests so every approval screen has something in it.
@@ -129,29 +160,36 @@ async function main() {
   const admin = await one("SELECT id FROM users WHERE username = 'gkim'");
   const draft = await generateDraft(season, await getRules(), admin.id);
   await db.execute({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [admin.id, draft.runId] });
-  const requests = await seedRequests(draft.runId, programIds);
+  const requests = data.requests ? await seedRequests(draft.runId, programIds, data.requests) : 0;
   console.log(`✅ Demo schedule: ${draft.summary.scheduledGames} games published, ${requests} sample change requests.`);
+  for (const w of draft.warnings) console.log(`   ℹ️  ${w}`);
 
   // Phase 3: a referee roster, a few pay overrides and unavailable dates,
   // and November auto-filled so the assignor starts with partial coverage.
   const refs = await seedReferees(pwHash, accounts);
-  // A few phone numbers (stored as digits; the app shows them as (312) 555-0142).
-  await db.batch([['dwhitfield', '3125550142'], ['mbell', '8475550187'], ['tgreene', '7735550123'], ['obrooks', '6305550199'], ['acoleman', '7085550164']]
-    .map(([u, ph]) => ({ sql: 'UPDATE users SET phone = ? WHERE username = ?', args: [ph, u] })), 'write');
   await syncSlots(draft.runId, 2);
   const fill = await autoFill({ runId: draft.runId, from: '2026-11-01', to: '2026-11-30', assignedBy: admin.id });
   console.log(`✅ Demo referees: ${refs} on the roster, ${fill.filled} November slots filled, December onward left open for the assignor.`);
+
   console.log(`\n   Demo accounts (password for all: ${DEMO_PASSWORD})`);
-  for (const a of accounts) console.log(`     ${a.username.padEnd(12)} ${a.role}`);
+  for (const a of accounts) {
+    const where = a.programId ? `  ${programNames[a.programId]}` : '';
+    console.log(`     ${a.username.padEnd(14)} ${a.role.padEnd(17)} ${a.name}${where}`);
+  }
+  if (data.requests) {
+    const dirOf = (code) => accounts.find((a) => a.role === 'program_director' && a.programId === programIds[code]);
+    const coachProg = data.programs.find((p) => p.code === data.requests.coachProgram);
+    const askProg = data.programs.find((p) => p.code === data.requests.askingProgram);
+    console.log(`\n   For the DEMO.md walkthrough:`);
+    console.log(`     Director 1 (approves the coach's request): ${dirOf(coachProg.code)?.username || '—'}  (${coachProg.name})`);
+    console.log(`     Director 2 (the "other program"):           ${dirOf(askProg.code)?.username || '—'}  (${askProg.name})`);
+    console.log(`     Coach: tgreene (${coachProg.name}) · Assignor: pnair · Referee: acoleman · Admin: gkim`);
+  }
   console.log('');
 }
 
 async function seedReferees(pwHash, accounts) {
-  const REFS = [
-    ['Avery', 'Coleman', 5000, null], ['Jordan', 'Pike', null, null], ['Sam', 'Delgado', null, ['2026-11-14', '2026-11-15', 'Out of town']],
-    ['Riley', 'Chen', 4500, null], ['Morgan', 'Hayes', null, null], ['Casey', 'Novak', null, ['2026-11-19', '2026-11-19', 'Work shift']],
-    ['Drew', 'Okafor', null, null],
-  ];
+  const REFS = REFEREE_ROSTER;
   const stmts = [];
   const obrooks = await one("SELECT id FROM users WHERE username = 'obrooks'");
   stmts.push({ sql: 'INSERT INTO referee_profiles (user_id, pay_rate_cents) VALUES (?, NULL)', args: [obrooks.id] });
@@ -159,17 +197,17 @@ async function seedReferees(pwHash, accounts) {
   for (const [first, last, rate, off] of REFS) {
     const id = newId();
     const username = (first[0] + last).toLowerCase();
-    stmts.push({ sql: `INSERT INTO users (id, first_name, last_name, username, email, password_hash, role, program_id, must_change_password)
-      VALUES (?, ?, ?, ?, ?, ?, 'referee', NULL, 0)`, args: [id, first, last, username, `${username}@example.com`, pwHash] });
+    stmts.push({ sql: `INSERT INTO users (id, first_name, last_name, username, email, phone, password_hash, role, program_id, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'referee', NULL, 0)`, args: [id, first, last, username, `${username}@example.com`, username === 'acoleman' ? '7085550164' : null, pwHash] });
     stmts.push({ sql: 'INSERT INTO referee_profiles (user_id, pay_rate_cents) VALUES (?, ?)', args: [id, rate] });
     if (off) stmts.push({ sql: 'INSERT INTO referee_unavailability (id, user_id, start_date, end_date, note) VALUES (?, ?, ?, ?, ?)', args: [newId(), id, ...off] });
-    accounts.push({ username, role: 'referee' });
+    accounts.push({ username, role: 'referee', name: `${first} ${last}`, programId: null });
   }
   await db.batch(stmts, 'write');
   return REFS.length + 1;
 }
 
-async function seedRequests(runId, programIds) {
+async function seedRequests(runId, programIds, plan) {
   let made = 0;
   const reqStmt = (r) => ({
     sql: `INSERT INTO change_requests (id, game_id, type, proposed_court_id, proposed_date, proposed_start_time, proposed_end_time,
@@ -177,31 +215,44 @@ async function seedRequests(runId, programIds) {
     args: [r.id, r.gameId, r.opt.courtId, r.opt.date, r.opt.startTime, r.opt.endTime, r.reason, snapshotOf(r.game), r.userId, r.programId, r.status],
   });
   const step = (requestId, stage, programId) => ({ sql: 'INSERT INTO change_request_steps (id, request_id, stage, program_id) VALUES (?, ?, ?, ?)', args: [newId(), requestId, stage, programId] });
+  const coachProgram = programIds[plan.coachProgram];
+  const askingProgram = programIds[plan.askingProgram];
+  const otherProgram = programIds[plan.otherProgram];
 
-  // 1) Coach Tasha Greene (Northfield) asks to move one of her team's games -> waits on Dana (NFH director).
+  // 1) Coach Tasha Greene asks to move one of her team's games -> waits on her own program's director.
   const tasha = await one("SELECT id FROM users WHERE username = 'tgreene'");
-  const g1 = await one(`SELECT g.id FROM games g JOIN teams t ON t.id IN (g.home_team_id, g.away_team_id)
-    WHERE g.run_id = ? AND g.status = 'scheduled' AND t.head_coach_user_id = ? ORDER BY g.date LIMIT 1 OFFSET 2`, [runId, tasha.id]);
-  // 2) Marcus Bell (Riverbend director) asks to move a Riverbend-vs-Northfield game -> waits on Northfield.
-  const marcus = await one("SELECT id FROM users WHERE username = 'mbell'");
-  const g2 = await one(`SELECT g.id FROM games g JOIN teams h ON h.id = g.home_team_id JOIN teams a ON a.id = g.away_team_id
+  // Candidates in order of preference; if a game has no free alternative time, the next one is tried.
+  const g1List = await all(`SELECT g.id FROM games g JOIN teams t ON t.id IN (g.home_team_id, g.away_team_id)
+    WHERE g.run_id = ? AND g.status = 'scheduled' AND t.head_coach_user_id = ? ORDER BY g.date LIMIT 20 OFFSET 2`, [runId, tasha.id]);
+  // 2) The asking program's director asks to move one of its games against the other program -> waits on that program.
+  const asker = await one("SELECT id FROM users WHERE role = 'program_director' AND program_id = ? ORDER BY username LIMIT 1", [askingProgram]);
+  const askerVenue = await one('SELECT name FROM venues WHERE program_id = ? ORDER BY name LIMIT 1', [askingProgram]);
+  const g2List = asker ? await all(`SELECT g.id FROM games g JOIN teams h ON h.id = g.home_team_id JOIN teams a ON a.id = g.away_team_id
     WHERE g.run_id = ? AND g.status = 'scheduled' AND ((h.program_id = ? AND a.program_id = ?) OR (h.program_id = ? AND a.program_id = ?))
-      AND g.id != ? ORDER BY g.date LIMIT 1`, [runId, programIds.RYB, programIds.NFH, programIds.NFH, programIds.RYB, g1?.id || '']);
+    ORDER BY g.date LIMIT 20`, [runId, askingProgram, otherProgram, otherProgram, askingProgram]) : [];
 
   const taken = new Set();
-  for (const [row, userId, programId, status, reason] of [
-    [g1, tasha.id, programIds.NFH, 'pending_director', 'Half our team has a school band concert that evening, so we’d be short of players.'],
-    [g2, marcus.id, programIds.RYB, 'pending_counterpart', 'Riverbend High is hosting a regional tournament that weekend.'],
+  const usedGames = new Set();
+  for (const [candidates, userId, programId, status, reason] of [
+    [g1List, tasha.id, coachProgram, 'pending_director', 'Half our team has a school band concert that evening, so we’d be short of players.'],
+    [g2List, asker?.id, askingProgram, 'pending_counterpart', `${askerVenue?.name || 'Our gym'} is hosting a tournament that weekend.`],
   ]) {
-    if (!row) continue;
-    const game = await getGame(row.id);
-    // Look for new times after the game's current date (not just the first few of the season).
-    const { options } = await placementOptions(game, { today: game.date, limit: 200 });
+    if (!userId) continue;
     // Proposals are several days apart (they may involve the same team), so the
     // demo can approve both without tripping the rest-days rule.
     const farFromTaken = (d) => [...taken].every((t) => Math.abs(Date.parse(d) - Date.parse(t)) >= 3 * 86400000);
-    const opt = options.find((o) => !o.overTravelCap && o.date > game.date && farFromTaken(o.date));
-    if (!opt) continue;
+    let game = null;
+    let opt = null;
+    for (const c of candidates) {
+      if (usedGames.has(c.id)) continue;
+      const g = await getGame(c.id);
+      // New times after the game's current date (not just the first few of the season).
+      const { options } = await placementOptions(g, { today: g.date, limit: 200 });
+      opt = options.find((o) => !o.overTravelCap && o.date > g.date && farFromTaken(o.date));
+      if (opt) { game = g; break; }
+    }
+    if (!game) { console.log(`   ⚠️  Couldn't find a free time for the ${status === 'pending_director' ? 'coach' : 'director'}'s sample request, so it was skipped.`); continue; }
+    usedGames.add(game.id);
     taken.add(opt.date);
     const id = newId();
     const stmts = [reqStmt({ id, gameId: game.id, game, opt, reason, userId, programId, status })];
@@ -213,4 +264,11 @@ async function seedRequests(runId, programIds) {
   return made;
 }
 
-main().then(() => process.exit(0)).catch((err) => { console.error('❌ Demo seed failed:', err.message); process.exit(1); });
+// --check: validate the dataset (e.g. the spreadsheet) without touching the
+// database. db:reset runs this first so a broken file never costs you the
+// current demo league.
+if (process.argv.includes('--check')) {
+  loadDataset()
+    .then((d) => { console.log(`✅ ${d.label}: ${d.programs.length} programs, ${d.programs.reduce((n, p) => n + p.venues.length, 0)} venues, ${d.directors.length} directors. Looks good.`); for (const w of d.warnings || []) console.log(`   ⚠️  ${w}`); process.exit(0); })
+    .catch((err) => { console.error('❌', err.message); process.exit(1); });
+} else main().then(() => process.exit(0)).catch((err) => { console.error('❌ Demo seed failed:', err.message); process.exit(1); });
