@@ -7,8 +7,7 @@ A 15–20 minute walkthrough that follows one season end to end: directors enter
 **Where to run it.** Use your own machine, or a separate throwaway deployment. **Never** load demo data into the real league database.
 
 - **On your laptop (simplest):** in `backend/.env` set `DEMO_CHECKIN_ANYTIME=true`, then run `npm run db:reset` and restart `npm run dev` in both folders. The reset loads the programs, venues, and directors from the demo spreadsheet (`backend/demo-data/`) and prints every login, plus a "For the DEMO.md walkthrough" list of who plays each part below.
-- **Hosted demo:** create a second Turso database (e.g. `winter-league-demo`) and a second Render service pointing at it, with `DEMO_CHECKIN_ANYTIME=true`. Load it from your machine with a `.env.demo.local` file:
-  `node src/scripts/migrate.js --env=.env.demo.local` then `node src/scripts/seedDemo.js --env=.env.demo.local --force`.
+- **Hosted demo (a web address everyone can open):** follow **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, which covers creating the demo database, loading the demo league, the Render and Vercel setup, and refreshing it between meetings.
 
 **Why demo mode:** check-in normally opens only on game day, 60 minutes before tip-off. Demo mode opens it for every upcoming game so you can show it in September. Turn it off afterwards.
 

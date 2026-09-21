@@ -1,6 +1,8 @@
 node_modules/
 .env
 .env.production.local
+# Any other local settings file, e.g. .env.demo.local for the hosted demo (holds its database token).
+.env.*.local
 data/
 *.db
 *.db-journal

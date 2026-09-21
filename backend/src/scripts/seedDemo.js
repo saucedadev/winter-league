@@ -54,7 +54,9 @@ async function loadDataset() {
 async function main() {
   await seedBase({ quiet: true });
   if (await one('SELECT 1 FROM programs LIMIT 1')) {
-    console.log('ℹ️  Demo data already present — nothing to do. (npm run db:reset starts fresh.)');
+    console.log(config.databaseUrl.startsWith('file:')
+      ? 'ℹ️  Demo data already present — nothing to do. (npm run db:reset starts fresh.)'
+      : 'ℹ️  Demo data already present — nothing to do. To start over on a hosted demo, recreate its database (DEMO-DEPLOYMENT.md, "Refreshing the demo").');
     return;
   }
   const data = await loadDataset();

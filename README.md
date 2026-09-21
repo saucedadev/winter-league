@@ -107,4 +107,6 @@ The demo league's **programs, venues, and Program Directors** come from `backend
 
 ## Deploying
 
-See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for step-by-step Turso, Render and Vercel setup.
+- **Real league:** **[DEPLOYMENT.md](./DEPLOYMENT.md)**, with step-by-step Turso, Render and Vercel setup.
+- **Hosted demo for presentations:** **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, a separate copy loaded from the demo spreadsheet.
+- **Running the demo meeting:** **[DEMO.md](./DEMO.md)**.
