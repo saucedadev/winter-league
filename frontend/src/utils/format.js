@@ -21,7 +21,31 @@ export const timeRange = (a, b) => `${time12(a)}–${time12(b)}`;
 
 const d = (iso) => new Date(`${iso}T12:00:00`);
 export const toISO = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-export const todayISO = () => toISO(new Date());
+// The league's time zone (e.g. America/Los_Angeles), set at startup from the
+// server so "today" and timestamps match the league, not each device's clock.
+let leagueTimeZone;
+export function setLeagueTimeZone(tz) {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); leagueTimeZone = tz; } catch { leagueTimeZone = undefined; }
+}
+export const getLeagueTimeZone = () => leagueTimeZone;
+// "Today" as YYYY-MM-DD in the league's time zone.
+export function todayISO() {
+  if (!leagueTimeZone) return toISO(new Date());
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: leagueTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}
+// "Pacific Time" (or the league's zone), for labels.
+export function leagueTimeZoneLabel() {
+  if (!leagueTimeZone) return '';
+  for (const timeZoneName of ['longGeneric', 'long']) {
+    try {
+      const n = new Intl.DateTimeFormat('en-US', { timeZone: leagueTimeZone, timeZoneName }).formatToParts(new Date()).find((x) => x.type === 'timeZoneName');
+      if (n) return n.value;
+    } catch { /* older browsers: try the next style */ }
+  }
+  return leagueTimeZone;
+}
 export function addDays(iso, n) { const x = d(iso); x.setDate(x.getDate() + n); return toISO(x); }
 export function startOfWeek(iso) { const x = d(iso); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return toISO(x); } // Monday
 export const weekday = (iso, style = 'short') => d(iso).toLocaleDateString(undefined, { weekday: style });
@@ -35,7 +59,7 @@ export function dateRange(a, b) {
 export function timestamp(sqlUtc) {
   if (!sqlUtc) return '';
   const x = new Date(`${sqlUtc.replace(' ', 'T')}Z`);
-  return x.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return x.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: leagueTimeZone });
 }
 export const hoursBetween = (a, b) => {
   const m = (t) => { const [h, mm] = t.split(':').map(Number); return h * 60 + mm; };

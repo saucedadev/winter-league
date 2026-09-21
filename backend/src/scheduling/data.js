@@ -1,5 +1,6 @@
 import { one, all, db, newId } from '../db/client.js';
 import { addDays, formatTime12 } from '../utils/validate.js';
+import { leagueToday } from '../utils/leagueTime.js';
 import { DEFAULT_RULES, normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes } from './core.js';
 import { buildSchedule } from './matchmaker.js';
 
@@ -249,7 +250,8 @@ export function placementUpdate(game, target, check) {
   };
 }
 
-export const todayStr = () => new Date().toISOString().slice(0, 10);
+// "Today" in the league's time zone (see utils/leagueTime.js), not UTC.
+export const todayStr = () => leagueToday();
 
 export const describeGame = (g) => `${g.homeTeamName} vs ${g.awayTeamName}${g.date ? ` on ${g.date} at ${formatTime12(g.startTime)}` : ''}`;
 

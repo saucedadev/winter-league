@@ -17,7 +17,7 @@ router.get('/', ah(async (req, res) => {
   const programId = isSuperAdmin(u) ? null : u.programId;
   const scoped = (col) => (programId ? `AND ${col} = ?` : '');
   const args = programId ? [programId] : [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = leagueNow().date; // league time zone, not UTC
 
   const counts = await one(`SELECT
       (SELECT COUNT(*) FROM programs WHERE is_active = 1 ${programId ? 'AND id = ?' : ''}) AS programs,

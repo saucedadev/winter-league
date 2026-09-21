@@ -1,7 +1,7 @@
 <script setup>
 import { RouterLink } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import { monthDay, weekday, timestamp } from '../utils/format';
+import { leagueTimeZoneLabel, monthDay, weekday, timestamp } from '../utils/format';
 import GameRow from './GameRow.vue';
 
 // Dashboard card: schedule status plus the next games that matter to this user.
@@ -16,7 +16,7 @@ const scopeLabel = () => (auth.user.role === 'league_coach' ? 'your teams' : aut
       <div>
         <h2 class="font-semibold">Upcoming games</h2>
         <p class="text-sm text-text-muted">
-          <template v-if="schedule.published">{{ schedule.gameCount }} games for {{ scopeLabel() }} · published {{ timestamp(schedule.publishedAt) }}</template>
+          <template v-if="schedule.published">{{ schedule.gameCount }} games for {{ scopeLabel() }} · published {{ timestamp(schedule.publishedAt) }} · All times {{ leagueTimeZoneLabel() }}</template>
           <template v-else-if="schedule.hasDraft">A draft schedule is ready for review. Nobody else can see it yet.</template>
           <template v-else>The season schedule hasn’t been published yet.</template>
         </p>

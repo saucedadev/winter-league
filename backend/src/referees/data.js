@@ -7,6 +7,7 @@ import { sendEmail } from '../utils/email.js';
 import { logActivity } from '../utils/activityLog.js';
 import { toMinutes, milesBetween } from '../scheduling/core.js';
 import { formatTime12 } from '../utils/validate.js';
+import { leagueNow } from '../utils/leagueTime.js';
 import { GAME_SELECT, shapeGame } from '../scheduling/data.js';
 
 export const DEFAULT_REF_SETTINGS = Object.freeze({
@@ -72,12 +73,7 @@ export async function syncSlots(runId, refereesPerGame) {
 // ---------------------------------------------------------------------
 // Time: "now" in league-local date + minutes, for check-in windows.
 // ---------------------------------------------------------------------
-export function leagueNow(date = new Date()) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-    timeZone: config.leagueTimezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(date).map((p) => [p.type, p.value]));
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, minutes: Number(parts.hour) * 60 + Number(parts.minute) };
-}
+export { leagueNow };
 
 // { open, reason } — can this game be checked in to right now?
 export function checkInWindow(game, settings, now = leagueNow()) {

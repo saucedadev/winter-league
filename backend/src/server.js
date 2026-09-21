@@ -74,5 +74,6 @@ app.use((err, req, res, next) => {
 await db.execute('PRAGMA foreign_keys = ON');
 
 app.listen(config.port, () => {
+  console.log(`🕒 League time zone: ${config.leagueTimezone}`);
   console.log(`🏀 Winter League API on http://localhost:${config.port} (${isLocalDb ? 'local SQLite' : 'Turso'})`);
 });

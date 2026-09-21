@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { config } from '../config.js';
 import { one, run } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/auth.js';
 import { ah, badRequest } from '../utils/http.js';
@@ -26,7 +27,8 @@ router.put('/theme', requireAuth, requirePasswordCurrent, requireRole('super_adm
 // Public, like the theme: the sign-in page shows the conference's name and logo.
 router.get('/branding', ah(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ branding: await getBranding(), defaults: DEFAULT_BRANDING });
+  // timezone: the league's clock, so every browser shows "today" and times the same way.
+  res.json({ branding: await getBranding(), defaults: DEFAULT_BRANDING, timezone: config.leagueTimezone });
 }));
 
 router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_admin'), ah(async (req, res) => {

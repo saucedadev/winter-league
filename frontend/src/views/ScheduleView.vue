@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../stores/toast';
-import { longDate, todayISO, timestamp } from '../utils/format';
+import { longDate, todayISO, timestamp, leagueTimeZoneLabel } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import GameRow from '../components/GameRow.vue';
@@ -81,7 +81,7 @@ async function onCreated() { requesting.value = null; await load(); }
 <template>
   <div>
     <PageHeader title="Schedule"
-      :subtitle="data?.published ? `${data.season.name} · published ${timestamp(data.publishedAt)}` : 'League games for the active season'">
+      :subtitle="data?.published ? `${data.season.name} · published ${timestamp(data.publishedAt)} · All times ${leagueTimeZoneLabel()}` : 'League games for the active season'">
       <RouterLink v-if="auth.isSuperAdmin" to="/schedule/builder" class="btn btn-secondary">Open schedule builder</RouterLink>
     </PageHeader>
 

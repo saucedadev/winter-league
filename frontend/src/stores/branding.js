@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api } from '../api/client';
+import { setLeagueTimeZone } from '../utils/format';
 
 const CACHE_KEY = 'winterleague:branding';
 export const DEFAULT_APP_NAME = 'Winter League';
@@ -21,18 +22,20 @@ function readCache() {
 export const useBrandingStore = defineStore('branding', {
   state: () => {
     const c = readCache();
-    return { appName: c.appName || DEFAULT_APP_NAME, logo: c.logo || null, pageTitle: '' };
+    if (c.timezone) setLeagueTimeZone(c.timezone); // cached so the first screen already uses league time
+    return { appName: c.appName || DEFAULT_APP_NAME, logo: c.logo || null, timezone: c.timezone || null, pageTitle: '' };
   },
   actions: {
     init() {
       applyFavicon(this.logo);
       this.applyTitle();
-      api.get('/settings/branding').then(({ data }) => this.apply(data.branding)).catch(() => {});
+      api.get('/settings/branding').then(({ data }) => this.apply(data.branding, data.timezone)).catch(() => {});
     },
-    apply(b) {
+    apply(b, timezone = this.timezone) {
       this.appName = b.appName || DEFAULT_APP_NAME;
       this.logo = b.logo || null;
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ appName: this.appName, logo: this.logo })); } catch { /* quota: the logo is optional */ }
+      if (timezone) { this.timezone = timezone; setLeagueTimeZone(timezone); }
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ appName: this.appName, logo: this.logo, timezone: this.timezone })); } catch { /* quota: the logo is optional */ }
       applyFavicon(this.logo);
       this.applyTitle();
     },

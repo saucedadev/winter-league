@@ -90,6 +90,20 @@ check('removing blackout restores slots', nov9b.length === nov9.length && nov9b.
 const del = await call('DELETE', `/slots/${repeat.data.slots[2].id}?scope=following`, { token: pd });
 check('delete "this and following" in series', del.data.deleted === repeat.data.slots.length - 2);
 
+console.log('\nLeague time zone');
+check('the league runs on Pacific Time', (await call('GET', '/settings/branding')).data.timezone === 'America/Los_Angeles');
+{
+  const { leagueNow } = await import('../utils/leagueTime.js');
+  // Thursday 6:00 PM Pacific = Friday 02:00 UTC. The league must still say Thursday.
+  const eve = leagueNow(new Date('2026-11-06T02:00:00Z'));
+  check('a Thursday-evening game is still "today" after UTC midnight', eve.date === '2026-11-05' && eve.minutes === 18 * 60);
+  const summer = leagueNow(new Date('2026-07-01T06:30:00Z')); // 11:30 PM PDT (UTC-7)
+  check('daylight saving time is applied in summer', summer.date === '2026-06-30' && summer.minutes === 23 * 60 + 30);
+  const springForward = leagueNow(new Date('2026-03-08T10:30:00Z')); // 3:30 AM PDT, just after the clocks change
+  check('the spring clock change is handled', springForward.date === '2026-03-08' && springForward.minutes === 3 * 60 + 30);
+  const fallBack = leagueNow(new Date('2026-11-01T09:30:00Z')); // 1:30 AM PST, after the clocks go back
+  check('the fall clock change is handled', fallBack.date === '2026-11-01' && fallBack.minutes === 60 + 30);
+}
 console.log('\nAdmin');
 const ph1 = await call('POST', '/users', { token: admin, body: { firstName: 'Phone', lastName: 'Format', email: 'phone@example.com', phone: '(312) 555-0199', role: 'league_coach', programId: nfh.id } });
 check('formatted phone is stored as digits', ph1.status === 201 && (await call('GET', '/users', { token: admin })).data.users.find((u) => u.email === 'phone@example.com')?.phone === '3125550199');
@@ -367,7 +381,8 @@ const restored = (await call('GET', `/referees/games?from=${mv2.data.game.date}&
 check('restored game has open referee slots again', restored && restored.assignments.length === 2 && restored.assignments.every((a) => !a.refereeId));
 
 console.log('\nCheck-in and payouts (a game today)');
-const tz = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const leagueTz = (await call('GET', '/settings/branding')).data.timezone;
+const tz = new Intl.DateTimeFormat('en-CA', { timeZone: leagueTz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
   .formatToParts(new Date()).reduce((o, p) => ({ ...o, [p.type]: p.value }), {});
 const todayLocal = `${tz.year}-${tz.month}-${tz.day}`;
 const nowMin = Number(tz.hour) * 60 + Number(tz.minute);

@@ -30,7 +30,7 @@ export const config = {
     .filter(Boolean),
   maxPrograms: Number(process.env.MAX_PROGRAMS) || 16,
   // Game dates/times are local league time; check-in windows are judged in this zone.
-  leagueTimezone: process.env.LEAGUE_TIMEZONE || 'America/Chicago',
+  leagueTimezone: process.env.LEAGUE_TIMEZONE || 'America/Los_Angeles',
   // For live demos only: lets referees check in to any upcoming game regardless of time.
   demoCheckInAnytime: process.env.DEMO_CHECKIN_ANYTIME === 'true',
   email: {
@@ -40,3 +40,9 @@ export const config = {
     brevoPass: process.env.BREVO_SMTP_PASS,
   },
 };
+
+// A misspelled LEAGUE_TIMEZONE would silently break check-in and "today", so stop at startup instead.
+try { new Intl.DateTimeFormat('en-US', { timeZone: config.leagueTimezone }); } catch {
+  console.error(`❌ LEAGUE_TIMEZONE "${config.leagueTimezone}" isn't a valid time zone. Use a name like America/Los_Angeles.`);
+  process.exit(1);
+}

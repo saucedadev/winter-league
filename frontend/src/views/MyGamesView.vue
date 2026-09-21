@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useToast } from '../stores/toast';
-import { dateRange, longDate, money, monthDay, timeRange, todayISO, weekday } from '../utils/format';
+import { dateRange, leagueTimeZoneLabel, longDate, money, monthDay, timeRange, todayISO, weekday } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import Modal from '../components/Modal.vue';
@@ -89,7 +89,7 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
 
 <template>
   <div class="max-w-3xl">
-    <PageHeader title="My games" :subtitle="data ? `${upcoming.length} upcoming · ${money(earned)} earned this season` : ''" />
+    <PageHeader title="My games" :subtitle="data ? `${upcoming.length} upcoming · ${money(earned)} earned this season · All times ${leagueTimeZoneLabel()}` : ''" />
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
 
     <template v-else-if="data">
