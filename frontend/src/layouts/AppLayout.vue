@@ -7,10 +7,12 @@ import BrandMark from '../components/BrandMark.vue';
 import ThemePicker from '../components/ThemePicker.vue';
 import ProgramSwitcher from '../components/ProgramSwitcher.vue';
 import { useRequestBadge } from '../stores/requestBadge';
+import { useBrandingStore } from '../stores/branding';
 
 const auth = useAuthStore();
 const ctx = useProgramContext();
 const badge = useRequestBadge();
+const branding = useBrandingStore();
 const route = useRoute();
 const router = useRouter();
 const menuOpen = ref(false);
@@ -37,6 +39,7 @@ const adminNav = computed(() => [
   { to: '/referees', label: 'Referees', show: auth.isSuperAdmin },
   { to: '/payouts', label: 'Referee payouts', show: auth.isSuperAdmin },
   { to: '/programs', label: 'Programs', show: auth.isSuperAdmin },
+  { to: '/branding', label: 'Branding', show: auth.isSuperAdmin },
   { to: '/league', label: 'League setup', show: auth.isSuperAdmin },
   { to: '/users', label: 'Users', show: auth.isSuperAdmin },
   { to: '/activity', label: 'Activity', show: auth.canManage },
@@ -63,7 +66,7 @@ function signOut() {
 <template>
   <div class="min-h-screen flex flex-col">
     <header class="h-16 border-b border-header-border bg-header text-header-text flex items-center px-4 md:px-6 gap-3 sticky top-0 z-30">
-      <RouterLink to="/" class="shrink-0" aria-label="Winter League home"><BrandMark on-header /></RouterLink>
+      <RouterLink to="/" class="shrink-0 min-w-0" :aria-label="`${branding.appName} home`"><BrandMark on-header /></RouterLink>
 
       <nav class="hidden xl:flex items-center gap-0.5 ml-2 min-w-0" aria-label="Main">
         <RouterLink v-for="n in primaryNav" :key="n.to" :to="n.to"
@@ -77,7 +80,7 @@ function signOut() {
 
       <ProgramSwitcher v-if="auth.isSuperAdmin" class="hidden md:flex" />
       <span v-else-if="auth.user?.programName" class="hidden md:inline text-sm text-header-text/75 truncate max-w-[14rem]">{{ auth.user.programName }}</span>
-      <ThemePicker v-if="auth.isSuperAdmin" class="hidden sm:block" />
+      <ThemePicker v-if="auth.isSuperAdmin" class="hidden sm:block xl:hidden 2xl:block" />
 
       <div ref="menuRoot" class="relative">
         <button class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/5" :aria-expanded="menuOpen" aria-haspopup="menu" @click="menuOpen = !menuOpen">
@@ -105,9 +108,13 @@ function signOut() {
             <RouterLink v-for="n in adminNav" :key="n.to" :to="n.to" role="menuitem"
               class="block px-4 py-2 text-sm hover:bg-background" :class="isActive(n.to) && 'font-semibold text-accent'">{{ n.label }}</RouterLink>
           </div>
-          <div v-if="auth.isSuperAdmin" class="md:hidden px-4 py-3 border-b border-border space-y-2">
+          <div v-if="auth.isSuperAdmin" class="md:hidden px-4 py-3 border-b border-border">
             <ProgramSwitcher />
-            <ThemePicker class="sm:hidden w-full" />
+          </div>
+          <!-- The theme picker moves in here whenever the header has no room for it. -->
+          <div v-if="auth.isSuperAdmin" class="sm:hidden xl:block 2xl:hidden px-4 py-3 border-b border-border">
+            <p class="text-xs text-text-muted mb-1">Sitewide theme</p>
+            <ThemePicker class="w-full" />
           </div>
           <div class="py-1">
             <RouterLink to="/change-password" role="menuitem" class="block px-4 py-2 text-sm hover:bg-background">Change password</RouterLink>

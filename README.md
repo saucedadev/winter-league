@@ -17,6 +17,7 @@ The same backend code talks to the local SQLite file or to Turso. Only `DATABASE
 - **Program Director screens:** Gym slots week board (Practice / Weeknight game / Weekend game block), weekly repeats that skip blackout dates, "this and following weeks" edits, blackout dates per venue or whole program.
 - **Program isolation:** a Program Director can only read and write their own program. This is enforced on the server, not just hidden in the UI.
 - **Themes:** Gym Hive's four sitewide themes (Light, Dark, Regal Opulence, Midnight Noir) plus the league's own **Pacific Youth Conference** theme (navy, teal, sand, sunset orange, and a gold accent line), chosen by the System Admin.
+- **Branding:** the app name and logo are sitewide settings the System Admin sets on **Branding** (avatar menu). The name appears in the header, on the sign-in page, in the browser tab, and in account emails. An uploaded logo (PNG, JPEG, WebP, or SVG, under 300 KB) replaces the built-in hexagon mark and becomes the browser-tab icon. Defaults: "Winter League" and the built-in mark.
 - Referee payments are intentionally out of scope.
 
 ## Phase 2 – Scheduling (in draft form)

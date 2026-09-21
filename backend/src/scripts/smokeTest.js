@@ -78,6 +78,17 @@ const del = await call('DELETE', `/slots/${repeat.data.slots[2].id}?scope=follow
 check('delete "this and following" in series', del.data.deleted === repeat.data.slots.length - 2);
 
 console.log('\nAdmin');
+const pubBrand = await call('GET', '/settings/branding');
+check('branding is readable before sign-in', pubBrand.status === 200 && pubBrand.data.branding.appName === 'Winter League' && pubBrand.data.branding.logo === null);
+check('only System Admins can change branding', (await call('PUT', '/settings/branding', { token: pd, body: { appName: 'Hijacked' } })).status === 403);
+check('app name is required', (await call('PUT', '/settings/branding', { token: admin, body: { appName: ' ' } })).status === 400);
+check('non-image logos are rejected', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Test', logo: 'data:text/html;base64,PHNjcmlwdD4=' } })).status === 400);
+check('oversized logos are rejected', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Test', logo: `data:image/png;base64,${'A'.repeat(420000)}` } })).status === 400);
+const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const br = await call('PUT', '/settings/branding', { token: admin, body: { appName: '  Pacific   Youth Conference ', logo: tinyPng } });
+check('branding saves (name tidied, logo kept)', br.status === 200 && br.data.branding.appName === 'Pacific Youth Conference' && br.data.branding.logo === tinyPng);
+check('new branding is public', (await call('GET', '/settings/branding')).data.branding.appName === 'Pacific Youth Conference');
+check('back to defaults', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Winter League', logo: null } })).data.branding?.logo === null);
 check('Pacific Youth Conference theme can be chosen', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'pacificYouthConference' } })).status === 200
   && (await call('GET', '/settings/theme')).data.theme === 'pacificYouthConference');
 check('unknown themes are rejected', (await call('PUT', '/settings/theme', { token: admin, body: { theme: 'neonJungle' } })).status === 400);

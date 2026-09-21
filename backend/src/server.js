@@ -30,7 +30,7 @@ app.use(cors({
     cb(new HttpError(403, `Origin ${origin} is not allowed. Add it to APP_URL.`));
   },
 }));
-app.use(express.json({ limit: '200kb' }));
+app.use(express.json({ limit: '600kb' })); // room for an uploaded logo (max 300 KB, base64-encoded)
 
 // Health check for Render — also confirms the database is reachable.
 app.get('/api/health', async (req, res) => {

@@ -5,6 +5,7 @@ import { router } from './router';
 import { setAuthProblemHandler } from './api/client';
 import { useAuthStore } from './stores/auth';
 import { useThemeStore } from './stores/theme';
+import { useBrandingStore } from './stores/branding';
 import { useProgramContext } from './stores/programContext';
 import './theme/theme.css';
 
@@ -13,6 +14,7 @@ app.use(createPinia());
 app.use(router);
 
 useThemeStore().init();
+useBrandingStore().init();
 
 setAuthProblemHandler((kind) => {
   const auth = useAuthStore();

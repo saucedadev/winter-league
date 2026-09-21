@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { ah, badRequest, HttpError } from '../utils/http.js';
 import { hashPassword, verifyPassword, signToken, randomToken, sha256 } from '../utils/security.js';
 import { requireFields, assertStrongPassword } from '../utils/validate.js';
+import { getBranding } from '../utils/branding.js';
 import { sendEmail } from '../utils/email.js';
 
 const router = Router();
@@ -86,10 +87,11 @@ router.post('/forgot-username', authLimiter, ah(async (req, res) => {
   const r = await run('SELECT username, first_name FROM users WHERE email = ? AND is_active = 1', [email]);
   if (r.rows.length) {
     const names = r.rows.map((row) => `  • ${row.username}`).join('\n');
+    const { appName } = await getBranding();
     await sendEmail({
       to: email,
-      subject: 'Your Winter League username',
-      text: `Hi ${r.rows[0].first_name},\n\nThe Winter League username${r.rows.length > 1 ? 's' : ''} for this email:\n${names}\n\nSign in at ${config.appUrls[0]}/login`,
+      subject: `Your ${appName} username`,
+      text: `Hi ${r.rows[0].first_name},\n\nThe ${appName} username${r.rows.length > 1 ? 's' : ''} for this email:\n${names}\n\nSign in at ${config.appUrls[0]}/login`,
     });
   }
   res.json({ message: 'If an account uses that email, we sent the username to it.' });
@@ -105,9 +107,10 @@ router.post('/forgot-password', authLimiter, ah(async (req, res) => {
       "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, datetime('now', '+1 hour'))",
       [newId(), user.id, sha256(token)]
     );
+    const { appName } = await getBranding();
     await sendEmail({
       to: user.email,
-      subject: 'Reset your Winter League password',
+      subject: `Reset your ${appName} password`,
       text: `Hi ${user.firstName},\n\nUse this link within one hour to choose a new password:\n${config.appUrls[0]}/reset-password?token=${token}\n\nIf you didn’t ask for this, ignore this email — your password stays the same.`,
     });
   }

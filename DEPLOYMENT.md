@@ -222,7 +222,7 @@ The API only accepts browser requests from origins listed in `APP_URL`, and uses
 5. **Programs:** add each participating program (up to 16).
 6. **Users:** create a Program Director for each program. Each gets a generated username and temporary password to hand over.
 7. Have one Program Director sign in and confirm they only see their own program, then add a venue and a few gym slots.
-8. Optional: pick a sitewide theme from the header's Theme Picker.
+8. Optional: pick a sitewide theme from the header's Theme Picker (on narrower laptop screens it's in the avatar menu), and set the conference's name and logo on **Branding** (avatar menu).
 
 ---
 
@@ -251,6 +251,16 @@ Nothing new to configure. Push the code and Render's `npm run start:render` appl
 Push the code. Render applies `003_referees.sql` before the server starts. Optionally set `LEAGUE_TIMEZONE` if the league isn't on Central time. Then sign in as the Referee Assignor, add referees under **Referees**, check **Settings** (referees per game, default pay, check-in window), and use **Assignments** to fill games. Referee slots are created for the games already on the published schedule the first time the Assignments page or dashboard loads.
 
 **Live demos:** check-in normally only opens on game day. For a demo before the season starts, set `DEMO_CHECKIN_ANYTIME=true` on Render, redeploy, run the demo, then set it back to `false` and redeploy. While it's on, referees can check in to any upcoming game, and those check-ins count toward payouts. Reset or clear demo check-ins before the real season (the assignor can use **Clear attendance** on each).
+
+## Running more than one conference
+
+Each conference runs as its own copy of the app: its own Turso database, Render service, and Vercel project. Data, accounts, schedules, and referees are completely separate, the same way Winter League is separate from Gym Hive. For each additional conference:
+
+1. Follow steps 1–4 above with new names, e.g. Turso database `pacific-youth`, Render service `pacific-youth-api`, Vercel project `pacific-youth`.
+2. Give it its **own** `JWT_SECRET`, and set `EMAIL_FROM` to that conference's name (e.g. `Pacific Youth Conference <no-reply@yourdomain.com>`).
+3. Sign in as its System Admin and open **Branding** (avatar menu) to set the app name and upload its logo. Pick its sitewide theme from the header.
+
+The code is the same for every conference, so fixes and new features ship to all of them from the one repository. Each Render service and Vercel project simply redeploys from `main`.
 
 ## Routine operations
 

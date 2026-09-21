@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useBrandingStore } from '../stores/branding';
 
 const SA = ['super_admin'];
 const MANAGERS = ['super_admin', 'program_director'];
@@ -21,6 +22,7 @@ const routes = [
       { path: 'blackouts', component: () => import('../views/BlackoutsView.vue'), meta: { roles: MANAGERS, title: 'Blackout dates' } },
       { path: 'venues', component: () => import('../views/VenuesView.vue'), meta: { roles: TEAM_VIEWERS, title: 'Venues' } },
       { path: 'teams', component: () => import('../views/TeamsView.vue'), meta: { roles: TEAM_VIEWERS, title: 'Teams' } },
+      { path: 'branding', component: () => import('../views/BrandingView.vue'), meta: { roles: SA, title: 'Branding' } },
       { path: 'programs', component: () => import('../views/ProgramsView.vue'), meta: { roles: SA, title: 'Programs' } },
       { path: 'league', component: () => import('../views/LeagueSetupView.vue'), meta: { roles: SA, title: 'League setup' } },
       { path: 'users', component: () => import('../views/UsersView.vue'), meta: { roles: SA, title: 'Users' } },
@@ -53,5 +55,5 @@ router.beforeEach(async (to) => {
 });
 
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} · Winter League` : 'Winter League';
+  useBrandingStore().setPageTitle(to.meta.title);
 });

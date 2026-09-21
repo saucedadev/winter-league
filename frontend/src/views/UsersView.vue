@@ -1,4 +1,6 @@
 <script setup>
+import { useBrandingStore } from '../stores/branding';
+const branding = useBrandingStore();
 import { computed, onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
@@ -83,7 +85,7 @@ async function resetPassword() {
 async function copyCredentials() {
   const c = credentials.value;
   try {
-    await navigator.clipboard.writeText(`Winter League sign-in\nSite: ${window.location.origin}\nUsername: ${c.username}\nTemporary password: ${c.password}\nYou’ll choose your own password when you first sign in.`);
+    await navigator.clipboard.writeText(`${branding.appName} sign-in\nSite: ${window.location.origin}\nUsername: ${c.username}\nTemporary password: ${c.password}\nYou’ll choose your own password when you first sign in.`);
     toast.success('Copied sign-in details.');
   } catch { toast.error('Couldn’t copy. Select the text instead.'); }
 }
@@ -91,7 +93,7 @@ async function copyCredentials() {
 
 <template>
   <div>
-    <PageHeader title="Users" subtitle="Winter League accounts only — Gym Hive accounts are separate.">
+    <PageHeader title="Users" :subtitle="`${branding.appName} accounts only. Gym Hive accounts are separate.`">
       <button class="btn btn-primary" @click="open()">Add user</button>
     </PageHeader>
 
