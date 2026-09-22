@@ -94,6 +94,14 @@ Click **Publish schedule**. Coaches, directors, and referees see it immediately.
 ### Changes after publishing
 In the Schedule builder, switch to **Published** to move, flip, **Cancel**, or **Restore** a live game. Every change is logged and both teams' directors see it. Referees on a moved game stay on it if they're still free; otherwise they're removed and emailed. Cancelling a game releases its referees.
 
+## Final scores
+
+Coaches and directors of the two teams enter final scores after each game, and you can enter or correct any game's score the same way: **Schedule → Enter score** or **Edit score**. When you enter or correct one, both teams' coaches and directors are emailed. See the [Coach guide](/help/coach#entering-the-final-score) for the steps.
+
+- Every entry, correction, and clearing is in **Activity**, with who made it and the previous score, so disagreements can be settled from the record.
+- A game with a final score can't be moved, unplaced, or cancelled until its score is cleared. **Flip** swaps the scores along with home and away.
+- Republishing the schedule keeps scores on games that didn't change.
+
 ## Change requests: league sign-off
 
 Coaches and directors ask for changes from the Schedule page. A request goes to the requesting coach's own director, then to every other program involved, and finally to you.

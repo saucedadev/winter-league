@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useBrandingStore } from '../stores/branding';
@@ -32,7 +32,7 @@ function jump(id) {
   tocOpen.value = false;
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-watch(guide, async () => { await nextTick(); window.scrollTo({ top: 0 }); });
+// Scrolling to the top or to a linked #section is handled by the router.
 </script>
 
 <template>

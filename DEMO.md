@@ -18,7 +18,7 @@ Both use the same programs, venues, directors, teams, gym slots, and referee ros
 - **On your laptop (simplest):** in `backend/.env` set `DEMO_CHECKIN_ANYTIME=true`, then run `npm run db:reset` (walkthrough A) or `npm run db:reset -- --no-schedule` (walkthrough B), and restart `npm run dev` in both folders. The reset loads the programs, venues, and directors from the demo spreadsheet (`backend/demo-data/`) and prints every login, plus a "For the DEMO.md walkthrough" list of who plays each part below.
 - **Hosted demo (a web address everyone can open):** follow **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, which covers creating the demo database, loading the demo league, the Render and Vercel setup, and refreshing it between meetings.
 
-**Why demo mode:** check-in normally opens only on game day, 60 minutes before tip-off. Demo mode opens it for every upcoming game so you can show it in September. Turn it off afterwards.
+**Why demo mode:** check-in normally opens only on game day, 60 minutes before tip-off, and final scores can only be entered from tip-off. Demo mode opens both for every upcoming game so you can show them in September. Turn it off afterwards.
 
 **Tabs.** Each browser tab keeps its own sign-in, so open one tab per person ahead of time: `msauceda`, `dlumpkin`, `gkim`, `tgreene`, `pnair`, and `acoleman`. For the referee, a phone (hosted demo) or the browser's phone view (F12 → device toolbar) makes the point best.
 
@@ -63,6 +63,7 @@ Both use the same programs, venues, directors, teams, gym slots, and referee ros
 ### 6. Game day (Avery Coleman, `acoleman`, on a phone) — 2 min
 - **My games.** Directions and who they're working with. Tap **I'm here: check in** and allow location; the check-in records how far they are from the gym.
 - Mention **Can't make it** (before game day) and **Dates I can't work**, and that both reach the assignor.
+- **Tasha (`tgreene`) → Schedule:** choose **Enter score** on one of her games, enter both teams' points, and **Save score**. The score replaces "vs" on everyone's schedule with a **Final** badge. *Talking point:* either team's coach or director can enter it, the other side is emailed, and every entry or correction shows in both programs' Activity.
 
 ### 7. Paying referees (`pnair`) — 1 min
 - **Payouts.** Set the dates to cover the game just checked in. Expand Avery to see the game, then **Download summary (CSV)**.
@@ -110,7 +111,7 @@ Show that nobody has games yet, which makes the moment of publishing land:
 - *Talking point:* **Activity** shows every step to both programs involved.
 
 ### 7. Game day and payouts — 3 min
-Same as walkthrough A, steps 6 and 7: Avery checks in on a phone, then Priya's **Payouts** shows the game and exports the CSV.
+Same as walkthrough A, steps 6 and 7: Avery checks in on a phone, Tasha enters the final score, then Priya's **Payouts** shows the game and exports the CSV.
 
 ## Questions that usually come up
 - **Can we change the rules?** Yes. Games per team, game length, travel cap, rest days, games per week, referees per game, pay, and the check-in window are all settings.

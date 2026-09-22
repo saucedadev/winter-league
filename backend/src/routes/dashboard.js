@@ -62,6 +62,14 @@ router.get('/', ah(async (req, res) => {
         ORDER BY g.date, g.start_time LIMIT 6`, [pub.id, today, ...mine[1]])).map(shapeGame);
       schedule.gameCount = Number((await one(`SELECT COUNT(*) AS n FROM games g JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
         WHERE g.run_id = ? AND g.status = 'scheduled' AND ${mine[0]}`, [pub.id, ...mine[1]])).n);
+      // Played games still waiting for a final score (for people who can enter them).
+      if (['super_admin', 'program_director', 'league_coach'].includes(u.role)) {
+        const now = leagueNow();
+        const hhmm = `${String(Math.floor(now.minutes / 60)).padStart(2, '0')}:${String(now.minutes % 60).padStart(2, '0')}`;
+        schedule.scoresNeeded = Number((await one(`SELECT COUNT(*) AS n FROM games g JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
+          WHERE g.run_id = ? AND g.status = 'scheduled' AND (g.home_score IS NULL OR g.away_score IS NULL)
+            AND (g.date < ? OR (g.date = ? AND g.start_time <= ?)) AND ${mine[0]}`, [pub.id, now.date, now.date, hhmm, ...mine[1]])).n);
+      }
       if (isSuperAdmin(u) || programId) {
         schedule.openRequests = Number((await one(`SELECT COUNT(*) AS n FROM change_requests r WHERE r.status IN ('pending_director', 'pending_counterpart', 'pending_admin')
           ${programId ? 'AND (r.requesting_program_id = ? OR EXISTS (SELECT 1 FROM change_request_steps s WHERE s.request_id = r.id AND s.program_id = ?))' : ''}`,

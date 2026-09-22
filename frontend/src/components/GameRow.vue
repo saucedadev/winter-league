@@ -22,7 +22,13 @@ defineProps({
     <div class="flex-1 min-w-[13rem]">
       <p class="text-sm leading-snug" :class="game.status === 'cancelled' && 'line-through'">
         <span :class="highlightTeamIds.includes(game.homeTeamId) ? 'font-bold' : 'font-medium'">{{ game.homeTeamName }}</span>
-        <span class="text-text-muted text-xs font-semibold mx-1.5">vs</span>
+        <!-- A final score takes the place of "vs"; the winning score is bold. -->
+        <span v-if="game.hasScore" class="mx-1.5 tabular-nums whitespace-nowrap" :aria-label="`final score ${game.homeScore} to ${game.awayScore}`">
+          <span :class="game.homeScore > game.awayScore ? 'font-bold' : 'text-text-muted'">{{ game.homeScore }}</span>
+          <span class="text-text-muted"> – </span>
+          <span :class="game.awayScore > game.homeScore ? 'font-bold' : 'text-text-muted'">{{ game.awayScore }}</span>
+        </span>
+        <span v-else class="text-text-muted text-xs font-semibold mx-1.5">vs</span>
         <span :class="highlightTeamIds.includes(game.awayTeamId) ? 'font-bold' : 'font-medium'">{{ game.awayTeamName }}</span>
       </p>
       <p class="text-xs text-text-muted truncate">
@@ -32,6 +38,7 @@ defineProps({
       </p>
     </div>
     <div v-if="!compact" class="flex flex-wrap items-center gap-1.5">
+      <span v-if="game.hasScore" class="badge badge-outline" :title="game.scoreEnteredByName ? `Entered by ${game.scoreEnteredByName}` : undefined">Final{{ game.scoreNote ? ` · ${game.scoreNote}` : '' }}</span>
       <span v-if="game.status === 'cancelled'" class="badge badge-outline">Cancelled</span>
       <span v-if="game.hasBlackoutConflict" class="badge bg-unavailable text-white" :title="game.blackoutReason">Blackout conflict</span>
       <span v-if="game.hasOpenRequest" class="badge bg-pending text-black">Change requested</span>

@@ -32,6 +32,7 @@ export const GAME_SELECT = `SELECT g.*,
   ht.head_coach_user_id AS home_coach_id,
   at.name AS away_team_name, at.program_id AS away_program_id, ap.name AS away_program_name, ap.short_code AS away_program_code,
   at.head_coach_user_id AS away_coach_id,
+  su.first_name || ' ' || su.last_name AS score_entered_by_name,
   c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.program_id AS venue_program_id, v.address AS venue_address, v.city AS venue_city,
   (SELECT b.reason FROM blackout_dates b WHERE g.date IS NOT NULL AND g.date BETWEEN b.start_date AND b.end_date
      AND ((b.program_id = v.program_id AND (b.venue_id IS NULL OR b.venue_id = v.id))
@@ -42,12 +43,13 @@ export const GAME_SELECT = `SELECT g.*,
   JOIN divisions d ON d.id = g.division_id
   JOIN teams ht ON ht.id = g.home_team_id JOIN programs hp ON hp.id = ht.program_id
   JOIN teams at ON at.id = g.away_team_id JOIN programs ap ON ap.id = at.program_id
-  LEFT JOIN courts c ON c.id = g.court_id LEFT JOIN venues v ON v.id = c.venue_id`;
+  LEFT JOIN courts c ON c.id = g.court_id LEFT JOIN venues v ON v.id = c.venue_id
+  LEFT JOIN users su ON su.id = g.score_entered_by`;
 
 export const GAME_ORDER = `ORDER BY g.date IS NULL, g.date, g.start_time, d.sort_order, v.name COLLATE NOCASE, c.name COLLATE NOCASE`;
 
 export function shapeGame(g) {
-  return { ...g, hasBlackoutConflict: !!g.blackoutReason, hasOpenRequest: !!g.openRequestId };
+  return { ...g, hasBlackoutConflict: !!g.blackoutReason, hasOpenRequest: !!g.openRequestId, hasScore: g.homeScore != null && g.awayScore != null };
 }
 
 export async function getGame(id) {

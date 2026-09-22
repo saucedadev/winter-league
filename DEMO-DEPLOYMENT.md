@@ -143,7 +143,7 @@ openssl rand -hex 32
 | `JWT_SECRET` | from 3.3 | different from production's |
 | `APP_URL` | `http://localhost:5174` **for now** | replaced in step 5 |
 | `EMAIL_PROVIDER` | `console` | **demo never sends email**; messages go to the Render log |
-| `DEMO_CHECKIN_ANYTIME` | `true` | lets referees check in to any upcoming game, so check-in can be shown any day |
+| `DEMO_CHECKIN_ANYTIME` | `true` | lets referees check in to, and coaches enter final scores for, any upcoming game, so both can be shown any day |
 | `MAX_PROGRAMS` | `16` | |
 
 `LEAGUE_TIMEZONE` can be left out; it defaults to Pacific Time. Don't set `PORT`; Render provides it.

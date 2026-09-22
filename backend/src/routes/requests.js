@@ -17,7 +17,7 @@ import { logActivity } from '../utils/activityLog.js';
 import { sendEmail } from '../utils/email.js';
 import { config } from '../config.js';
 import { getGame, checkPlacement, placementUpdate, todayStr, describeGame } from '../scheduling/data.js';
-import { canRequestFor } from './schedule.js';
+import { canRequestFor, hasBeenPlayed } from './schedule.js';
 import { onGamesChanged } from '../referees/data.js';
 
 const router = Router();
@@ -147,7 +147,7 @@ async function assertRequestableGame(user, id, label) {
   const runRow = await one('SELECT status FROM schedule_runs WHERE id = ?', [g.runId]);
   if (runRow?.status !== 'published') throw badRequest(`${label} isn’t on the published schedule.`);
   if (g.status !== 'scheduled') throw badRequest(`${label} isn’t currently scheduled.`);
-  if (g.date < todayStr()) throw badRequest(`${label} has already been played.`);
+  if (g.date < todayStr() || hasBeenPlayed(g) || g.hasScore) throw badRequest(`${label} has already been played.`);
   if (g.hasOpenRequest) throw conflict(`${label} already has an open change request. Wait for it to be decided or cancel it first.`);
   return g;
 }

@@ -12,6 +12,22 @@ Coaches see their teams' schedule and ask for a game to be moved when something 
 
 **Change requested** on a game means someone has asked to change it and it's waiting for approval.
 
+## Entering the final score
+
+After a game, a coach of either team can enter the final score. Either side can do it, so there's no need to wait for the other team.
+
+1. On **Schedule**, find the game. From tip-off on game day, it has an **Enter score** button. Tick **Needs a score** to see only played games still waiting for one. Your dashboard also says when games need scores.
+2. Enter each team's points, and optionally a note such as *Forfeit* or *Ended early*.
+3. Choose **Save score**.
+
+![Entering the final score](/help/img/coach-enter-score.png)
+
+The score replaces "vs" on everyone's schedule, with the winning score in bold and a **Final** badge.
+
+![A game with its final score](/help/img/coach-scored.png)
+
+The other team's coach and director get an email with the score. If a score is wrong, choose **Edit score** to correct it, or **Clear score** to remove it. Corrections are emailed too, and every change shows in the programs' Activity. A game with a final score can't be moved or rescheduled.
+
 ## Asking to move a game
 
 1. On **Schedule**, find the game and choose **Request change**.

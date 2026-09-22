@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../stores/toast';
@@ -9,6 +9,7 @@ import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import GameRow from '../components/GameRow.vue';
 import RequestChangeModal from '../components/RequestChangeModal.vue';
+import ScoreModal from '../components/ScoreModal.vue';
 
 const auth = useAuthStore();
 const toast = useToast();
@@ -21,7 +22,11 @@ const mine = ref(hasOwn.value);
 const divisionId = ref('');
 const programId = ref('');
 const teamId = ref('');
-const showPast = ref(false);
+const route = useRoute();
+// ?needsScore=1 (from the dashboard): show played games still waiting for a score.
+const needsScore = ref(route.query.needsScore === '1');
+const showPast = ref(needsScore.value);
+watch(needsScore, (on) => { if (on) showPast.value = true; });
 
 async function load() {
   loading.value = true;
@@ -62,7 +67,11 @@ const teams = computed(() => uniq(games.value
   .flatMap((g) => [{ id: g.homeTeamId, name: g.homeTeamName }, { id: g.awayTeamId, name: g.awayTeamName }]), 'id', 'name'));
 watch(divisionId, () => { teamId.value = ''; });
 
+// Played games you can score that don't have one yet (worked out by the server, in league time).
+const awaitingScore = (g) => g.needsScore;
+const scoreCount = computed(() => games.value.filter(awaitingScore).length);
 const filtered = computed(() => games.value.filter((g) => (showPast.value || g.date >= today)
+  && (!needsScore.value || awaitingScore(g))
   && (!mine.value || isMine(g))
   && (!divisionId.value || g.divisionId === divisionId.value)
   && (!programId.value || [g.homeProgramId, g.awayProgramId].includes(programId.value))
@@ -75,6 +84,8 @@ const byDate = computed(() => {
 });
 
 const requesting = ref(null);
+const scoring = ref(null);
+async function onScored() { scoring.value = null; await load(); }
 async function onCreated() { requesting.value = null; await load(); }
 </script>
 
@@ -109,11 +120,13 @@ async function onCreated() { requesting.value = null; await load(); }
           <option value="">All teams</option>
           <option v-for="[id, name] in teams" :key="id" :value="id">{{ name }}</option>
         </select>
-        <label v-if="pastCount" class="text-sm flex items-center gap-2 ml-auto"><input v-model="showPast" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Show past games</label>
+        <label v-if="scoreCount || needsScore" class="text-sm flex items-center gap-2 ml-auto"><input v-model="needsScore" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Needs a score ({{ scoreCount }})</label>
+        <label v-if="pastCount" class="text-sm flex items-center gap-2" :class="!(scoreCount || needsScore) && 'ml-auto'"><input v-model="showPast" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Show past games</label>
       </div>
 
       <p class="text-xs text-text-muted mb-2">{{ filtered.length }} game{{ filtered.length === 1 ? '' : 's' }}</p>
-      <EmptyState v-if="!filtered.length" title="No games match" body="Try a different division or team, or switch to the whole league." />
+      <EmptyState v-if="!filtered.length && needsScore" title="Every played game has a score" body="Nothing is waiting for a final score." />
+      <EmptyState v-else-if="!filtered.length" title="No games match" body="Try a different division or team, or switch to the whole league." />
       <section v-for="[date, list] in byDate" :key="date" class="mb-4">
         <h2 class="text-sm font-semibold mb-1.5" :class="date < today && 'text-text-muted'">{{ longDate(date) }}</h2>
         <ul class="card card-blocky divide-y divide-border">
@@ -122,6 +135,7 @@ async function onCreated() { requesting.value = null; await load(); }
               <template #actions>
                 <RouterLink v-if="g.hasOpenRequest && hasOwn && isMine(g)" to="/requests" class="btn btn-ghost text-xs">View request</RouterLink>
                 <button v-else-if="g.canRequest" class="btn btn-secondary !py-1 !px-2.5 text-xs" @click="requesting = g">Request change</button>
+                <button v-if="g.canScore" class="btn !py-1 !px-2.5 text-xs" :class="g.hasScore ? 'btn-ghost' : 'btn-primary'" @click="scoring = g">{{ g.hasScore ? 'Edit score' : 'Enter score' }}</button>
               </template>
             </GameRow>
           </li>
@@ -130,5 +144,6 @@ async function onCreated() { requesting.value = null; await load(); }
     </template>
 
     <RequestChangeModal v-if="requesting" :game="requesting" @close="requesting = null" @created="onCreated" />
+    <ScoreModal v-if="scoring" :game="scoring" @close="scoring = null" @saved="onScored" />
   </div>
 </template>

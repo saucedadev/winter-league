@@ -446,13 +446,54 @@ const csvText = await csvRes.text();
 check('payout CSV downloads', csvRes.headers.get('content-type')?.includes('text/csv') && csvText.includes('Owen Brooks') && csvText.includes('Referee check-in'));
 check('referees cannot export payouts', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: refA })).status === 403);
 
+console.log('\nFinal scores');
+const played = (await call('GET', `/schedule/games/${nfhGame.id}`, { token: pd })).data.game; // today, tip-off 30 min ago
+const otherProg = played.homeProgramId === nfh.id ? played.awayProgramId : played.homeProgramId;
+check('a played game can be scored by its director', played.canScore === true);
+check('the dashboard counts games waiting for a score', (await call('GET', '/dashboard', { token: pd })).data.schedule.scoresNeeded >= 1);
+const futureNfh = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: pd })).data.games.find((g) => g.date > todayLocal && g.status === 'scheduled');
+check('future games can’t be scored', (await call('PUT', `/schedule/games/${futureNfh.id}/score`, { token: pd, body: { homeScore: 10, awayScore: 8 } })).status === 409);
+check('referees can’t enter scores', (await call('PUT', `/schedule/games/${played.id}/score`, { token: refA, body: { homeScore: 10, awayScore: 8 } })).status === 403);
+if (otherProg !== ryb.id && played.homeProgramId !== ryb.id) {
+  check('a director whose program isn’t playing can’t enter it', (await call('PUT', `/schedule/games/${played.id}/score`, { token: mbell, body: { homeScore: 10, awayScore: 8 } })).status === 403);
+}
+for (const [label, body] of [['negative', { homeScore: -1, awayScore: 8 }], ['not a number', { homeScore: 'ten', awayScore: 8 }], ['over 250', { homeScore: 300, awayScore: 8 }], ['missing', { homeScore: 10 }]]) {
+  check(`invalid score rejected (${label})`, (await call('PUT', `/schedule/games/${played.id}/score`, { token: pd, body })).status === 400);
+}
+const sc1 = await call('PUT', `/schedule/games/${played.id}/score`, { token: pd, body: { homeScore: 42, awayScore: 38 } });
+check('director enters the final score', sc1.status === 200 && sc1.data.game.homeScore === 42 && sc1.data.game.awayScore === 38 && sc1.data.game.scoreEnteredByName === 'Dana Whitfield');
+check('the score shows on the schedule', (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: coach })).data.games.find((g) => g.id === played.id)?.hasScore === true);
+const otherSees = (await call('GET', `/activity?category=schedule&programId=${otherProg}`, { token: admin })).data.entries;
+check('the other program sees the score in Activity', otherSees.some((e) => e.details.startsWith('Final score:') && e.details.includes('42 – 38')));
+const sc2 = await call('PUT', `/schedule/games/${played.id}/score`, { token: admin, body: { homeScore: 44, awayScore: 38, note: 'Overtime' } });
+check('the league can correct a score', sc2.data.game?.homeScore === 44 && sc2.data.game.scoreNote === 'Overtime');
+check('corrections are logged with the old score', (await call('GET', '/activity?category=schedule', { token: pd })).data.entries.some((e) => e.details.includes('Corrected the final score') && e.details.includes('(was 42 – 38)')));
+check('a scored game can’t be cancelled', (await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { action: 'cancel' } })).status === 409);
+const mvScored = (await call('GET', `/schedule/games/${played.id}/options`, { token: admin })).data.options[0];
+check('a scored game can’t be moved', !mvScored || (await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { courtId: mvScored.courtId, date: mvScored.date, startTime: mvScored.startTime, endTime: mvScored.endTime } })).status === 409);
+const fl1 = await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { action: 'flip' } });
+check('swapping home and away swaps the scores', fl1.data.game?.homeScore === 38 && fl1.data.game.awayScore === 44);
+await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { action: 'flip' } });
+check('a scored game isn’t offered for change requests', (await call('GET', `/schedule/games/${played.id}`, { token: pd })).data.game.canRequest === false
+  && (await call('POST', '/requests', { token: pd, body: { gameId: played.id, type: 'reschedule', reason: 'Testing scored game', courtId: 'x', date: '2026-12-01', startTime: '10:00', endTime: '11:00' } })).status === 400);
+const cl = await call('DELETE', `/schedule/games/${played.id}/score`, { token: pd });
+check('a score can be cleared', cl.status === 200 && cl.data.game.hasScore === false);
+
 console.log('\nRepublishing keeps referees on unchanged games');
 const regen = await call('POST', '/schedule/generate', { token: admin, body: {} });
+// A score on a game that's unchanged in the new draft must follow it when republishing.
+const gameKey = (g) => `${[g.homeTeamId, g.awayTeamId].sort().join()}|${g.date}|${g.startTime}|${g.courtId}`;
+const draftKeys = new Set((await call('GET', `/schedule/runs/${regen.data.draft.id}/games`, { token: admin })).data.games.map(gameKey));
+const keep = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.status === 'scheduled' && draftKeys.has(gameKey(g)));
+await (await import('../db/client.js')).run('UPDATE games SET home_score = 51, away_score = 49 WHERE id = ?', [keep.id]);
 const needs = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: {} });
 check('republish warns about referee assignments', needs.data.code === 'REPLACE_REQUIRED' && needs.data.assignedAhead > 0);
 const rep = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { replace: true } });
 check('unchanged games keep their referees', rep.status === 200 && rep.data.referees.carried > 0, JSON.stringify(rep.data.referees));
 check('worked games still count for pay after republishing', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data.totals.games === 1);
+const newGames = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games;
+const kept = newGames.find((g) => [g.homeTeamId, g.awayTeamId].sort().join() === [keep.homeTeamId, keep.awayTeamId].sort().join() && g.date === keep.date && g.startTime === keep.startTime);
+check('final scores carry over to unchanged games when republishing', !!kept && kept.hasScore && (kept.homeTeamId === keep.homeTeamId ? kept.homeScore === 51 : kept.awayScore === 51));
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

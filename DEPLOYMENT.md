@@ -252,7 +252,7 @@ Nothing new to configure. Push the code and Render's `npm run start:render` appl
 
 Push the code. Render applies `003_referees.sql` before the server starts. The league runs on Pacific Time by default (`LEAGUE_TIMEZONE=America/Los_Angeles`). If an earlier deployment set `LEAGUE_TIMEZONE=America/Chicago` on Render, change it or delete it. Then sign in as the Referee Assignor, add referees under **Referees**, check **Settings** (referees per game, default pay, check-in window), and use **Assignments** to fill games. Referee slots are created for the games already on the published schedule the first time the Assignments page or dashboard loads.
 
-**Live demos:** check-in normally only opens on game day. For a demo before the season starts, set `DEMO_CHECKIN_ANYTIME=true` on Render, redeploy, run the demo, then set it back to `false` and redeploy. While it's on, referees can check in to any upcoming game, and those check-ins count toward payouts. Reset or clear demo check-ins before the real season (the assignor can use **Clear attendance** on each).
+**Live demos:** check-in and score entry normally only open on game day. For a demo before the season starts, set `DEMO_CHECKIN_ANYTIME=true` on Render, redeploy, run the demo, then set it back to `false` and redeploy. While it's on, referees can check in to any upcoming game, and those check-ins count toward payouts. Reset or clear demo check-ins before the real season (the assignor can use **Clear attendance** on each).
 
 ## Hosted demo
 

@@ -63,6 +63,12 @@ If you add a blackout after the schedule is published and it covers games alread
 
 ![The published schedule](/help/img/pd-schedule.png)
 
+## Final scores
+
+After a game, you or a coach of either team enter the final score. On **Schedule**, played games have an **Enter score** button from tip-off on game day; tick **Needs a score** to see the ones still waiting. Your dashboard says how many of your program's games need scores.
+
+Enter each team's points, an optional note (e.g. *Forfeit*), and **Save score**. The other team's coach and director are emailed, and every entry or correction shows in both programs' Activity. Use **Edit score** or **Clear score** to fix a mistake. The [Coach guide](/help/coach#entering-the-final-score) has screenshots of each step.
+
 ## Change requests
 
 When a game needs to move, anyone involved can ask. **Request change** on a game lets you either **move this game** to another open time or **swap** it with another of your program's games. Only times that fit every scheduling rule are offered.

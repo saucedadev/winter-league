@@ -42,7 +42,16 @@ const routes = [
   { path: '/:pathMatch(.*)*', component: () => import('../views/NotFoundView.vue'), meta: { public: true } },
 ];
 
-export const router = createRouter({ history: createWebHistory(), routes, scrollBehavior: () => ({ top: 0 }) });
+// New pages open at the top; links to a section (e.g. /help/coach#entering-the-final-score)
+// open at that section once the page has rendered.
+export const router = createRouter({
+  history: createWebHistory(),
+  routes,
+  scrollBehavior(to) {
+    if (!to.hash) return { top: 0 };
+    return new Promise((resolve) => setTimeout(() => resolve({ el: decodeURIComponent(to.hash), top: 72 }), 150));
+  },
+});
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();

@@ -22,6 +22,7 @@ const scopeLabel = () => (auth.user.role === 'league_coach' ? 'your teams' : aut
         </p>
       </div>
       <div class="flex gap-2">
+        <RouterLink v-if="schedule.scoresNeeded" to="/schedule?needsScore=1" class="btn btn-primary">{{ schedule.scoresNeeded }} game{{ schedule.scoresNeeded === 1 ? ' needs a' : 's need' }} score{{ schedule.scoresNeeded === 1 ? '' : 's' }}</RouterLink>
         <RouterLink v-if="schedule.openRequests" to="/requests" class="btn btn-secondary">{{ schedule.openRequests }} open request{{ schedule.openRequests === 1 ? '' : 's' }}</RouterLink>
         <RouterLink v-if="auth.isSuperAdmin && !schedule.published" to="/schedule/builder" class="btn btn-primary">{{ schedule.hasDraft ? 'Review draft' : 'Build the schedule' }}</RouterLink>
         <RouterLink v-else-if="schedule.published" to="/schedule" class="btn btn-secondary">Full schedule</RouterLink>
