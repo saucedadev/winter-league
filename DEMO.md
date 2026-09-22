@@ -15,20 +15,45 @@ Both use the same programs, venues, directors, teams, gym slots, and referee ros
 
 **Where to run it.** Use your own machine, or a separate throwaway deployment. **Never** load demo data into the real league database.
 
-- **On your laptop (simplest):** in `backend/.env` set `DEMO_CHECKIN_ANYTIME=true`, then run `npm run db:reset` (walkthrough A) or `npm run db:reset -- --no-schedule` (walkthrough B), and restart `npm run dev` in both folders. The reset loads the programs, venues, and directors from the demo spreadsheet (`backend/demo-data/`) and prints every login, plus a "For the DEMO.md walkthrough" list of who plays each part below.
+- **On your laptop (simplest):** in `backend/.env` set `DEMO_CHECKIN_ANYTIME=true`, then in `backend/` run:
+  ```bash
+  npm run db:reset                    # walkthrough A: schedule already published
+  npm run db:reset -- --no-schedule   # walkthrough B: nothing published yet
+  ```
+  Restart `npm run dev` in both folders afterwards (the reset replaces the local database file). The reset loads the programs, venues, and directors from the demo spreadsheet (`backend/demo-data/`) and prints every login, plus a "For the DEMO.md walkthrough" list of who plays each part.
 - **Hosted demo (a web address everyone can open):** follow **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, which covers creating the demo database, loading the demo league, the Render and Vercel setup, and refreshing it between meetings.
 
 **Why demo mode:** check-in normally opens only on game day, 60 minutes before tip-off, and final scores can only be entered from tip-off. Demo mode opens both for every upcoming game so you can show them in September. Turn it off afterwards.
 
-**Tabs.** Each browser tab keeps its own sign-in, so open one tab per person ahead of time: `msauceda`, `dlumpkin`, `gkim`, `tgreene`, `pnair`, and `acoleman`. For the referee, a phone (hosted demo) or the browser's phone view (F12 → device toolbar) makes the point best.
+**Tabs.** Each browser tab keeps its own sign-in, so open one tab per person ahead of time: `crogers`, `tlehman`, `gkim`, `tgreene`, `pnair`, and `acoleman`. For the referee, a phone (hosted demo) or the browser's phone view (F12 → device toolbar) makes the point best.
 
-**Rehearse once.** The demo league is generated fresh on every reset, so team pairings and dates differ slightly each time. The steps below don't depend on specific games.
+**The demo accounts.** Everyone signs in with the password **`WinterDemo2026`**. The Program Directors come from the demo spreadsheet, one per program; the rest are the same in every demo. The reset prints this list too.
 
-**If the spreadsheet changes,** the people above may change too. Directors 1 and 2 are the directors of the first two programs on the Programs sheet, and Tasha coaches for the first program. The reset's "For the DEMO.md walkthrough" list always names them.
+| Username | Role | Name | Program |
+|---|---|---|---|
+| `gkim` | System Admin | Grace Kim | — |
+| `crogers` | Program Director | Colleen Rogers | Glencoe Youth Basketball |
+| `tlehman` | Program Director | Ted Lehman | Forest Grove Youth Basketball |
+| `rkruse` | Program Director | Rebecca Kruse | Banks Youth Basketball Association |
+| `sknight` | Program Director | Sam Knight | Century Youth Basketball |
+| `jnewman` | Program Director | Jake Newman | Liberty Youth Basketball |
+| `rkent` | Program Director | Roy Kent | Hilhi Youth Basketball |
+| `ksmith` | Program Director | Krissy Smith | Mountainside Youth Basketball |
+| `tgreene` | Coach | Tasha Greene | Glencoe Youth Basketball |
+| `lortega` | Coach | Luis Ortega | Forest Grove Youth Basketball |
+| `pnair` | Referee Assignor | Priya Nair | — |
+| `acoleman` | Referee | Avery Coleman (pay override, $50) | — |
+| `obrooks`, `jpike`, `sdelgado`, `rchen`, `mhayes`, `cnovak`, `dokafor` | Referees | Owen Brooks, Jordan Pike, Sam Delgado, Riley Chen, Morgan Hayes, Casey Novak, Drew Okafor | — |
+
+Email addresses are safe placeholders (`…@demo.example` for directors, `…@example.com` for the rest), so a demo can never email the real people in the spreadsheet.
+
+**Rehearse once.** The demo league is generated fresh on every reset, so team pairings and dates differ slightly each time. The steps below don't depend on specific games. If you edit the spreadsheet, the directors' names and usernames change with it: the reset prints the new list, and Director 1 and Director 2 below are always the directors of the first two programs on the Programs sheet.
+
+**If the spreadsheet changes,** the people named here change too. Director 1 (`crogers`) and Director 2 (`tlehman`) are the directors of the first two programs on the Programs sheet, and Tasha Greene coaches for the first program. The reset's "For the DEMO.md walkthrough" list always names the current ones.
 
 ## Walkthrough A: ready-made league
 
-### 1. What directors do (Misty Sauceda, `msauceda`, Glencoe) — 3 min
+### 1. What directors do (Colleen Rogers, `crogers`, Glencoe) — 3 min
 - **Dashboard → Get your program ready.** A checklist of everything the league needs: gyms with map coordinates, teams, coaches, game slots, and blackouts.
 - **Gym slots.** The week board with Practice, Weeknight game, and Weekend game block slots. Add a slot with **Repeat weekly** and point out that it skips blackout dates by itself. Slot cards show how many games are scheduled in them.
 - **Blackouts.** Thanksgiving and winter break are already in. Blackouts hide the gym time underneath them without deleting it.
@@ -37,7 +62,7 @@ Both use the same programs, venues, directors, teams, gym slots, and referee ros
 
 ### 2. Building the schedule (Grace Kim, `gkim`, System Admin) — 4 min
 - **Schedule builder.** Walk through the rules: games per team, game length, travel cap, days between games, games per week, **most games against the same opponent** (default 2), and **teams from the same program can play each other** (default Off, so a program's A and B teams never meet). Click **Generate draft**.
-- Point out any **Notes from the matchmaker** about small divisions (e.g. "got 4 of 8 games: 2 possible opponents and a limit of 2"). That's the rematch limit working as intended; raise it to 4 and regenerate to show the trade-off.
+- Point out any **Notes from the matchmaker** about small divisions (e.g. "got 4 of 8 games: 2 possible opponents and a limit of 2"). That's the rematch limit workruse as intended; raise it to 4 and regenerate to show the trade-off.
 - Read the summary cards: games placed, home/away balance, longest trip, and anything needing attention. Read one line from **Notes from the matchmaker**.
 - **Team balance** tab: find a bold row, go back to **By date**, and use **Flip** or **Move** on one of that team's games. The Move dialog only offers times that pass every rule.
 - **Publish schedule.** Point out the warning: publishing replaces the current schedule and says how many referee assignments carry over.
@@ -49,19 +74,19 @@ Both use the same programs, venues, directors, teams, gym slots, and referee ros
 - Point out the line under the reason explaining the path: her director, then the other program, then the league.
 
 ### 4. The approval chain — 3 min
-- **Misty (`msauceda`) → Requests.** The nav badge shows what's waiting on her: the new request plus two sample ones. Click **Endorse** on Tasha's.
-- **Dan (`dlumpkin`, Forest Grove) → Requests.** Click **Agree** as the other program.
+- **Colleen (`crogers`) → Requests.** The nav badge shows what's waiting on her: the new request plus two sample ones. Click **Endorse** on Tasha's.
+- **Ted (`tlehman`, Forest Grove) → Requests.** Click **Agree** as the other program.
 - **Grace (`gkim`) → Requests.** Click **Approve & apply**. The game moves, and the **Decided** tab shows what it was and where it went.
 
 *Talking point:* at every step the change is re-checked against the live schedule. If something else took that slot in the meantime, sign-off stops and says why.
 
 ### 5. Referees (Priya Nair, `pnair`, Referee Assignor) — 3 min
 - **Dashboard → Referee coverage:** upcoming slots, how many are still open, and how many are open in the next two weeks.
-- **Assignments.** Move to a December week and click **Auto-fill this week**. Open a slot to show why each referee can or can't take it: already working, marked unavailable, or back-to-back at another gym.
+- **Assignments.** Move to a December week and click **Auto-fill this week**. Open a slot to show why each referee can or can't take it: already workruse, marked unavailable, or back-to-back at another gym.
 - **Referees.** The roster, pay overrides (Avery Coleman is on $50), and unavailable dates.
 
 ### 6. Game day (Avery Coleman, `acoleman`, on a phone) — 2 min
-- **My games.** Directions and who they're working with. Tap **I'm here: check in** and allow location; the check-in records how far they are from the gym.
+- **My games.** Directions and who they're workruse with. Tap **I'm here: check in** and allow location; the check-in records how far they are from the gym.
 - Mention **Can't make it** (before game day) and **Dates I can't work**, and that both reach the assignor.
 - **Tasha (`tgreene`) → Schedule:** choose **Enter score** on one of her games, enter both teams' points, and **Save score**. The score replaces "vs" on everyone's schedule with a **Final** badge. *Talking point:* either team's coach or director can enter it, the other side is emailed, and every entry or correction shows in both programs' Activity.
 
@@ -80,7 +105,7 @@ Show that nobody has games yet, which makes the moment of publishing land:
 - **Avery (`acoleman`, referee, on a phone) → My games:** "No upcoming games".
 - **Priya (`pnair`, assignor) → Dashboard:** Referee coverage says slots appear once the league publishes the schedule.
 
-### 2. What directors give the league (Misty, `msauceda`) — 3 min
+### 2. What directors give the league (Colleen, `crogers`) — 3 min
 - **Dashboard → Get your program ready:** the checklist of what the league needs from each program.
 - **Gym slots:** the week board. *Talking point:* weeknight and weekend game slots are the only time the matchmaker uses for games; practice slots are left alone.
 - **Blackouts:** Thanksgiving and winter break are already in.
@@ -95,18 +120,18 @@ Show that nobody has games yet, which makes the moment of publishing land:
 
 ### 4. It's live — 2 min
 - **Tasha:** refresh **Schedule**. Her team's games appear, each with **Request change**. Her **Dashboard** now shows Upcoming games.
-- **Misty:** **Schedule → My program** shows all of Glencoe's games.
+- **Colleen:** **Schedule → My program** shows all of Glencoe's games.
 
 ### 5. Assigning referees from scratch (Priya, `pnair`) — 4 min
 - **Assignments:** every slot is open (the header says e.g. "0 of 296 upcoming referee slots filled").
 - Click **Auto-fill all upcoming** and confirm. With the demo's 8 referees it fills roughly two-thirds of the slots. The rest stay open because several games tip off at the same time and nobody is double-booked.
-- *Talking point:* open one of the still-open slots to show why each referee can't take it (already working at that time, marked unavailable, back-to-back at another gym). Then **Referees → Add referee** is how the assignor would close the gap.
+- *Talking point:* open one of the still-open slots to show why each referee can't take it (already workruse at that time, marked unavailable, back-to-back at another gym). Then **Referees → Add referee** is how the assignor would close the gap.
 - **Avery:** refresh **My games**. Their assigned games are there.
 
 ### 6. A change request and the approval chain — 4 min
 - **Tasha → Schedule → My teams:** **Request change** on a game against Forest Grove, pick **Move this game**, choose a time, give a reason. It goes to her director first.
-- **Misty → Requests:** the badge shows 1 waiting. **Endorse**.
-- **Dan (`dlumpkin`, Forest Grove) → Requests:** **Agree** as the other program.
+- **Colleen → Requests:** the badge shows 1 waiting. **Endorse**.
+- **Ted (`tlehman`, Forest Grove) → Requests:** **Agree** as the other program.
 - **Grace → Requests:** **Approve & apply**. The game moves, and any referee who can't make the new time is taken off and emailed.
 - *Talking point:* **Activity** shows every step to both programs involved.
 
@@ -122,6 +147,9 @@ Same as walkthrough A, steps 6 and 7: Avery checks in on a phone, Tasha enters t
 
 ## Afterwards
 
-To run the other walkthrough next time, reset with the other command (see the table at the top).
+**Starting fresh for the next meeting** (also how to switch between walkthroughs A and B):
+
+- **On your laptop:** run the reset again in `backend/` (`npm run db:reset`, or with `-- --no-schedule`), then restart `npm run dev` in both folders. Everything from the last demo is replaced.
+- **Hosted demo:** the demo database has to be recreated first; see **Refreshing the demo** in [DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md). `npm run db:reset` never touches a hosted database.
 
 Set `DEMO_CHECKIN_ANYTIME` back to `false`. If you used a hosted demo, delete the demo Render service and demo Turso database, or keep them for training.
