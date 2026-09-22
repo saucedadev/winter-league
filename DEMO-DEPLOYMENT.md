@@ -86,7 +86,12 @@ Expected: `✅ Migration complete — 5 new, 5 total.` (or more, if newer versio
 ```bash
 node src/scripts/seedDemo.js --env=.env.demo.local --force
 ```
-`--force` is required because this writes to a Turso database instead of your local one; it's a deliberate speed bump. This takes a minute or two over the internet. Expected, ending with the logins:
+`--force` is required because this writes to a Turso database instead of your local one; it's a deliberate speed bump.
+
+**Which walkthrough?** The command above loads [DEMO.md](./DEMO.md)'s **walkthrough A** (a ready-made league with a published schedule). For **walkthrough B**, where the audience watches the schedule get generated and published, add `--no-schedule`:
+```bash
+node src/scripts/seedDemo.js --env=.env.demo.local --force --no-schedule
+``` This takes a minute or two over the internet. Expected, ending with the logins:
 ```
 ✅ Demo data: 1 season, 7 programs, 15 venues, 37 teams, 360 gym slots.
 ✅ Demo schedule: 148 games published, 2 sample change requests.
@@ -187,7 +192,7 @@ No trailing slash. Save; Render redeploys automatically.
 Open the demo site URL and sign in with password `WinterDemo2026`:
 
 1. **`gkim`** (System Admin): the dashboard shows the Winter 2026–27 season, referee coverage, and upcoming games. **Programs** lists the spreadsheet's programs.
-2. **Director 1** from step 2.4 (e.g. `msauceda`): the **Requests** tab shows a badge with the sample requests waiting on them.
+2. **Director 1** from step 2.4 (e.g. `msauceda`): the **Requests** tab shows a badge with the sample requests waiting on them. (Loaded with `--no-schedule`, there are no sample requests yet, and **Schedule** says the schedule hasn't been published.)
 3. **`acoleman`** (Referee), ideally on a phone: **My games** shows a **Check-in is open** card. If it says check-in opens on game day instead, `DEMO_CHECKIN_ANYTIME` isn't set to `true` (step 3.4).
 4. **`pnair`** (Referee Assignor): **Assignments** shows November filled and later weeks open.
 
@@ -216,7 +221,7 @@ To return to a clean demo league, after a meeting or after editing the spreadshe
    ```
 2. **Update `backend/.env.demo.local`** with the new token (and the URL, if it changed).
 3. **Update Render:** `winter-league-demo-api` → **Environment** → paste the new `DATABASE_AUTH_TOKEN` (and `DATABASE_URL` if it changed). Save.
-4. **Load the league again:** steps 2.2–2.4.
+4. **Load the league again:** steps 2.2–2.4, with or without `--no-schedule` depending on which walkthrough you'll run next.
 
 The demo's Vercel site and Render settings don't otherwise change, and sign-ins keep working with `WinterDemo2026`. Anyone already signed in will need to sign in again.
 

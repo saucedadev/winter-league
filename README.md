@@ -86,6 +86,7 @@ The demo league's **programs, venues, and Program Directors** come from `backend
 - **Generated around the spreadsheet:** director logins (first initial + last name, e.g. `msauceda`), teams (each program enters 5 of 6 divisions; the 1st and 4th programs field a Competitive and a Developmental 6th Grade Girls team), gym slots on every court, blackouts, a published schedule, referee assignments for November, and two sample change requests. `tgreene` coaches for the 1st program and `lortega` for the 2nd.
 - **Unchanged whatever the spreadsheet says:** the referees, the Referee Assignor, the System Admins, and the coaches' accounts.
 - A different file: `npm run db:reset -- --file=path/to/league.xlsx`.
+- **No schedule yet:** `npm run db:reset -- --no-schedule` loads everything except the schedule: no published games, referee assignments, or sample change requests. That lets a demo generate and publish the season live ([DEMO.md](./DEMO.md), walkthrough B).
 
 **Automated tests use a separate built-in test league** (Northfield, Riverbend, `dwhitfield`, `mbell`, …), so editing the spreadsheet never breaks them. Before `npm run test:smoke`, load it with `npm run db:reset:test` and restart the API; the tests stop with a reminder if the spreadsheet league is loaded instead.
 

@@ -11,7 +11,7 @@ if (!config.databaseUrl.startsWith('file:')) {
 }
 // Check the demo data first (e.g. the spreadsheet), so a mistake in the file
 // stops the reset before the current database is deleted.
-const passArgs = process.argv.slice(2).filter((x) => /^--(dataset|file)=|^--real-emails$/.test(x)).map((x) => JSON.stringify(x)).join(' ');
+const passArgs = process.argv.slice(2).filter((x) => /^--(dataset|file)=|^--(real-emails|no-schedule)$/.test(x)).map((x) => JSON.stringify(x)).join(' ');
 try {
   execSync(`node src/scripts/seedDemo.js --check ${passArgs}`, { stdio: 'inherit' });
 } catch {

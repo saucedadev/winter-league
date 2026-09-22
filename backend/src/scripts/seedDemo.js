@@ -9,6 +9,10 @@
 //   npm run seed:demo -- --file=<path.xlsx>  a different spreadsheet
 //   npm run seed:demo -- --real-emails       keep the spreadsheet's real email addresses
 //   npm run seed:demo -- --dataset=test      built-in test league (for npm run test:smoke)
+//   npm run seed:demo -- --no-schedule       everything except the schedule: no published
+//                                            games, referee assignments, or sample change
+//                                            requests, so a demo can build and publish the
+//                                            season live (DEMO.md, "Full-process walkthrough")
 //
 // Refuses to run against Turso unless --force.
 import path from 'node:path';
@@ -156,22 +160,33 @@ async function main() {
   await db.batch(stmts, 'write');
   console.log(`✅ Demo data: 1 season, ${data.programs.length} programs, ${venueCount} venues, ${teamCount} teams, ${slotCount} gym slots.`);
 
-  // Phase 2: generate and publish a schedule, then file two sample change
-  // requests so every approval screen has something in it.
-  const season = await one('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+  const noSchedule = process.argv.includes('--no-schedule');
   const admin = await one("SELECT id FROM users WHERE username = 'gkim'");
-  const draft = await generateDraft(season, await getRules(), admin.id);
-  await db.execute({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [admin.id, draft.runId] });
-  const requests = data.requests ? await seedRequests(draft.runId, programIds, data.requests) : 0;
-  console.log(`✅ Demo schedule: ${draft.summary.scheduledGames} games published, ${requests} sample change requests.`);
-  for (const w of draft.warnings) console.log(`   ℹ️  ${w}`);
+  let draft = null;
+  if (!noSchedule) {
+    // Phase 2: generate and publish a schedule, then file two sample change
+    // requests so every approval screen has something in it.
+    const season = await one('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    draft = await generateDraft(season, await getRules(), admin.id);
+    await db.execute({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [admin.id, draft.runId] });
+    const requests = data.requests ? await seedRequests(draft.runId, programIds, data.requests) : 0;
+    console.log(`✅ Demo schedule: ${draft.summary.scheduledGames} games published, ${requests} sample change requests.`);
+    for (const w of draft.warnings) console.log(`   ℹ️  ${w}`);
+  } else {
+    console.log('✅ No schedule yet (--no-schedule): nothing published, so the demo can generate and publish it live.');
+  }
 
   // Phase 3: a referee roster, a few pay overrides and unavailable dates,
-  // and November auto-filled so the assignor starts with partial coverage.
+  // and (with a schedule) November auto-filled so the assignor starts with
+  // partial coverage.
   const refs = await seedReferees(pwHash, accounts);
-  await syncSlots(draft.runId, 2);
-  const fill = await autoFill({ runId: draft.runId, from: '2026-11-01', to: '2026-11-30', assignedBy: admin.id });
-  console.log(`✅ Demo referees: ${refs} on the roster, ${fill.filled} November slots filled, December onward left open for the assignor.`);
+  if (draft) {
+    await syncSlots(draft.runId, 2);
+    const fill = await autoFill({ runId: draft.runId, from: '2026-11-01', to: '2026-11-30', assignedBy: admin.id });
+    console.log(`✅ Demo referees: ${refs} on the roster, ${fill.filled} November slots filled, December onward left open for the assignor.`);
+  } else {
+    console.log(`✅ Demo referees: ${refs} on the roster, none assigned yet (games get referee slots once the schedule is published).`);
+  }
 
   console.log(`\n   Demo accounts (password for all: ${DEMO_PASSWORD})`);
   for (const a of accounts) {
@@ -182,7 +197,7 @@ async function main() {
     const dirOf = (code) => accounts.find((a) => a.role === 'program_director' && a.programId === programIds[code]);
     const coachProg = data.programs.find((p) => p.code === data.requests.coachProgram);
     const askProg = data.programs.find((p) => p.code === data.requests.askingProgram);
-    console.log(`\n   For the DEMO.md walkthrough:`);
+    console.log(`\n   For the DEMO.md walkthrough${noSchedule ? ' (Full-process walkthrough)' : ''}:`);
     console.log(`     Director 1 (approves the coach's request): ${dirOf(coachProg.code)?.username || '—'}  (${coachProg.name})`);
     console.log(`     Director 2 (the "other program"):           ${dirOf(askProg.code)?.username || '—'}  (${askProg.name})`);
     console.log(`     Coach: tgreene (${coachProg.name}) · Assignor: pnair · Referee: acoleman · Admin: gkim`);
