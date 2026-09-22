@@ -224,7 +224,7 @@ The API only accepts browser requests from origins listed in `APP_URL`, and uses
 5. **Programs:** add each participating program (up to 16).
 6. **Users:** create a Program Director for each program. Each gets a generated username and temporary password to hand over.
 7. Have one Program Director sign in and confirm they only see their own program, then add a venue and a few gym slots.
-8. Optional: on **Branding & theme** (avatar menu → League admin), pick the sitewide theme and set the conference's name and logo. On wide screens there's also a quick theme picker in the header.
+8. Optional: on **Branding & Theme** (avatar menu → League admin), pick the sitewide theme and set the conference's name and logo. On wide screens there's also a quick theme picker in the header.
 
 ---
 
@@ -264,7 +264,7 @@ Each conference runs as its own copy of the app: its own Turso database, Render 
 
 1. Follow steps 1–4 above with new names, e.g. Turso database `pacific-youth`, Render service `pacific-youth-api`, Vercel project `pacific-youth`.
 2. Give it its **own** `JWT_SECRET`, and set `EMAIL_FROM` to that conference's name (e.g. `Pacific Youth Conference <no-reply@yourdomain.com>`).
-3. Sign in as its System Admin and open **Branding & theme** (avatar menu → League admin) to set the app name, upload its logo, and pick its sitewide theme.
+3. Sign in as its System Admin and open **Branding & Theme** (avatar menu → League admin) to set the app name, upload its logo, and pick its sitewide theme.
 
 The code is the same for every conference, so fixes and new features ship to all of them from the one repository. Each Render service and Vercel project simply redeploys from `main`.
 

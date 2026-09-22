@@ -46,10 +46,10 @@ Do these in order before programs start entering gym time.
 | Referee Assignor | Manages referees: roster, assignments, attendance, and payouts |
 | Referee | Sees their games, checks in, and marks dates they can't work |
 
-### 4. Branding and theme
-**Menu → League admin → Branding & theme.** Set the name shown across the app and in emails, upload a logo (PNG, JPEG, WebP, or SVG under 300 KB), and pick the sitewide color theme. The preview shows your changes before you save.
+### 4. Branding & Theme
+**Menu → League admin → Branding & Theme.** Set the name shown across the app and in emails, upload a logo (PNG, JPEG, WebP, or SVG under 300 KB), and pick the sitewide color theme. The preview shows your changes before you save.
 
-![Branding & theme](/help/img/sa-branding.png)
+![Branding & Theme](/help/img/sa-branding.png)
 
 ## Building and publishing the schedule
 

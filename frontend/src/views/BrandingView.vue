@@ -48,8 +48,8 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
 </script>
 
 <template>
-  <div class="max-w-3xl">
-    <PageHeader title="Branding & theme" subtitle="The name, logo, and colors this conference sees everywhere: the header, the sign-in page, the browser tab, and emails." />
+  <div class="max-w-3xl mx-auto">
+    <PageHeader title="Branding & Theme" subtitle="The name, logo, and colors this conference sees everywhere: the header, the sign-in page, the browser tab, and emails." />
 
     <form class="card p-5 space-y-5" @submit.prevent="save">
       <div>

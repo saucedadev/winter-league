@@ -69,7 +69,7 @@ const menuGroups = computed(() => {
       { to: '/programs', label: 'Programs', show: sa },
       { to: '/league', label: 'League setup', show: sa },
       { to: '/users', label: 'Users', show: sa },
-      { to: '/branding', label: 'Branding & theme', show: sa },
+      { to: '/branding', label: 'Branding & Theme', show: sa },
       { to: '/activity', label: 'Activity', show: sa },
     ] },
   ];

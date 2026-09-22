@@ -88,7 +88,7 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
 </script>
 
 <template>
-  <div class="max-w-3xl">
+  <div class="max-w-3xl mx-auto">
     <PageHeader title="My games" :subtitle="data ? `${upcoming.length} upcoming · ${money(earned)} earned this season · All times ${leagueTimeZoneLabel()}` : ''" />
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
 
