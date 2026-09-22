@@ -210,6 +210,7 @@ function signOut() {
 
           <!-- Always visible, however long the list above. -->
           <div class="shrink-0 border-t border-border py-1 bg-surface pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-6px_10px_-8px_rgba(0,0,0,0.25)]">
+            <RouterLink to="/help" class="block px-4 py-3 sm:py-2 text-sm hover:bg-background" :class="route.path.startsWith('/help') && 'font-semibold text-accent'">Help &amp; user guide</RouterLink>
             <RouterLink to="/change-password" class="block px-4 py-3 sm:py-2 text-sm hover:bg-background">Change password</RouterLink>
             <button type="button" class="block w-full text-left px-4 py-3 sm:py-2 text-sm hover:bg-background" @click="signOut">Sign out</button>
           </div>

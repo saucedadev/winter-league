@@ -106,6 +106,27 @@ The demo league's **programs, venues, and Program Directors** come from `backend
 | `npm run test:smoke`    | 148 API checks (auth, program isolation, slot rules, matchmaker and opponent rules, approval chain, referee assignment, check-in, payouts, branding, phone numbers). Run after `npm run db:reset:test`, with the API up in normal mode (not demo check-in mode). |
 | `npm run test:demo-data` | 18 checks that the demo spreadsheet loads correctly and that broken files are rejected with clear messages. Needs no API or database. |
 
+## Help pages and user guides
+
+Everyone has **Help & user guide** at the bottom of the menu. It opens the guide for their role, with a contents list and screenshots, and a **Download PDF** button:
+
+| Guide | Seen by |
+|---|---|
+| System Admin | System Admins (who can also open every other guide) |
+| Program Director | Program Directors, plus the Coach guide |
+| Coach | Coaches |
+| Referee Assignor | the Referee Assignor, plus the Referee guide |
+| Referee | Referees |
+
+**Editing a guide:** each guide is one Markdown file in `frontend/src/help/` (`system-admin.md`, `program-director.md`, `coach.md`, `referee-assignor.md`, `referee.md`). They share `_getting-started.md` (signing in, the menu, time zone). In the text, `{{appName}}` becomes the conference's name from Branding, and links like `/help/coach` open another guide. Screenshots live in `frontend/public/help/img/`. The Help page shows edits as soon as the site is rebuilt.
+
+**Rebuilding the PDFs after editing:** the downloadable PDFs are files in `frontend/public/guides/`, built from the same pages. In `frontend/`:
+```bash
+npx playwright install chromium     # one time per machine
+npm run guides:pdf                  # or: npm run guides:pdf -- --name="Pacific Youth Conference"
+```
+Then commit `frontend/public/guides/`. `--name` sets the conference name printed in the PDFs (the Help pages always use the current Branding name).
+
 ## Deploying
 
 - **Real league:** **[DEPLOYMENT.md](./DEPLOYMENT.md)**, with step-by-step Turso, Render and Vercel setup.

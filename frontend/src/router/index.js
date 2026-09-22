@@ -33,9 +33,12 @@ const routes = [
       { path: 'referees', component: () => import('../views/RefereesView.vue'), meta: { roles: REF_MANAGERS, title: 'Referees' } },
       { path: 'payouts', component: () => import('../views/PayoutsView.vue'), meta: { roles: REF_MANAGERS, title: 'Referee payouts' } },
       { path: 'my-games', component: () => import('../views/MyGamesView.vue'), meta: { roles: ['referee'], title: 'My games' } },
+      { path: 'help/:guide?', component: () => import('../views/HelpView.vue'), meta: { title: 'Help' } },
       { path: 'activity', component: () => import('../views/ActivityView.vue'), meta: { roles: MANAGERS, title: 'Activity' } },
     ],
   },
+  // Print-ready guide with no app chrome, used to build the downloadable PDFs.
+  { path: '/help-print/:guide', component: () => import('../views/GuidePrintView.vue'), meta: { public: true, title: 'Guide' } },
   { path: '/:pathMatch(.*)*', component: () => import('../views/NotFoundView.vue'), meta: { public: true } },
 ];
 

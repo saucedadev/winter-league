@@ -117,6 +117,7 @@ Same as walkthrough A, steps 6 and 7: Avery checks in on a phone, then Priya's *
 - **What if a gym closes mid-season?** Add a blackout. Affected published games are flagged in the schedule builder for the league to move, and moving them tells the referees.
 - **Do coaches need accounts?** Only to see "My teams" and request changes. The published schedule is visible to every account.
 - **Do parents get access?** Not in this version.
+- **How will people learn the app?** Everyone has **Help & user guide** at the bottom of the menu: a step-by-step guide for their role, with screenshots, and a **Download PDF** button to print or email it.
 
 ## Afterwards
 
