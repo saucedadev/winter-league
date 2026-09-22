@@ -5,6 +5,7 @@ import { useBrandingStore, DEFAULT_APP_NAME } from '../stores/branding';
 import { useToast } from '../stores/toast';
 import PageHeader from '../components/PageHeader.vue';
 import BrandMark from '../components/BrandMark.vue';
+import ThemePicker from '../components/ThemePicker.vue';
 
 const branding = useBrandingStore();
 const toast = useToast();
@@ -48,7 +49,7 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
 
 <template>
   <div class="max-w-3xl">
-    <PageHeader title="Branding" subtitle="The name and logo this conference sees everywhere: the header, the sign-in page, the browser tab, and emails." />
+    <PageHeader title="Branding & theme" subtitle="The name, logo, and colors this conference sees everywhere: the header, the sign-in page, the browser tab, and emails." />
 
     <form class="card p-5 space-y-5" @submit.prevent="save">
       <div>
@@ -95,6 +96,13 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
         <button type="submit" class="btn btn-primary" :disabled="!dirty || saving || form.appName.trim().length < 2">{{ saving ? 'Saving…' : 'Save branding' }}</button>
       </div>
     </form>
+
+    <section class="card p-5 mt-5">
+      <h2 class="font-semibold">Sitewide theme</h2>
+      <p class="text-sm text-text-muted mb-3">The color theme for everyone, including the sign-in page. Changes apply as soon as you pick one.</p>
+      <label class="label" for="theme-select">Theme</label>
+      <ThemePicker id="theme-select" class="!text-base w-full sm:w-72 !py-2" />
+    </section>
 
     <p class="text-xs text-text-muted mt-4">Running more than one conference? Each conference gets its own copy of the app with its own database (see DEPLOYMENT.md), so each sets its own name, logo, and theme here.</p>
   </div>

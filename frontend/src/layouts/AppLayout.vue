@@ -33,17 +33,71 @@ const primaryNav = computed(() => [
   { to: '/teams', label: 'Teams', show: ['super_admin', 'program_director', 'league_coach'].includes(role.value) },
 ].filter((n) => n.show));
 
-const adminNav = computed(() => [
-  { to: '/schedule/builder', label: 'Schedule builder', show: auth.isSuperAdmin },
-  { to: '/assignments', label: 'Referee assignments', show: auth.isSuperAdmin },
-  { to: '/referees', label: 'Referees', show: auth.isSuperAdmin },
-  { to: '/payouts', label: 'Referee payouts', show: auth.isSuperAdmin },
-  { to: '/programs', label: 'Programs', show: auth.isSuperAdmin },
-  { to: '/branding', label: 'Branding', show: auth.isSuperAdmin },
-  { to: '/league', label: 'League setup', show: auth.isSuperAdmin },
-  { to: '/users', label: 'Users', show: auth.isSuperAdmin },
-  { to: '/activity', label: 'Activity', show: auth.canManage },
-].filter((n) => n.show));
+// The account menu, in sections. Each role sees only the sections it has
+// links in. Links that are also in the desktop header (primaryNav) are
+// marked inHeader and hidden from the menu on wide screens.
+const inHeader = (to) => primaryNav.value.some((n) => n.to === to);
+const menuGroups = computed(() => {
+  const sa = auth.isSuperAdmin;
+  const coachOrDirector = ['super_admin', 'program_director', 'league_coach'].includes(role.value);
+  const groups = [
+    { id: 'league', label: 'League', items: [
+      { to: '/', label: 'Dashboard' },
+      { to: '/my-games', label: 'My games', show: role.value === 'referee' },
+      { to: '/schedule', label: 'Schedule' },
+      { to: '/requests', label: 'Requests', show: coachOrDirector, badge: true },
+    ] },
+    { id: 'officials', label: 'Referees', items: [
+      { to: '/assignments', label: 'Assignments', show: role.value === 'referee_assignor' },
+      { to: '/referees', label: 'Referees', show: role.value === 'referee_assignor' },
+      { to: '/payouts', label: 'Payouts', show: role.value === 'referee_assignor' },
+    ] },
+    { id: 'program', label: sa ? 'Programs & gyms' : 'My program', items: [
+      { to: '/slots', label: 'Gym slots', show: auth.canManage },
+      { to: '/blackouts', label: 'Blackouts', show: auth.canManage },
+      { to: '/venues', label: 'Venues', show: coachOrDirector },
+      { to: '/teams', label: 'Teams', show: coachOrDirector },
+      { to: '/activity', label: 'Activity', show: auth.canManage && !sa },
+    ] },
+    { id: 'scheduling', label: 'Scheduling', items: [{ to: '/schedule/builder', label: 'Schedule builder', show: sa }] },
+    { id: 'referees', label: 'Referees', items: [
+      { to: '/assignments', label: 'Referee assignments', show: sa },
+      { to: '/referees', label: 'Referees', show: sa },
+      { to: '/payouts', label: 'Referee payouts', show: sa },
+    ] },
+    { id: 'admin', label: 'League admin', items: [
+      { to: '/programs', label: 'Programs', show: sa },
+      { to: '/league', label: 'League setup', show: sa },
+      { to: '/users', label: 'Users', show: sa },
+      { to: '/branding', label: 'Branding & theme', show: sa },
+      { to: '/activity', label: 'Activity', show: sa },
+    ] },
+  ];
+  return groups
+    .map((g) => {
+      const items = g.items.filter((i) => i.show !== false).map((i) => ({ ...i, inHeader: inHeader(i.to) }));
+      return { ...g, items, allInHeader: items.every((i) => i.inHeader) };
+    })
+    .filter((g) => g.items.length);
+});
+// On wide screens (xl, 1280px+) the header shows the main links, so the menu
+// only lists the rest.
+const wideQuery = window.matchMedia('(min-width: 1280px)');
+const isWide = ref(wideQuery.matches);
+const onWideChange = (e) => { isWide.value = e.matches; };
+const menuLinkCount = computed(() => menuGroups.value.reduce((n, g) => n + g.items.filter((i) => !(isWide.value && i.inHeader)).length, 0));
+// Long menus (the System Admin's on phones and tablets) collapse to section
+// headings, with the section holding the current page open. Shorter menus,
+// including the admin's on a wide screen, just show everything.
+const collapsible = computed(() => menuLinkCount.value > 10);
+const openGroups = ref(new Set());
+const groupOpen = (g) => !collapsible.value || openGroups.value.has(g.id);
+function toggleGroup(g) {
+  const next = new Set(openGroups.value);
+  if (next.has(g.id)) next.delete(g.id); else next.add(g.id);
+  openGroups.value = next;
+}
+const groupHasActive = (g) => g.items.some((i) => isActive(i.to));
 
 const isActive = (to) => {
   if (to === '/') return route.path === '/';
@@ -51,10 +105,33 @@ const isActive = (to) => {
   return route.path.startsWith(to);
 };
 
-function onDocClick(e) { if (menuOpen.value && !menuRoot.value?.contains(e.target)) menuOpen.value = false; }
-onMounted(() => { document.addEventListener('click', onDocClick); ctx.load().catch(() => {}); badge.refresh(); });
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
-watch(() => route.fullPath, () => { menuOpen.value = false; badge.refresh(); });
+const menuButton = ref(null);
+function closeMenu({ focusButton = false } = {}) {
+  menuOpen.value = false;
+  if (focusButton) menuButton.value?.focus();
+}
+function onDocClick(e) { if (menuOpen.value && !menuRoot.value?.contains(e.target)) closeMenu(); }
+function onKeydown(e) { if (e.key === 'Escape' && menuOpen.value) closeMenu({ focusButton: true }); }
+// Phones: the menu is a full-screen panel, so the page behind it mustn't scroll.
+const isPhone = () => window.matchMedia('(max-width: 639px)').matches;
+watch(menuOpen, (open) => {
+  if (open) openGroups.value = new Set(menuGroups.value.filter(groupHasActive).map((g) => g.id));
+  document.documentElement.style.overflow = open && isPhone() ? 'hidden' : '';
+});
+onMounted(() => {
+  document.addEventListener('click', onDocClick);
+  document.addEventListener('keydown', onKeydown);
+  wideQuery.addEventListener('change', onWideChange);
+  ctx.load().catch(() => {});
+  badge.refresh();
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick);
+  document.removeEventListener('keydown', onKeydown);
+  wideQuery.removeEventListener('change', onWideChange);
+  document.documentElement.style.overflow = '';
+});
+watch(() => route.fullPath, () => { closeMenu(); badge.refresh(); });
 
 function signOut() {
   auth.clear();
@@ -83,7 +160,8 @@ function signOut() {
       <ThemePicker v-if="auth.isSuperAdmin" class="hidden sm:block xl:hidden 2xl:block" />
 
       <div ref="menuRoot" class="relative">
-        <button class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/5" :aria-expanded="menuOpen" aria-haspopup="menu" @click="menuOpen = !menuOpen">
+        <button ref="menuButton" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/5" :aria-expanded="menuOpen" aria-controls="account-menu"
+          :aria-label="menuOpen ? 'Close menu' : 'Open menu'" @click="menuOpen = !menuOpen">
           <span class="relative w-8 h-8 rounded-full bg-header-accent text-header-accent-contrast grid place-items-center text-xs font-bold">
             <span v-if="badge.count" class="xl:hidden absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-highlight ring-2 ring-header" :aria-label="`${badge.count} request(s) waiting on you`" />
             {{ (auth.user?.firstName?.[0] || '') + (auth.user?.lastName?.[0] || '') }}
@@ -95,30 +173,46 @@ function signOut() {
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" class="opacity-70"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
         </button>
 
-        <div v-if="menuOpen" role="menu" class="absolute right-0 mt-2 w-64 rounded-xl border border-border bg-surface text-text shadow-xl z-40 overflow-hidden">
-          <div class="px-4 py-3 border-b border-border sm:hidden">
-            <p class="font-medium text-sm">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
-            <p class="text-xs text-text-muted">{{ auth.roleLabel }}<template v-if="auth.user?.programName"> · {{ auth.user.programName }}</template></p>
+        <!-- Phones: a full-screen panel under the header with its own scrolling.
+             Larger screens: a dropdown capped to the screen height. Either way the
+             links scroll and the account section stays pinned at the bottom. -->
+        <div v-if="menuOpen" id="account-menu"
+          class="fixed inset-x-0 top-16 bottom-0 z-40 flex flex-col bg-surface text-text
+                 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72 sm:max-h-[calc(100dvh-5rem)] sm:rounded-xl sm:border sm:border-border sm:shadow-xl overflow-hidden">
+          <div class="px-4 py-3 border-b border-border sm:hidden flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="font-medium">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
+              <p class="text-xs text-text-muted">{{ auth.roleLabel }}<template v-if="auth.user?.programName"> · {{ auth.user.programName }}</template></p>
+            </div>
+            <button class="btn btn-ghost !px-2 !py-1 text-sm shrink-0" @click="closeMenu({ focusButton: true })">Close ✕</button>
           </div>
-          <div class="xl:hidden py-1 border-b border-border">
-            <RouterLink v-for="n in primaryNav" :key="n.to" :to="n.to" role="menuitem"
-              class="block px-4 py-2 text-sm hover:bg-background" :class="isActive(n.to) && 'font-semibold text-accent'">{{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5">{{ badge.count }}</span></RouterLink>
-          </div>
-          <div v-if="adminNav.length" class="py-1 border-b border-border">
-            <RouterLink v-for="n in adminNav" :key="n.to" :to="n.to" role="menuitem"
-              class="block px-4 py-2 text-sm hover:bg-background" :class="isActive(n.to) && 'font-semibold text-accent'">{{ n.label }}</RouterLink>
-          </div>
-          <div v-if="auth.isSuperAdmin" class="md:hidden px-4 py-3 border-b border-border">
-            <ProgramSwitcher />
-          </div>
-          <!-- The theme picker moves in here whenever the header has no room for it. -->
-          <div v-if="auth.isSuperAdmin" class="sm:hidden xl:block 2xl:hidden px-4 py-3 border-b border-border">
-            <p class="text-xs text-text-muted mb-1">Sitewide theme</p>
-            <ThemePicker class="w-full" />
-          </div>
-          <div class="py-1">
-            <RouterLink to="/change-password" role="menuitem" class="block px-4 py-2 text-sm hover:bg-background">Change password</RouterLink>
-            <button role="menuitem" class="block w-full text-left px-4 py-2 text-sm hover:bg-background" @click="signOut">Sign out</button>
+
+          <nav class="flex-1 min-h-0 overflow-y-auto overscroll-contain py-1" aria-label="Menu">
+            <div v-if="auth.isSuperAdmin" class="md:hidden px-4 py-3 border-b border-border">
+              <ProgramSwitcher />
+            </div>
+            <section v-for="g in menuGroups" :key="g.id" class="border-b border-border last:border-b-0 py-1" :class="g.allInHeader && 'xl:hidden'">
+              <button v-if="collapsible" type="button" class="w-full flex items-center justify-between px-4 py-2.5 sm:py-2 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text"
+                :aria-expanded="groupOpen(g)" :aria-controls="`menu-group-${g.id}`" @click="toggleGroup(g)">
+                <span>{{ g.label }}<span v-if="!groupOpen(g) && g.items.some((i) => i.badge) && badge.count" class="ml-2 badge bg-highlight text-black !py-0 !px-1.5 normal-case tracking-normal">{{ badge.count }}</span></span>
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" class="transition-transform" :class="groupOpen(g) && 'rotate-180'"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
+              </button>
+              <p v-else-if="menuGroups.length > 1" class="px-4 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-text-muted" :class="g.allInHeader && 'xl:hidden'">{{ g.label }}</p>
+              <ul v-show="groupOpen(g)" :id="`menu-group-${g.id}`">
+                <li v-for="n in g.items" :key="n.to" :class="n.inHeader && 'xl:hidden'">
+                  <RouterLink :to="n.to" class="flex items-center px-4 py-3 sm:py-2 text-sm hover:bg-background"
+                    :class="isActive(n.to) && 'font-semibold text-accent'" :aria-current="isActive(n.to) ? 'page' : undefined">
+                    {{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5">{{ badge.count }}</span>
+                  </RouterLink>
+                </li>
+              </ul>
+            </section>
+          </nav>
+
+          <!-- Always visible, however long the list above. -->
+          <div class="shrink-0 border-t border-border py-1 bg-surface pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-6px_10px_-8px_rgba(0,0,0,0.25)]">
+            <RouterLink to="/change-password" class="block px-4 py-3 sm:py-2 text-sm hover:bg-background">Change password</RouterLink>
+            <button type="button" class="block w-full text-left px-4 py-3 sm:py-2 text-sm hover:bg-background" @click="signOut">Sign out</button>
           </div>
         </div>
       </div>

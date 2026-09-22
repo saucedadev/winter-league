@@ -191,7 +191,7 @@ Open the demo site URL and sign in with password `WinterDemo2026`:
 3. **`acoleman`** (Referee), ideally on a phone: **My games** shows a **Check-in is open** card. If it says check-in opens on game day instead, `DEMO_CHECKIN_ANYTIME` isn't set to `true` (step 3.4).
 4. **`pnair`** (Referee Assignor): **Assignments** shows November filled and later weeks open.
 
-**Optional branding:** as `gkim`, open **Branding** (avatar menu) to set the conference name and logo, and pick a theme (e.g. Pacific Energy).
+**Optional branding:** as `gkim`, open **Branding & theme** (avatar menu → League admin) to set the conference name and logo, and pick a theme (e.g. Pacific Energy).
 
 You're ready to follow [DEMO.md](./DEMO.md).
 
