@@ -112,7 +112,7 @@ function closeMenu({ focusButton = false } = {}) {
 }
 function onDocClick(e) { if (menuOpen.value && !menuRoot.value?.contains(e.target)) closeMenu(); }
 function onKeydown(e) { if (e.key === 'Escape' && menuOpen.value) closeMenu({ focusButton: true }); }
-// Phones: the menu is a full-screen panel, so the page behind it mustn't scroll.
+// Phones: while the menu is open, the page behind it (and the dimmed layer) mustn't scroll.
 const isPhone = () => window.matchMedia('(max-width: 639px)').matches;
 watch(menuOpen, (open) => {
   if (open) openGroups.value = new Set(menuGroups.value.filter(groupHasActive).map((g) => g.id));
@@ -173,18 +173,17 @@ function signOut() {
           <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" class="opacity-70"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
         </button>
 
-        <!-- Phones: a full-screen panel under the header with its own scrolling.
-             Larger screens: a dropdown capped to the screen height. Either way the
-             links scroll and the account section stays pinned at the bottom. -->
+        <!-- Phones: a light dimmed layer behind the menu. Tapping it closes the
+             menu without also pressing whatever is underneath. -->
+        <div v-if="menuOpen" class="sm:hidden fixed inset-x-0 top-16 bottom-0 z-30 bg-black/25" aria-hidden="true" @click="closeMenu()" />
+        <!-- A panel on top of the page, anchored under the avatar and capped to the
+             screen height: the links scroll and the account section stays pinned. -->
         <div v-if="menuOpen" id="account-menu"
-          class="fixed inset-x-0 top-16 bottom-0 z-40 flex flex-col bg-surface text-text
-                 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72 sm:max-h-[calc(100dvh-5rem)] sm:rounded-xl sm:border sm:border-border sm:shadow-xl overflow-hidden">
-          <div class="px-4 py-3 border-b border-border sm:hidden flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <p class="font-medium">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
-              <p class="text-xs text-text-muted">{{ auth.roleLabel }}<template v-if="auth.user?.programName"> · {{ auth.user.programName }}</template></p>
-            </div>
-            <button class="btn btn-ghost !px-2 !py-1 text-sm shrink-0" @click="closeMenu({ focusButton: true })">Close ✕</button>
+          class="fixed right-2 top-[4.25rem] z-40 w-[min(20rem,calc(100vw-1rem))] max-h-[calc(100dvh-5rem)] flex flex-col bg-surface text-text rounded-xl border border-border shadow-xl overflow-hidden
+                 sm:absolute sm:right-0 sm:top-full sm:mt-2 sm:w-72">
+          <div class="px-4 py-3 border-b border-border sm:hidden">
+            <p class="font-medium">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
+            <p class="text-xs text-text-muted">{{ auth.roleLabel }}<template v-if="auth.user?.programName"> · {{ auth.user.programName }}</template></p>
           </div>
 
           <nav class="flex-1 min-h-0 overflow-y-auto overscroll-contain py-1" aria-label="Menu">
