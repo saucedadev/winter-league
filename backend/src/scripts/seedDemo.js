@@ -9,6 +9,8 @@
 //   npm run seed:demo -- --file=<path.xlsx>  a different spreadsheet
 //   npm run seed:demo -- --real-emails       keep the spreadsheet's real email addresses
 //   npm run seed:demo -- --dataset=test      built-in test league (for npm run test:smoke)
+//   npm run seed:demo -- --replace           wipe what's there first and load a fresh demo
+//                                            (how you refresh a hosted demo; local use db:reset)
 //   npm run seed:demo -- --no-schedule       everything except the schedule: no published
 //                                            games, referee assignments, or sample change
 //                                            requests, so a demo can build and publish the
@@ -55,12 +57,26 @@ async function loadDataset() {
   });
 }
 
+// Every table the demo fills, children before parents.
+const DEMO_TABLES = ['activity_log_programs', 'activity_log', 'change_request_steps', 'change_requests', 'referee_assignments',
+  'referee_unavailability', 'referee_profiles', 'games', 'schedule_runs', 'gym_slots', 'blackout_dates', 'teams', 'courts', 'venues',
+  'password_reset_tokens', 'users', 'divisions', 'seasons', 'programs', 'app_settings'];
+
+// --replace: clear the demo database and start over. Everything entered since
+// the last load is deleted, which is the point: it's how a demo is refreshed.
+async function wipe() {
+  const where = config.databaseUrl.startsWith('file:') ? config.databaseUrl : new URL(config.databaseUrl).host;
+  console.log(`🧹 Replacing everything in ${where}…`);
+  await db.batch(DEMO_TABLES.map((t) => ({ sql: `DELETE FROM ${t}`, args: [] })), 'write');
+}
+
 async function main() {
+  if (process.argv.includes('--replace')) await wipe();
   await seedBase({ quiet: true });
   if (await one('SELECT 1 FROM programs LIMIT 1')) {
     console.log(config.databaseUrl.startsWith('file:')
       ? 'ℹ️  Demo data already present — nothing to do. (npm run db:reset starts fresh.)'
-      : 'ℹ️  Demo data already present — nothing to do. To start over on a hosted demo, recreate its database (DEMO-DEPLOYMENT.md, "Refreshing the demo").');
+      : 'ℹ️  Demo data already present — nothing to do. To load a fresh demo over it, add --replace.');
     return;
   }
   const data = await loadDataset();

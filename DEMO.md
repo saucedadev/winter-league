@@ -21,7 +21,7 @@ Both use the same programs, venues, directors, teams, gym slots, and referee ros
   npm run db:reset -- --no-schedule   # walkthrough B: nothing published yet
   ```
   Restart `npm run dev` in both folders afterwards (the reset replaces the local database file). The reset loads the programs, venues, and directors from the demo spreadsheet (`backend/demo-data/`) and prints every login, plus a "For the DEMO.md walkthrough" list of who plays each part.
-- **Hosted demo (a web address everyone can open):** follow **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, which covers creating the demo database, loading the demo league, the Render and Vercel setup, and refreshing it between meetings.
+- **Hosted demo (a web address everyone can open):** follow **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, which covers both ways of running a demo (local and hosted), with or without a schedule, and how to refresh one between meetings.
 
 **Why demo mode:** check-in normally opens only on game day, 60 minutes before tip-off, and final scores can only be entered from tip-off. Demo mode opens both for every upcoming game so you can show them in September. Turn it off afterwards.
 
@@ -97,7 +97,7 @@ Email addresses are safe placeholders (`…@demo.example` for directors, `…@ex
 
 ## Walkthrough B: full process (build and publish live)
 
-Load with `npm run db:reset -- --no-schedule` (hosted demo: see [DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md), step 2.4). Allow about 20–25 minutes. The same people play the same parts; the reset prints them under "For the DEMO.md walkthrough".
+Load with `npm run db:reset -- --no-schedule` (hosted demo: see [DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md), section 2.2 or 3). Allow about 20–25 minutes. The same people play the same parts; the reset prints them under "For the DEMO.md walkthrough".
 
 ### 1. Before there's a schedule — 2 min
 Show that nobody has games yet, which makes the moment of publishing land:
@@ -150,6 +150,6 @@ Same as walkthrough A, steps 6 and 7: Avery checks in on a phone, Tasha enters t
 **Starting fresh for the next meeting** (also how to switch between walkthroughs A and B):
 
 - **On your laptop:** run the reset again in `backend/` (`npm run db:reset`, or with `-- --no-schedule`), then restart `npm run dev` in both folders. Everything from the last demo is replaced.
-- **Hosted demo:** the demo database has to be recreated first; see **Refreshing the demo** in [DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md). `npm run db:reset` never touches a hosted database.
+- **Hosted demo:** one command reloads it; see **Refreshing a demo** in [DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md). `npm run db:reset` never touches a hosted database.
 
 Set `DEMO_CHECKIN_ANYTIME` back to `false`. If you used a hosted demo, delete the demo Render service and demo Turso database, or keep them for training.

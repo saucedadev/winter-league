@@ -256,7 +256,7 @@ Push the code. Render applies `003_referees.sql` before the server starts. The l
 
 ## Hosted demo
 
-A demo copy of the app for presentations runs on its own Turso database, Render service, and Vercel project, filled from the demo spreadsheet. Step-by-step instructions, including refreshing and tearing it down, are in **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**. Never point a demo at the production database.
+A demo copy of the app for presentations can run on your laptop or as its own Turso database, Render service, and Vercel project, filled from the demo spreadsheet. Step-by-step instructions, including refreshing and tearing one down, are in **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**. Never point a demo at the production database.
 
 ## Running more than one conference
 

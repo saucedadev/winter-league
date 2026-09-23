@@ -1,263 +1,272 @@
-# Deploying a hosted demo
+# Setting up a demo
 
-This guide sets up a **demo copy** of the Winter League Platform on the internet: a web address anyone at a meeting can open on a laptop or phone, filled with the demo league from the spreadsheet in `backend/demo-data/`. It's for presentations and training.
+This guide covers running the Winter League Platform as a **demo**: filled with the demo league from the spreadsheet in `backend/demo-data/`, for presentations and training.
 
-For the **real league**, use [DEPLOYMENT.md](./DEPLOYMENT.md). The demo is a completely separate copy: its own database, server, and website. Nothing in the demo can touch real league data, and nothing in this guide changes the production deployment.
+There are two ways to run one, and each can be loaded **with** a schedule already published or **without** one:
 
-```
-                 Production (DEPLOYMENT.md)          Hosted demo (this guide)
-Database         Turso: winter-league                Turso: winter-league-demo
-API server       Render: winter-league-api           Render: winter-league-demo-api
-Website          Vercel: winter-league               Vercel: winter-league-demo
-Data             real programs and people            demo spreadsheet + generated league
-Passwords        each person's own                   everyone uses WinterDemo2026
-```
+| | Where it runs | Who can see it | Setup |
+|---|---|---|---|
+| **Local demo** | your laptop | you (screen-share works) | minutes |
+| **Hosted demo** | Turso + Render + Vercel | anyone with the link, on their own phones | 30–45 minutes, once |
 
-Plan on about 30–45 minutes the first time. Do the steps **in order**, because each one needs a value from the one before.
-
-> **Why a demo can't share production:** every demo account uses the same published password (`WinterDemo2026`), and a demo lets referees check in to any upcoming game. Both are fine for a demo and wrong for a real league, so the demo always gets its own database and services.
-
----
-
-## 0. Before you start
-
-- **The code is on GitHub.** The demo deploys from the same repository as production, so there's nothing extra to push.
-- **The Turso CLI is installed and signed in** (`turso auth login`). The same Turso account as production is fine.
-- **Node 20+ is installed** on your machine, and you've run `npm install` in `backend/`. That includes the spreadsheet reader the demo loader uses, which the live servers don't need.
-- **The demo spreadsheet is ready.** The demo league comes from `backend/demo-data/WinterLeague-ProgramVenueDirector-DemoData.xlsx`. Edit it first if you want different programs, venues, or directors. The [README](./README.md#demo-data-from-a-spreadsheet) describes the columns.
-
-Keep a scratch note open for these values:
-
-| Value | Comes from | Used in |
+| Loaded… | Command ends with | Use it for |
 |---|---|---|
-| Demo `DATABASE_URL` | Step 1.2 | `.env.demo.local`, Render |
-| Demo `DATABASE_AUTH_TOKEN` | Step 1.3 | `.env.demo.local`, Render |
-| Demo `JWT_SECRET` | Step 3.3 | Render |
-| Demo API URL | Step 3.5 | Vercel |
-| Demo site URL | Step 4.3 | Render (`APP_URL`) |
+| **With a schedule** | *(nothing extra)* | [DEMO.md](./DEMO.md) walkthrough A: everything is ready, every screen has data |
+| **Without a schedule** | `--no-schedule` | walkthrough B: the audience watches you generate and publish the season live |
+
+For the **real league**, use [DEPLOYMENT.md](./DEPLOYMENT.md). A demo is always separate from it: its own database, its own server, its own website.
+
+> **Why a demo is never mixed with the real league:** every demo account uses the same published password (`WinterDemo2026`), and demo mode lets referees check in and coaches enter scores on any day.
 
 ---
 
-## 1. Turso: create the demo database
+## The demo accounts
 
-### 1.1 Create it
+Everyone signs in with the password **`WinterDemo2026`**. Program Directors come from the demo spreadsheet, one per program; the others are the same in every demo. **Every load prints the full list**, so this is just a preview:
+
+| Username | Role | Name | Program |
+|---|---|---|---|
+| `gkim` | System Admin | Grace Kim | — |
+| `crogers` | Program Director | Colleen Rogers | Glencoe Youth Basketball |
+| `tlehman` | Program Director | Ted Lehman | Forest Grove Youth Basketball |
+| `rkruse`, `sknight`, `jnewman`, `rkent`, `ksmith` | Program Directors | Rebecca Kruse, Sam Knight, Jake Newman, Roy Kent, Krissy Smith | Banks, Century, Liberty, Hilhi, Mountainside |
+| `tgreene` | Coach | Tasha Greene | Glencoe Youth Basketball |
+| `lortega` | Coach | Luis Ortega | Forest Grove Youth Basketball |
+| `pnair` | Referee Assignor | Priya Nair | — |
+| `acoleman`, `obrooks`, `jpike`, `sdelgado`, `rchen`, `mhayes`, `cnovak`, `dokafor` | Referees | Avery Coleman and seven others | — |
+
+Email addresses are replaced with safe placeholders when the demo is loaded, so a demo can never email the people named in the spreadsheet.
+
+---
+
+# 1. Local demo (on your laptop)
+
+Everything runs on your machine against a local database file. Nothing is published to the internet.
+
+1. **Open `backend/.env`** and set:
+   ```
+   DEMO_CHECKIN_ANYTIME=true
+   ```
+   That lets referees check in and coaches enter scores on any day, so you can show both outside the season.
+2. **Load the demo.** In `backend/`:
+   ```bash
+   npm run db:reset                    # with a schedule (walkthrough A)
+   npm run db:reset -- --no-schedule   # without a schedule (walkthrough B)
+   ```
+   Note the `--` before `--no-schedule`: that's how npm passes the option through. The command prints every login at the end.
+3. **Restart the app,** because the database file was replaced: stop and re-run `npm run dev` in both `backend/` and `frontend/`.
+4. **Open** `http://localhost:5174` and sign in as `gkim` / `WinterDemo2026`.
+
+**To start over,** or to switch between the two styles, run step 2 again and restart. It always replaces what's there.
+
+---
+
+# 2. Hosted demo (a link anyone can open)
+
+Three services, all separate from the real league:
+
+```
+Turso winter-league-demo → Render winter-league-demo-api → Vercel winter-league-demo
+```
+
+Do the steps in order. Each needs a value from the one before.
+
+## Before you start
+
+- **The code is on GitHub.** The demo deploys from the same repository as production.
+- **The Turso CLI is installed and signed in:**
+  - macOS: `brew install tursodatabase/tap/turso`
+  - Linux/WSL: `curl -sSfL https://get.tur.so/install.sh | bash`
+  - Then `turso auth login`.
+- **Node 20+**, and `npm install` run in `backend/` (that includes the spreadsheet reader the loader needs).
+- **The demo spreadsheet** is `backend/demo-data/WinterLeague-ProgramVenueDirector-DemoData.xlsx`. Edit it first if you want different programs, venues, or directors ([README](./README.md#demo-data-from-a-spreadsheet) describes the columns).
+
+Keep a note of these as you go:
+
+| Value | From | Used in |
+|---|---|---|
+| Demo `DATABASE_URL` | 2.1 | `.env.demo.local`, Render |
+| Demo `DATABASE_AUTH_TOKEN` | 2.1 | `.env.demo.local`, Render |
+| Demo `JWT_SECRET` | 2.3 | Render |
+| Demo API address | 2.3 | Vercel |
+| Demo site address | 2.4 | Render (`APP_URL`) |
+
+## 2.1 Create the demo database
+
 ```bash
 turso db create winter-league-demo
+turso db show winter-league-demo --url      # → libsql://winter-league-demo-<org>.turso.io
+turso db tokens create winter-league-demo   # → a long token; treat it like a password
 ```
-If production lives in a named group (`turso group list`), you can use the same one for the same region: `turso db create winter-league-demo --group <group-name>`.
 
-### 1.2 Get its URL
+If production lives in a group (`turso group list`), you can use the same one for the same region: `turso db create winter-league-demo --group <name>`.
+
+## 2.2 Load the demo league (from your machine)
+
+Create **`backend/.env.demo.local`** with the two values from 2.1:
+
+```
+DATABASE_URL=libsql://winter-league-demo-<org>.turso.io
+DATABASE_AUTH_TOKEN=<token>
+```
+
+Git ignores this file (any `.env.*.local`), so the token is never committed. Check the address says **`-demo`**.
+
+Then, **in `backend/`**, run these three in order:
+
 ```bash
-turso db show winter-league-demo --url
-```
-It looks like `libsql://winter-league-demo-<your-org>.turso.io`. Save it as the **demo `DATABASE_URL`**. Check that it says `winter-league-demo`, not the production database.
+# 1. check the spreadsheet (nothing is written)
+node src/scripts/seedDemo.js --env=.env.demo.local --force --check
 
-### 1.3 Create an access token
-```bash
-turso db tokens create winter-league-demo
-```
-Save it as the **demo `DATABASE_AUTH_TOKEN`**. Treat it like a password.
-
----
-
-## 2. Load the demo league (from your machine)
-
-### 2.1 Point a settings file at the demo database
-In `backend/`, create a file named **`.env.demo.local`** containing:
-```
-DATABASE_URL=libsql://winter-league-demo-<your-org>.turso.io
-DATABASE_AUTH_TOKEN=<token from 1.3>
-```
-This file is ignored by Git (any `.env.*.local` file is), so the token never gets committed. Double-check the URL says **`-demo`**.
-
-### 2.2 Check the spreadsheet
-```bash
-node src/scripts/seedDemo.js --env=.env.demo.local --check --force
-```
-Expected: `✅ spreadsheet …: 7 programs, 15 venues, 7 directors. Looks good.` If it lists problems (each with its sheet and row), fix the spreadsheet and run the check again.
-
-### 2.3 Create the tables
-```bash
+# 2. create the tables
 node src/scripts/migrate.js --env=.env.demo.local
+
+# 3. load the demo league
+node src/scripts/seedDemo.js --env=.env.demo.local --force               # with a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --no-schedule # without a schedule
 ```
-Expected: `✅ Migration complete — 5 new, 5 total.` (or more, if newer versions have added migrations).
 
-### 2.4 Load the demo league
-```bash
-node src/scripts/seedDemo.js --env=.env.demo.local --force
-```
-`--force` is required because this writes to a Turso database instead of your local one; it's a deliberate speed bump.
+- `--env=.env.demo.local` points at the demo database instead of your local one. **Leave it out and you'll load your laptop's database instead.**
+- `--force` is required because this writes to a hosted database; it's a deliberate speed bump.
+- Step 3 takes a minute or two over the internet and ends with the full list of logins. **Save that output.**
 
-**Which walkthrough?** The command above loads [DEMO.md](./DEMO.md)'s **walkthrough A** (a ready-made league with a published schedule). For **walkthrough B**, where the audience watches the schedule get generated and published, add `--no-schedule`:
-```bash
-node src/scripts/seedDemo.js --env=.env.demo.local --force --no-schedule
-``` This takes a minute or two over the internet. Expected, ending with the logins:
-```
-✅ Demo data: 1 season, 7 programs, 15 venues, 37 teams, 360 gym slots.
-✅ Demo schedule: 148 games published, 2 sample change requests.
-✅ Demo referees: 8 on the roster, … November slots filled, …
-   Demo accounts (password for all: WinterDemo2026)
-     crogers  program_director  Colleen Rogers  Glencoe Youth Basketball
-     …
-   For the DEMO.md walkthrough:
-     Director 1 (approves the coach's request): crogers  (Glencoe Youth Basketball)
-     Director 2 (the "other program"):           tlehman  (Forest Grove Youth Basketball)
-```
-**Save that output.** It's your list of demo logins and who plays each part in [DEMO.md](./DEMO.md).
+## 2.3 Render: the demo API
 
-Email addresses in the demo are safe placeholders (`…@demo.example`). Don't add `--real-emails` for a hosted demo.
-
----
-
-## 3. Render: the demo API
-
-### 3.1 Create the service
-Render dashboard → **New +** → **Web Service** → the same GitHub repository as production.
-
-### 3.2 Service settings
+Render → **New +** → **Web Service** → the same GitHub repository.
 
 | Setting | Value |
 |---|---|
 | Name | `winter-league-demo-api` |
-| Region | Same as the demo Turso database, if possible |
-| Branch | `main` (see "Keeping the demo stable" below for an alternative) |
+| Region | same as the demo database if possible |
+| Branch | `main` (see "Keeping the demo stable") |
 | **Root Directory** | `backend` |
-| Runtime | Node |
 | **Build Command** | `npm install` |
 | **Start Command** | `npm run start:render` |
-| Instance type | Free is fine for a demo; see "Before each demo" |
+| Instance type | Free is fine for a demo |
 
-### 3.3 Generate a JWT secret
-```bash
-openssl rand -hex 32
-```
-(Windows without OpenSSL: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.) Use a **new** value, not production's.
+> **Use exactly `npm run start:render`.** It applies any new database updates before starting. With a different start command, a future version can fail with "Something went wrong on the server".
 
-### 3.4 Environment variables
+**Environment variables:**
 
 | Key | Value | Why |
 |---|---|---|
 | `NODE_ENV` | `production` | |
-| `DATABASE_URL` | demo URL from 1.2 | **must** be the `-demo` database |
-| `DATABASE_AUTH_TOKEN` | demo token from 1.3 | |
-| `JWT_SECRET` | from 3.3 | different from production's |
-| `APP_URL` | `http://localhost:5174` **for now** | replaced in step 5 |
-| `EMAIL_PROVIDER` | `console` | **demo never sends email**; messages go to the Render log |
-| `DEMO_CHECKIN_ANYTIME` | `true` | lets referees check in to, and coaches enter final scores for, any upcoming game, so both can be shown any day |
+| `DATABASE_URL` | from 2.1 | must be the `-demo` database |
+| `DATABASE_AUTH_TOKEN` | from 2.1 | |
+| `JWT_SECRET` | a new random value: `openssl rand -hex 32` | different from production's |
+| `APP_URL` | `http://localhost:5174` **for now** | replaced in 2.5 |
+| `EMAIL_PROVIDER` | `console` | **a demo never sends email**; messages go to the Render log |
+| `DEMO_CHECKIN_ANYTIME` | `true` | referees can check in and coaches can enter scores on any day |
 | `MAX_PROGRAMS` | `16` | |
 
-`LEAGUE_TIMEZONE` can be left out; it defaults to Pacific Time. Don't set `PORT`; Render provides it.
+Leave `LEAGUE_TIMEZONE` out (it defaults to Pacific) and don't set `PORT` (Render provides it).
 
-### 3.5 Health check and deploy
-- **Settings → Health Check Path:** `/api/health`
-- Click **Create Web Service**.
+**Settings → Health Check Path:** `/api/health`. Then create the service.
 
-When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expected: `{"ok":true,"app":"winter-league","database":"turso"}`. The Render log should show `🕒 League time zone: America/Los_Angeles`.
+When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect `{"ok":true,"app":"winter-league","database":"turso"}`. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
 
-Save **`https://winter-league-demo-api.onrender.com/api`** as the **demo API URL**.
+## 2.4 Vercel: the demo site
 
----
-
-## 4. Vercel: the demo website
-
-### 4.1 Create the project
-Vercel dashboard → **Add New… → Project** → the same repository.
-
-### 4.2 Project settings
+Vercel → **Add New… → Project** → the same repository.
 
 | Setting | Value |
 |---|---|
 | Project Name | `winter-league-demo` |
 | Framework Preset | **Vite** |
 | **Root Directory** | `frontend` |
-| Environment variable `VITE_API_URL` | the demo API URL from 3.5, including `/api`, no trailing slash, for Production and Preview |
+| `VITE_API_URL` | the demo API address from 2.3, ending in `/api`, no trailing slash (Production and Preview) |
 
-### 4.3 Deploy
-Click **Deploy** and note the address, e.g. `https://winter-league-demo.vercel.app`. That's the **demo site URL** you'll share at the meeting.
+Deploy, then note the address, e.g. `https://winter-league-demo.vercel.app`.
+
+## 2.5 Connect them
+
+Render → `winter-league-demo-api` → **Environment** → set `APP_URL` to the demo site address (no trailing slash). Save; Render redeploys.
+
+## 2.6 Check it
+
+Open the site and sign in with `WinterDemo2026`:
+
+1. **`gkim`:** the dashboard shows the season and (if loaded with a schedule) upcoming games; **Programs** lists the spreadsheet's programs.
+2. **`crogers`** (or whoever the load printed as Director 1): **Requests** shows a badge, when loaded with a schedule.
+3. **`acoleman`** on a phone: **My games** shows a **Check-in is open** card. If it says check-in opens on game day, `DEMO_CHECKIN_ANYTIME` isn't `true`.
+4. **`pnair`:** **Assignments** shows November filled (with a schedule) or nothing to assign yet (without).
+
+**Optional:** as `gkim`, open **Branding & Theme** (avatar menu → League admin) to set the conference name, upload a logo, and pick a theme.
 
 ---
 
-## 5. Connect them: set `APP_URL` on Render
+# 3. Refreshing a demo
 
-Render → `winter-league-demo-api` → **Environment** → set:
+Use this after a meeting, after editing the spreadsheet, or to switch between the two styles.
+
+## Local
+
+In `backend/`, then restart `npm run dev` in both folders:
+
+```bash
+npm run db:reset                    # with a schedule
+npm run db:reset -- --no-schedule   # without a schedule
 ```
-APP_URL=https://winter-league-demo.vercel.app
+
+## Hosted
+
+One command, in `backend/`. `--replace` clears everything in the demo database first, so there's no need to delete or recreate anything in Turso, and no tokens or Render settings change:
+
+```bash
+node src/scripts/seedDemo.js --env=.env.demo.local --force --replace                # with a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --replace --no-schedule  # without a schedule
 ```
-No trailing slash. Save; Render redeploys automatically.
+
+It prints `🧹 Replacing everything in winter-league-demo-…turso.io…`, then the new league and logins. **Everything from the previous demo is deleted**, which is the point. Anyone signed in should sign in again afterwards.
+
+> **`npm run db:reset` never touches a hosted database.** It only ever replaces your local file, which is why the hosted refresh uses the command above.
+
+**If a new version of the code adds database changes,** Render applies them when it deploys (that's `npm run start:render`). If you refresh a hosted demo and see "Something went wrong on the server", apply them from your machine:
+```bash
+node src/scripts/migrate.js --env=.env.demo.local
+```
 
 ---
 
-## 6. Check it works
+# 4. Before each demo
 
-Open the demo site URL and sign in with password `WinterDemo2026`:
+- **Wake the server** a few minutes early by opening the site: free Render services sleep after ~15 minutes idle, and the first request then takes 30–60 seconds.
+- **Open one browser tab per person** you'll sign in as; each tab keeps its own sign-in.
+- **Refresh the demo** (section 3) if it's been used before, so approved requests and check-ins from last time are gone.
+- Have [DEMO.md](./DEMO.md) open for the walkthrough.
 
-1. **`gkim`** (System Admin): the dashboard shows the Winter 2026–27 season, referee coverage, and upcoming games. **Programs** lists the spreadsheet's programs.
-2. **Director 1** from step 2.4 (e.g. `crogers`): the **Requests** tab shows a badge with the sample requests waiting on them. (Loaded with `--no-schedule`, there are no sample requests yet, and **Schedule** says the schedule hasn't been published.)
-3. **`acoleman`** (Referee), ideally on a phone: **My games** shows a **Check-in is open** card. If it says check-in opens on game day instead, `DEMO_CHECKIN_ANYTIME` isn't set to `true` (step 3.4).
-4. **`pnair`** (Referee Assignor): **Assignments** shows November filled and later weeks open.
+# 5. Keeping the demo stable
 
-**Optional branding:** as `gkim`, open **Branding & Theme** (avatar menu → League admin) to set the conference name and logo, and pick a theme (e.g. Pacific Energy).
+Both demo services redeploy whenever `main` changes, so the demo always runs the latest code. To freeze it for a presentation:
 
-You're ready to follow [DEMO.md](./DEMO.md).
+1. Create a `demo` branch from `main`.
+2. Set **Branch** to `demo` on the Render service and the Vercel project.
+3. Merge `main` into `demo` when you want the demo updated.
 
----
+# 6. Things to know
 
-## Before each demo
+- **The demo season is Winter 2026–27** (Nov 2, 2026 – Feb 28, 2027), fixed in the loader. Demos work best before or during that season; after it, there are no upcoming games and the dates in `backend/src/scripts/seedDemo.js` should be moved forward.
+- **Demo check-ins and scores count** toward the demo's payouts and results. That's expected.
+- **Anyone with the address can sign in** with the shared password. Share it only with the people you're presenting to, and never put real data in a demo.
 
-- **Wake the server** a few minutes early by opening the demo site. Free Render services sleep after about 15 minutes idle, and the first request afterwards takes 30–60 seconds.
-- **Open one browser tab per person** you'll sign in as. Each tab keeps its own sign-in.
-- **If the demo was used before,** earlier clicks (approved requests, check-ins, auto-fills) are still there. For a clean start, refresh it (next section).
+# 7. Troubleshooting
 
-## Refreshing the demo
-
-To return to a clean demo league, after a meeting or after editing the spreadsheet, recreate the demo database and load it again. (`npm run db:reset` only works on local databases, and the loader deliberately won't write over an existing league.)
-
-1. **Delete and recreate the demo database.** Check the name says `-demo`:
-   ```bash
-   turso db destroy winter-league-demo --yes
-   turso db create winter-league-demo
-   turso db show winter-league-demo --url
-   turso db tokens create winter-league-demo
-   ```
-2. **Update `backend/.env.demo.local`** with the new token (and the URL, if it changed).
-3. **Update Render:** `winter-league-demo-api` → **Environment** → paste the new `DATABASE_AUTH_TOKEN` (and `DATABASE_URL` if it changed). Save.
-4. **Load the league again:** steps 2.2–2.4, with or without `--no-schedule` depending on which walkthrough you'll run next.
-
-The demo's Vercel site and Render settings don't otherwise change, and sign-ins keep workruse with `WinterDemo2026`. Anyone already signed in will need to sign in again.
-
-## Keeping the demo stable
-
-Both demo services redeploy whenever `main` changes, so the demo always runs the latest code. That's usually what you want. If you'd rather freeze the demo for a presentation:
-
-1. Create a `demo` branch from `main` in GitHub.
-2. Set the **Branch** to `demo` on both `winter-league-demo-api` (Render → Settings) and `winter-league-demo` (Vercel → Settings → Git).
-3. When you're ready to update the demo, merge `main` into `demo`.
-
-If a new version adds database migrations, Render applies them to the demo database automatically on deploy, as it does for production.
-
-## Things to know
-
-- **The demo season is Winter 2026–27** (Nov 2, 2026 – Feb 28, 2027), fixed in the demo loader. Demos work best before or during that season. After Feb 28, 2027 there are no upcoming games to show, and the season dates in `backend/src/scripts/seedDemo.js` should be moved forward before refreshing the demo.
-- **Demo check-ins count toward demo payouts.** That's expected, and the **Payouts** page can show it.
-- **Everyone who has the demo URL can sign in** with the shared password. Only share the address with the people you're presenting to, and never put real data in the demo.
-
-## Troubleshooting
-
-| Symptom | Likely cause | Fix |
+| What you see | Why | Fix |
 |---|---|---|
-| Step 2.4 says `seed:demo only runs against a local SQLite database` | `--force` missing | Add `--force` (this is intentional). |
-| Step 2.4 says `Demo data already present` | The demo database already has a league | Follow **Refreshing the demo**. |
-| Step 2.2 lists spreadsheet problems | A typo or missing value in the spreadsheet | Fix the rows it names and run 2.2 again. Nothing was written. |
-| Step 2.x fails with `401` / `UNAUTHORIZED` | Token wrong, or from before the database was recreated | `turso db tokens create winter-league-demo`, update `.env.demo.local`. |
-| Sign-in shows a network or CORS error | `APP_URL` on Render doesn't exactly match the demo site | Match it exactly (step 5), no trailing slash. |
-| `/api/health` shows `"database":"local-sqlite"` | `DATABASE_URL` not set on Render | Add the demo URL and token (step 3.4), redeploy. |
-| Referees see "Check-in opens on game day" | `DEMO_CHECKIN_ANYTIME` missing or not `true` | Set it to `true` on Render and redeploy. |
-| The site shows no upcoming games | Today is after the demo season | See **Things to know**. |
-| First load takes a minute | Render free tier waking up | Open the site a few minutes before the demo. |
+| `seed:demo only runs against a local SQLite database` | `--force` missing | Add `--force` (intentional for hosted databases). |
+| `Demo data already present — nothing to do` | The demo database already has a league | Add `--replace` (section 3). |
+| The spreadsheet is listed with problems | A typo or missing value | Fix the rows it names and run again. Nothing was written. |
+| `Tables not found. Run the migration first` | The demo database has no tables yet | `node src/scripts/migrate.js --env=.env.demo.local` (step 2.2), then load again. |
+| `401` / `UNAUTHORIZED` | The token is wrong, or from a database you recreated | `turso db tokens create winter-league-demo`, update `.env.demo.local` **and** Render, redeploy. |
+| Your laptop's demo changed instead of the hosted one | `--env=.env.demo.local` was left off | Include it in every hosted command. |
+| `Demo spreadsheet not found` | Run from the wrong folder | Run these commands from `backend/`. |
+| `Something went wrong on the server` on the site | Database updates not applied | Check Render's Start Command is `npm run start:render`, redeploy; or run `migrate.js` (section 3). |
+| Sign-in fails with a network or CORS error | `APP_URL` doesn't match the site address | Match it exactly (2.5), no trailing slash. |
+| `/api/health` says `"database":"local-sqlite"` | `DATABASE_URL` missing on Render | Add it and the token (2.3), redeploy. |
+| Referees see "Check-in opens on game day" | `DEMO_CHECKIN_ANYTIME` not `true` | Set it on Render (2.3) and redeploy, or in `backend/.env` locally. |
+| No upcoming games anywhere | Today is after the demo season | See section 6. |
 
-## Tearing it down
-
-When you no longer need it:
+# 8. Tearing down a hosted demo
 
 1. Vercel → `winter-league-demo` → Settings → **Delete Project**.
 2. Render → `winter-league-demo-api` → Settings → **Delete Web Service**.
