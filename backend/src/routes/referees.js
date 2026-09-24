@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { one, all, run, db, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/auth.js';
 import { ah, badRequest, conflict, forbidden, notFound } from '../utils/http.js';
-import { assertDate, assertEmail, isValidDate, requireFields, trimOrNull, normalizePhone } from '../utils/validate.js';
+import { assertDate, assertEmail, isValidDate, requireFields, trimOrNull, normalizePhone, formatTime12 } from '../utils/validate.js';
 import { hashPassword, tempPassword } from '../utils/security.js';
 import { generateUsername } from '../utils/username.js';
 import { logActivity } from '../utils/activityLog.js';
@@ -334,19 +334,27 @@ router.delete('/me/unavailability/:id', refereeOnly, ah(async (req, res) => {
 // =====================================================================
 // Payouts — CSV export only; no money moves through this app.
 // =====================================================================
-async function payoutRows(from, to) {
+// programId limits the rows to games involving that program (what a Program
+// Director sees). Leave it out for the whole league.
+async function payoutRows(from, to, programId = null) {
   const settings = await getRefSettings();
   const rows = await all(`SELECT a.id, a.referee_id, a.checked_in_at, a.check_in_method, a.check_in_distance_miles, a.pay_cents,
       u.first_name, u.last_name, u.email, u.username, rp.pay_rate_cents,
-      g.date, g.start_time, d.name AS division_name, ht.name AS home_team_name, at.name AS away_team_name, v.name AS venue_name, c.name AS court_name
+      g.date, g.start_time, g.end_time, g.home_score, g.away_score, d.name AS division_name,
+      ht.name AS home_team_name, at.name AS away_team_name, hp.name AS home_program_name, ap.name AS away_program_name,
+      v.name AS venue_name, c.name AS court_name
     FROM referee_assignments a
     JOIN users u ON u.id = a.referee_id LEFT JOIN referee_profiles rp ON rp.user_id = u.id
     JOIN games g ON g.id = a.game_id JOIN schedule_runs r ON r.id = g.run_id
-    JOIN divisions d ON d.id = g.division_id JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
+    JOIN divisions d ON d.id = g.division_id
+    JOIN teams ht ON ht.id = g.home_team_id JOIN programs hp ON hp.id = ht.program_id
+    JOIN teams at ON at.id = g.away_team_id JOIN programs ap ON ap.id = at.program_id
     JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id
     WHERE a.status = 'checked_in' AND g.status != 'cancelled' AND r.status IN ('published', 'superseded') AND g.date BETWEEN ? AND ?
-    ORDER BY u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, g.date, g.start_time`, [from, to]);
-  const detail = rows.map((r) => ({ ...r, amountCents: r.payCents ?? payRate(r.payRateCents, settings) }));
+      ${programId ? 'AND ? IN (ht.program_id, at.program_id)' : ''}
+    ORDER BY u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, g.date, g.start_time`,
+  programId ? [from, to, programId] : [from, to]);
+  const detail = rows.map((r) => ({ ...r, amountCents: r.payCents ?? payRate(r.payRateCents, settings), matchup: `${r.homeTeamName} vs ${r.awayTeamName}` }));
   const byRef = new Map();
   for (const d of detail) {
     if (!byRef.has(d.refereeId)) byRef.set(d.refereeId, { refereeId: d.refereeId, name: `${d.firstName} ${d.lastName}`, email: d.email, username: d.username, games: 0, totalCents: 0 });
@@ -360,22 +368,33 @@ async function payoutRows(from, to) {
 const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const toCsv = (header, rows) => [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
-router.get('/payouts', managers, ah(async (req, res) => {
+// Program Directors see the referees who worked THEIR program's games; the
+// assignor and System Admin see the whole league.
+router.get('/payouts', requireRole('super_admin', 'referee_assignor', 'program_director'), ah(async (req, res) => {
   const { from, to } = req.query;
   assertDate(from, 'From'); assertDate(to, 'To');
   if (to < from) throw badRequest('“To” must be on or after “From”.');
-  const data = await payoutRows(from, to);
+  const scopeProgram = req.user.role === 'program_director' ? req.user.programId : null;
+  if (req.user.role === 'program_director' && !scopeProgram) throw forbidden('Your account isn’t assigned to a program.');
+  const data = await payoutRows(from, to, scopeProgram);
   // Open/unconfirmed games in range, so nothing is paid out by accident while incomplete.
   const pending = await one(`SELECT COUNT(*) AS n FROM referee_assignments a JOIN games g ON g.id = a.game_id JOIN schedule_runs r ON r.id = g.run_id
-    WHERE a.referee_id IS NOT NULL AND a.status = 'assigned' AND r.status = 'published' AND g.status = 'scheduled' AND g.date BETWEEN ? AND ? AND g.date <= ?`, [from, to, today()]);
-  if (req.query.format !== 'csv') return res.json({ ...data, unconfirmed: Number(pending.n) });
+    JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
+    WHERE a.referee_id IS NOT NULL AND a.status = 'assigned' AND r.status = 'published' AND g.status = 'scheduled'
+      AND g.date BETWEEN ? AND ? AND g.date <= ?${scopeProgram ? ' AND ? IN (ht.program_id, at.program_id)' : ''}`,
+  scopeProgram ? [from, to, today(), scopeProgram] : [from, to, today()]);
+  if (req.query.format !== 'csv') return res.json({ ...data, unconfirmed: Number(pending.n), scope: scopeProgram ? 'program' : 'league' });
 
   const type = req.query.type === 'detail' ? 'detail' : 'summary';
+  const weekday = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
   const csv = type === 'summary'
     ? toCsv(['Referee', 'Email', 'Username', 'Games worked', 'Total ($)'], data.summary.map((s) => [s.name, s.email, s.username, s.games, (s.totalCents / 100).toFixed(2)]))
-    : toCsv(['Referee', 'Email', 'Date', 'Start', 'Division', 'Home', 'Away', 'Venue', 'Court', 'Checked in (UTC)', 'Confirmed by', 'Distance from venue (mi)', 'Amount ($)'],
-      data.detail.map((d) => [`${d.firstName} ${d.lastName}`, d.email, d.date, d.startTime, d.divisionName, d.homeTeamName, d.awayTeamName, d.venueName, d.courtName,
-        d.checkedInAt, d.checkInMethod === 'assignor' ? 'Assignor' : 'Referee check-in', d.checkInDistanceMiles ?? '', (d.amountCents / 100).toFixed(2)]));
+    : toCsv(['Referee', 'Email', 'Date', 'Day', 'Start', 'End', 'Matchup', 'Home team', 'Home program', 'Away team', 'Away program', 'Division',
+      'Venue', 'Court', 'Final score', 'Checked in (UTC)', 'Confirmed by', 'Distance from venue (mi)', 'Amount ($)'],
+    data.detail.map((d) => [`${d.firstName} ${d.lastName}`, d.email, d.date, weekday(d.date), formatTime12(d.startTime), formatTime12(d.endTime),
+      d.matchup, d.homeTeamName, d.homeProgramName, d.awayTeamName, d.awayProgramName, d.divisionName, d.venueName, d.courtName,
+      d.homeScore != null && d.awayScore != null ? `${d.homeScore} – ${d.awayScore}` : '',
+      d.checkedInAt, d.checkInMethod === 'assignor' ? 'Assignor' : 'Referee check-in', d.checkInDistanceMiles ?? '', (d.amountCents / 100).toFixed(2)]));
   await logActivity({ category: 'referee', action: 'payout export', actor: req.user, details: `Exported referee payouts (${type}) for ${from} to ${to}: ${data.totals.games} games, ${money(data.totals.totalCents)}` });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="referee-payouts-${type}-${from}-to-${to}.csv"`);

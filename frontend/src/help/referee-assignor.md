@@ -59,7 +59,10 @@ Referees check in from their phones at the gym. If someone couldn't check in, op
 **Menu → Referees → Payouts.**
 1. Choose **From** and **To** dates and **Update**.
 2. Check the totals, and expand a referee to see each game. If some assigned referees never checked in, a warning tells you, so you can confirm attendance first.
-3. **Download summary (CSV)** gives one line per referee; **Download game detail (CSV)** gives one line per game worked. Both open in Excel or Google Sheets.
+3. **Download summary (CSV)** gives one row per referee: name, email, username, games worked, and total.
+4. **Download game detail (CSV)** gives one row per game worked, with each detail in its own column so you can sort or filter: referee and email, date and day, start and end time, the match-up (e.g. *Forest Grove 5th Boys vs Hilhi 5th Boys*), both teams and their programs, division, venue and court, the final score, when they checked in, whether it was their own check-in or your confirmation, distance from the venue, and the amount.
+
+Both open in Excel or Google Sheets. **Program Directors can export the same detail for their own program's games**, so they can check who officiated without asking you.
 
 ![Payouts](/help/img/as-payouts.png)
 

@@ -120,4 +120,4 @@ Coaches and directors ask for changes from the Schedule page. A request goes to 
 
 ## Referees and everything else
 
-As a System Admin you can also do everything a Program Director and the Referee Assignor can. For step-by-step instructions, see the [Program Director guide](/help/program-director) (gym slots, blackouts, venues, teams), the [Referee Assignor guide](/help/referee-assignor) (assignments and payouts), the [Coach guide](/help/coach), and the [Referee guide](/help/referee).
+Program Directors can export referee payouts for their own program's games; you and the Referee Assignor see the whole league. As a System Admin you can also do everything a Program Director and the Referee Assignor can. For step-by-step instructions, see the [Program Director guide](/help/program-director) (gym slots, blackouts, venues, teams), the [Referee Assignor guide](/help/referee-assignor) (assignments and payouts), the [Coach guide](/help/coach), and the [Referee guide](/help/referee).

@@ -10,7 +10,7 @@ Coaches see their teams' schedule and ask for a game to be moved when something 
 
 ![A coach's schedule on a phone](/help/img/coach-schedule.png)
 
-**Change requested** on a game means someone has asked to change it and it's waiting for approval.
+**Change requested** on a game means someone has asked to change it and it's waiting for approval. Each game also lists the referees assigned to it, or **Referees: not assigned yet**.
 
 ## Entering the final score
 

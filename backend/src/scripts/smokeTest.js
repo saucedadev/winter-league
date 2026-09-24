@@ -341,6 +341,11 @@ check('unavailable dates show on the roster', roster.referees.find((r) => r.id =
 console.log('\nAssigning');
 const rg = (await call('GET', '/referees/games', { token: assignor })).data;
 check('every published game has two referee slots', rg.games.length > 0 && rg.games.every((g) => g.assignments.length === 2));
+// Assigned referees show on the schedule, for everyone.
+const withRefs = (await call('GET', '/schedule/games', { token: coach })).data.games;
+check('the schedule lists who is refereeing', withRefs.some((g) => g.refereeNames) && withRefs.every((g) => g.refereeSlots >= 2));
+check('games without referees say so', withRefs.filter((g) => !g.refereeNames).every((g) => g.refereeNames === null));
+
 // Find an open game where at least one referee is actually free (busy
 // time slots can have every referee already working).
 let openSlotGame = null;
@@ -445,6 +450,20 @@ const csvRes = await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${toda
 const csvText = await csvRes.text();
 check('payout CSV downloads', csvRes.headers.get('content-type')?.includes('text/csv') && csvText.includes('Owen Brooks') && csvText.includes('Referee check-in'));
 check('referees cannot export payouts', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: refA })).status === 403);
+check('coaches cannot export payouts', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: coach })).status === 403);
+// Program Directors see payouts for their own program's games only.
+const pdPay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: pd })).data;
+check('a director can see payouts for their program', pdPay.scope === 'program' && pdPay.totals.games === 1);
+const otherPd = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: mbell })).data;
+const nfhInvolved = [pdPay.detail[0]?.homeProgramName, pdPay.detail[0]?.awayProgramName].includes('Riverbend Youth Basketball');
+check('another program’s director sees only their own games', nfhInvolved ? otherPd.totals.games === 1 : otherPd.totals.games === 0);
+check('the league still sees every program’s games', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: admin })).data.scope === 'league');
+const detailCsv = await (await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${todayLocal}&format=csv&type=detail`, { headers: { Authorization: `Bearer ${pd}` } })).text();
+const header = detailCsv.split('\r\n')[0].replace('\uFEFF', '');
+check('the export has the game details as their own columns', ['Date', 'Day', 'Start', 'End', 'Matchup', 'Home team', 'Away team', 'Division', 'Venue', 'Court', 'Final score'].every((c) => header.split(',').includes(c)), header);
+const row = detailCsv.split('\r\n')[1];
+check('an exported row carries that game’s details', /Owen Brooks/.test(row) && /\d{4}-\d{2}-\d{2}/.test(row) && / vs /.test(row));
+
 
 console.log('\nFinal scores');
 const played = (await call('GET', `/schedule/games/${nfhGame.id}`, { token: pd })).data.game; // today, tip-off 30 min ago

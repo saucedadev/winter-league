@@ -63,6 +63,20 @@ If you add a blackout after the schedule is published and it covers games alread
 
 ![The published schedule](/help/img/pd-schedule.png)
 
+Each game shows the referees assigned to it, or **Referees: not assigned yet** if the assignor hasn't filled them.
+
+## Referee payouts for your program
+
+**Menu → My program → Referee payouts** shows the referees who worked **your program's games**, and what each is owed for them. Other programs' games aren't included.
+
+1. Choose **From** and **To** dates and **Update**.
+2. Expand a referee to see each game they worked for you.
+3. **Download game detail (CSV)** gives one row per game, with the date, day, start and end time, the match-up (e.g. *Forest Grove 5th Boys vs Hilhi 5th Boys*), both teams and programs, division, venue and court, the final score, how attendance was confirmed, and the amount. Every detail is its own column, so you can sort or filter in Excel or Google Sheets. **Download summary (CSV)** gives one row per referee.
+
+![Referee payouts for a program](/help/img/pd-payouts.png)
+
+Referees are paid by the league, not by your program; this is for checking and for your own records. If a warning says some assigned referees never checked in, the Referee Assignor confirms attendance for those games.
+
 ## Final scores
 
 After a game, you or a coach of either team enter the final score. On **Schedule**, played games have an **Enter score** button from tip-off on game day; tick **Needs a score** to see the ones still waiting. Your dashboard says how many of your program's games need scores.

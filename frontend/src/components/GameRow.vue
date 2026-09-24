@@ -8,6 +8,7 @@ defineProps({
   highlightTeamIds: { type: Array, default: () => [] },
   showDivision: { type: Boolean, default: true },
   showTravel: { type: Boolean, default: false },
+  showReferees: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
 });
 </script>
@@ -30,6 +31,11 @@ defineProps({
         </span>
         <span v-else class="text-text-muted text-xs font-semibold mx-1.5">vs</span>
         <span :class="highlightTeamIds.includes(game.awayTeamId) ? 'font-bold' : 'font-medium'">{{ game.awayTeamName }}</span>
+      </p>
+      <p v-if="showReferees && game.refereeSlots" class="text-xs text-text-muted truncate">
+        <span class="font-medium">Referees:</span>
+        <template v-if="game.refereeNames"> {{ game.refereeNames }}</template>
+        <template v-else> not assigned yet</template>
       </p>
       <p class="text-xs text-text-muted truncate">
         <template v-if="game.venueName">{{ game.venueName }} – {{ game.courtName }}</template>

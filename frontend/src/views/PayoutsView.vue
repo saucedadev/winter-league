@@ -2,11 +2,13 @@
 import { onMounted, ref } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useToast } from '../stores/toast';
+import { useAuthStore } from '../stores/auth';
 import { dateRange, money, monthDay, time12, todayISO, addDays } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 
 const toast = useToast();
+const auth = useAuthStore();
 const today = todayISO();
 const from = ref(addDays(today, -13));
 const to = ref(today);
@@ -52,7 +54,10 @@ const detailFor = (id) => data.value.detail.filter((d) => d.refereeId === id);
 
 <template>
   <div>
-    <PageHeader title="Referee payouts" subtitle="Games worked and what each referee is owed. Export the CSV and pay from your usual system; no money moves through this app." />
+    <PageHeader title="Referee payouts"
+      :subtitle="auth.user?.role === 'program_director'
+        ? 'Referees who worked your program’s games, and what each is owed for them. Export the CSV to check or share; no money moves through this app.'
+        : 'Games worked and what each referee is owed. Export the CSV and pay from your usual system; no money moves through this app.'" />
 
     <div class="card card-blocky p-4 mb-4 flex flex-wrap items-end gap-3">
       <div><label class="label" for="po-from">From</label><input id="po-from" v-model="from" type="date" class="input" /></div>
@@ -72,7 +77,7 @@ const detailFor = (id) => data.value.detail.filter((d) => d.refereeId === id);
 
       <div class="grid grid-cols-3 gap-3 mb-4">
         <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Referees</p><p class="text-2xl font-bold">{{ data.totals.referees }}</p></div>
-        <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Games worked</p><p class="text-2xl font-bold">{{ data.totals.games }}</p></div>
+        <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Games worked</p><p class="text-2xl font-bold">{{ data.totals.games }}</p><p v-if="data.scope === 'program'" class="text-xs text-text-muted">in your program’s games</p></div>
         <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Total owed</p><p class="text-2xl font-bold">{{ money(data.totals.totalCents) }}</p></div>
       </div>
 
@@ -88,7 +93,7 @@ const detailFor = (id) => data.value.detail.filter((d) => d.refereeId === id);
           <ul v-if="expanded === s.refereeId" class="px-4 pb-3 space-y-1">
             <li v-for="d in detailFor(s.refereeId)" :key="d.id" class="text-xs flex flex-wrap gap-x-3">
               <span class="w-24 font-medium">{{ monthDay(d.date) }}, {{ time12(d.startTime) }}</span>
-              <span class="flex-1 min-w-[12rem]">{{ d.homeTeamName }} vs {{ d.awayTeamName }} · {{ d.venueName }}</span>
+              <span class="flex-1 min-w-[12rem]">{{ d.matchup }} · {{ d.divisionName }} · {{ d.venueName }}</span>
               <span class="text-text-muted">{{ d.checkInMethod === 'referee' ? 'checked in' : 'confirmed by assignor' }}</span>
               <span class="tabular-nums w-16 text-right">{{ money(d.amountCents) }}</span>
             </li>

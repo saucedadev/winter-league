@@ -112,6 +112,8 @@ DATABASE_AUTH_TOKEN=<token>
 
 Git ignores this file (any `.env.*.local`), so the token is never committed. Check the address says **`-demo`**.
 
+> **Already loaded this database before?** These are the **first-time** commands. To load a fresh demo over an existing one, add `--replace` — see [section 3, Refreshing a demo](#3-refreshing-a-demo). Without it you'll get `Demo data already present — nothing to do.`
+
 Then, **in `backend/`**, run these three in order:
 
 ```bash
@@ -121,7 +123,7 @@ node src/scripts/seedDemo.js --env=.env.demo.local --force --check
 # 2. create the tables
 node src/scripts/migrate.js --env=.env.demo.local
 
-# 3. load the demo league
+# 3. load the demo league (first time only — to reload, see section 3)
 node src/scripts/seedDemo.js --env=.env.demo.local --force               # with a schedule
 node src/scripts/seedDemo.js --env=.env.demo.local --force --no-schedule # without a schedule
 ```
@@ -197,7 +199,7 @@ Open the site and sign in with `WinterDemo2026`:
 
 # 3. Refreshing a demo
 
-Use this after a meeting, after editing the spreadsheet, or to switch between the two styles.
+Use this **any time the demo database already has a league in it**: after a meeting, after editing the spreadsheet, after updating the code, or to switch between the two styles. The first-time commands in section 2.2 deliberately refuse to overwrite an existing demo.
 
 ## Local
 
@@ -254,7 +256,7 @@ Both demo services redeploy whenever `main` changes, so the demo always runs the
 | What you see | Why | Fix |
 |---|---|---|
 | `seed:demo only runs against a local SQLite database` | `--force` missing | Add `--force` (intentional for hosted databases). |
-| `Demo data already present — nothing to do` | The demo database already has a league | Add `--replace` (section 3). |
+| `Demo data already present — nothing to do. To load a fresh demo over it, add --replace.` | The demo database already has a league, and the command you ran was the first-time one | Run the same command with `--replace` added, e.g. `node src/scripts/seedDemo.js --env=.env.demo.local --force --replace` (see [section 3](#3-refreshing-a-demo)). |
 | The spreadsheet is listed with problems | A typo or missing value | Fix the rows it names and run again. Nothing was written. |
 | `Tables not found. Run the migration first` | The demo database has no tables yet | `node src/scripts/migrate.js --env=.env.demo.local` (step 2.2), then load again. |
 | `401` / `UNAUTHORIZED` | The token is wrong, or from a database you recreated | `turso db tokens create winter-league-demo`, update `.env.demo.local` **and** Render, redeploy. |

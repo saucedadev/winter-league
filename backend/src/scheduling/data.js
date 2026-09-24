@@ -33,6 +33,9 @@ export const GAME_SELECT = `SELECT g.*,
   at.name AS away_team_name, at.program_id AS away_program_id, ap.name AS away_program_name, ap.short_code AS away_program_code,
   at.head_coach_user_id AS away_coach_id,
   su.first_name || ' ' || su.last_name AS score_entered_by_name,
+  (SELECT GROUP_CONCAT(n, ', ') FROM (SELECT ru.first_name || ' ' || ru.last_name AS n FROM referee_assignments ra
+     JOIN users ru ON ru.id = ra.referee_id WHERE ra.game_id = g.id ORDER BY ra.position)) AS referee_names,
+  (SELECT COUNT(*) FROM referee_assignments ra WHERE ra.game_id = g.id) AS referee_slots,
   c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.program_id AS venue_program_id, v.address AS venue_address, v.city AS venue_city,
   (SELECT b.reason FROM blackout_dates b WHERE g.date IS NOT NULL AND g.date BETWEEN b.start_date AND b.end_date
      AND ((b.program_id = v.program_id AND (b.venue_id IS NULL OR b.venue_id = v.id))

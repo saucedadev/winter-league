@@ -131,7 +131,7 @@ async function onCreated() { requesting.value = null; await load(); }
         <h2 class="text-sm font-semibold mb-1.5" :class="date < today && 'text-text-muted'">{{ longDate(date) }}</h2>
         <ul class="card card-blocky divide-y divide-border">
           <li v-for="g in list" :key="g.id" class="px-4 py-2.5">
-            <GameRow :game="g" :highlight-team-ids="myTeamIds">
+            <GameRow :game="g" :highlight-team-ids="myTeamIds" show-referees>
               <template #actions>
                 <RouterLink v-if="g.hasOpenRequest && hasOwn && isMine(g)" to="/requests" class="btn btn-ghost text-xs">View request</RouterLink>
                 <button v-else-if="g.canRequest" class="btn btn-secondary !py-1 !px-2.5 text-xs" @click="requesting = g">Request change</button>
