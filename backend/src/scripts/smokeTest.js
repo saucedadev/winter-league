@@ -460,9 +460,16 @@ check('another program’s director sees only their own games', nfhInvolved ? ot
 check('the league still sees every program’s games', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: admin })).data.scope === 'league');
 const detailCsv = await (await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${todayLocal}&format=csv&type=detail`, { headers: { Authorization: `Bearer ${pd}` } })).text();
 const header = detailCsv.split('\r\n')[0].replace('\uFEFF', '');
-check('the export has the game details as their own columns', ['Date', 'Day', 'Start', 'End', 'Matchup', 'Home team', 'Away team', 'Division', 'Venue', 'Court', 'Final score'].every((c) => header.split(',').includes(c)), header);
+check('the export has just the agreed columns', header === 'Referee,Email,Date,Home team,Away team,Checked in (Pacific Time),Confirmed by,Amount ($)', header);
 const row = detailCsv.split('\r\n')[1];
-check('an exported row carries that game’s details', /Owen Brooks/.test(row) && /\d{4}-\d{2}-\d{2}/.test(row) && / vs /.test(row));
+check('an exported row carries that game’s details', /Owen Brooks/.test(row) && /\d{4}-\d{2}-\d{2}/.test(row) && /Referee check-in|Assignor/.test(row));
+check('check-in times are exported in league time, not UTC', /\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM)/.test(row), row);
+{
+  const { leagueTimestamp } = await import('../utils/leagueTime.js');
+  // 6:00 PM Pacific on game night is already the next day in UTC.
+  check('a game-night check-in keeps the game’s date', leagueTimestamp('2026-11-06 02:00:00') === '2026-11-05 6:00 PM');
+  check('daylight saving is applied', leagueTimestamp('2026-07-01 06:30:00') === '2026-06-30 11:30 PM');
+}
 
 
 console.log('\nFinal scores');

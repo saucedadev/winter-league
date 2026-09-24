@@ -14,6 +14,7 @@ import {
   refereeProblems, loadRefereeContext, activeReferees, gamesWithAssignments, notifyUsers, notifyAssignors, gameLine,
   payRate, milesBetween, autoFill, lowerFirst,
 } from '../referees/data.js';
+import { leagueTimestamp, leagueZoneLabel } from '../utils/leagueTime.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -386,15 +387,12 @@ router.get('/payouts', requireRole('super_admin', 'referee_assignor', 'program_d
   if (req.query.format !== 'csv') return res.json({ ...data, unconfirmed: Number(pending.n), scope: scopeProgram ? 'program' : 'league' });
 
   const type = req.query.type === 'detail' ? 'detail' : 'summary';
-  const weekday = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
   const csv = type === 'summary'
     ? toCsv(['Referee', 'Email', 'Username', 'Games worked', 'Total ($)'], data.summary.map((s) => [s.name, s.email, s.username, s.games, (s.totalCents / 100).toFixed(2)]))
-    : toCsv(['Referee', 'Email', 'Date', 'Day', 'Start', 'End', 'Matchup', 'Home team', 'Home program', 'Away team', 'Away program', 'Division',
-      'Venue', 'Court', 'Final score', 'Checked in (UTC)', 'Confirmed by', 'Distance from venue (mi)', 'Amount ($)'],
-    data.detail.map((d) => [`${d.firstName} ${d.lastName}`, d.email, d.date, weekday(d.date), formatTime12(d.startTime), formatTime12(d.endTime),
-      d.matchup, d.homeTeamName, d.homeProgramName, d.awayTeamName, d.awayProgramName, d.divisionName, d.venueName, d.courtName,
-      d.homeScore != null && d.awayScore != null ? `${d.homeScore} – ${d.awayScore}` : '',
-      d.checkedInAt, d.checkInMethod === 'assignor' ? 'Assignor' : 'Referee check-in', d.checkInDistanceMiles ?? '', (d.amountCents / 100).toFixed(2)]));
+    // Check-in times are stored in UTC and exported in league time, where the games are played.
+    : toCsv(['Referee', 'Email', 'Date', 'Home team', 'Away team', `Checked in (${leagueZoneLabel()})`, 'Confirmed by', 'Amount ($)'],
+      data.detail.map((d) => [`${d.firstName} ${d.lastName}`, d.email, d.date, d.homeTeamName, d.awayTeamName,
+        leagueTimestamp(d.checkedInAt), d.checkInMethod === 'assignor' ? 'Assignor' : 'Referee check-in', (d.amountCents / 100).toFixed(2)]));
   await logActivity({ category: 'referee', action: 'payout export', actor: req.user, details: `Exported referee payouts (${type}) for ${from} to ${to}: ${data.totals.games} games, ${money(data.totals.totalCents)}` });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="referee-payouts-${type}-${from}-to-${to}.csv"`);

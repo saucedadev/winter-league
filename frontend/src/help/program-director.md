@@ -71,7 +71,7 @@ Each game shows the referees assigned to it, or **Referees: not assigned yet** i
 
 1. Choose **From** and **To** dates and **Update**.
 2. Expand a referee to see each game they worked for you.
-3. **Download game detail (CSV)** gives one row per game, with the date, day, start and end time, the match-up (e.g. *Forest Grove 5th Boys vs Hilhi 5th Boys*), both teams and programs, division, venue and court, the final score, how attendance was confirmed, and the amount. Every detail is its own column, so you can sort or filter in Excel or Google Sheets. **Download summary (CSV)** gives one row per referee.
+3. **Download game detail (CSV)** gives one row per game, each detail in its own column so you can sort or filter in Excel or Google Sheets: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (Pacific Time), **Confirmed by**, and **Amount**. **Download summary (CSV)** gives one row per referee.
 
 ![Referee payouts for a program](/help/img/pd-payouts.png)
 
