@@ -85,7 +85,11 @@ Enter each team's points, an optional note (e.g. *Forfeit*), and **Save score**.
 
 ## Change requests
 
-When a game needs to move, anyone involved can ask. **Request change** on a game lets you either **move this game** to another open time or **swap** it with another of your program's games. Only times that fit every scheduling rule are offered.
+When a game needs to change, anyone involved can ask. **Request change** on a game lets you **move this game** to another open time, **swap** it with another of your program's games, or **cancel** it if it can't be played at all (weather, a gym closure). Only times that fit every scheduling rule are offered, and a cancellation needs a reason.
+
+![A cancellation waiting for a decision](/help/img/pd-cancel-request.png)
+
+A cancelled game stays on the schedule marked **Cancelled** with the reason, so everyone can see what happened, and its referees are taken off.
 
 Every request follows the same path:
 

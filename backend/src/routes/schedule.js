@@ -230,8 +230,17 @@ router.put('/games/:id', adminOnly, ah(async (req, res) => {
       const check = await checkPlacement(game, { courtId: game.courtId, date: game.date, startTime: game.startTime, endTime: game.endTime });
       if (check.errors.length) throw conflict(`Can’t restore: ${check.errors[0]}`, { errors: check.errors });
     }
-    await run(`UPDATE games SET status = ?, updated_at = datetime('now') WHERE id = ?`, [b.action === 'cancel' ? 'cancelled' : 'scheduled', game.id]);
-    detail = `${b.action === 'cancel' ? 'Cancelled' : 'Restored'} ${describeGame(game)}`;
+    if (b.action === 'cancel') {
+      // Why a game was called off is part of the record, so it's required.
+      const reason = typeof b.reason === 'string' ? b.reason.trim() : '';
+      if (reason.length < 5) throw badRequest('Say why the game is being cancelled (it shows on the schedule).');
+      await run(`UPDATE games SET status = 'cancelled', cancel_reason = ?, cancelled_by = ?, cancelled_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        [reason.slice(0, 200), req.user.id, game.id]);
+      detail = `Cancelled ${describeGame(game)}: ${reason.slice(0, 200)}`;
+    } else {
+      await run(`UPDATE games SET status = 'scheduled', cancel_reason = NULL, cancelled_by = NULL, cancelled_at = NULL, updated_at = datetime('now') WHERE id = ?`, [game.id]);
+      detail = `Restored ${describeGame(game)}`;
+    }
   } else {
     assertDate(b.date); assertTime(b.startTime, 'Start time'); assertTime(b.endTime, 'End time');
     if (!b.courtId) throw badRequest('Choose a court.');

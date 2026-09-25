@@ -32,7 +32,10 @@ defineProps({
         <span v-else class="text-text-muted text-xs font-semibold mx-1.5">vs</span>
         <span :class="highlightTeamIds.includes(game.awayTeamId) ? 'font-bold' : 'font-medium'">{{ game.awayTeamName }}</span>
       </p>
-      <p v-if="showReferees && game.refereeSlots" class="text-xs text-text-muted truncate">
+      <p v-if="game.status === 'cancelled' && game.cancelReason" class="text-xs truncate" :title="game.cancelReason">
+        <span class="font-medium">Cancelled:</span> {{ game.cancelReason }}
+      </p>
+      <p v-if="showReferees && game.refereeSlots && game.status !== 'cancelled'" class="text-xs text-text-muted truncate">
         <span class="font-medium">Referees:</span>
         <template v-if="game.refereeNames"> {{ game.refereeNames }}</template>
         <template v-else> not assigned yet</template>

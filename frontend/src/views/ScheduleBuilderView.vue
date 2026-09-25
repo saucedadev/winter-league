@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState.vue';
 import Modal from '../components/Modal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import GameRow from '../components/GameRow.vue';
+import CancelGameModal from '../components/CancelGameModal.vue';
 import PlacementPicker from '../components/PlacementPicker.vue';
 
 const toast = useToast();
@@ -119,6 +120,12 @@ const balanceRows = computed(() => stats.value.teams
 
 // ---- edits ----
 const editing = ref(null);
+const cancelling = ref(null);
+function onCancelled(game) {
+  const i = games.value.findIndex((x) => x.id === game.id);
+  if (i >= 0) games.value[i] = game;
+  cancelling.value = null;
+}
 const choice = ref(null);
 const saving = ref(false);
 const editError = ref('');
@@ -299,7 +306,7 @@ const publishMessage = computed(() => {
                     <button v-if="g.status === 'scheduled'" class="btn btn-ghost text-xs" @click="openEdit(g)">Move</button>
                     <button v-if="g.status === 'scheduled'" class="btn btn-ghost text-xs" :disabled="saving" title="Swap home and away" @click="update(g, { action: 'flip' }, 'Home and away swapped.')">Flip</button>
                     <button v-if="view === 'draft'" class="btn btn-ghost text-xs" :disabled="saving" @click="update(g, { action: 'unschedule' }, 'Moved to unplaced.')">Unplace</button>
-                    <button v-else-if="g.status === 'scheduled'" class="btn btn-ghost text-xs hover:!text-danger" :disabled="saving" @click="update(g, { action: 'cancel' }, 'Game cancelled.')">Cancel</button>
+                    <button v-else-if="g.status === 'scheduled'" class="btn btn-ghost text-xs hover:!text-danger" :disabled="saving" @click="cancelling = g">Cancel</button>
                     <button v-else-if="g.status === 'cancelled'" class="btn btn-ghost text-xs" :disabled="saving" @click="update(g, { action: 'restore' }, 'Game restored.')">Restore</button>
                   </template>
                 </GameRow>
@@ -358,6 +365,7 @@ const publishMessage = computed(() => {
       </template>
     </Modal>
 
+    <CancelGameModal v-if="cancelling" :game="cancelling" @close="cancelling = null" @cancelled="onCancelled" />
     <ConfirmDialog v-if="confirmRegenerate" title="Regenerate the draft?" confirm-label="Regenerate" tone="primary" :busy="generating"
       message="This builds a fresh draft from the current rules, gym slots, and blackouts. Any edits you made to the current draft are lost. The published schedule isn’t affected."
       @confirm="generate" @close="confirmRegenerate = false" />

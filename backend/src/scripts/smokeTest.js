@@ -311,6 +311,37 @@ check('director request skips the director step', ['pending_counterpart', 'pendi
 check('other directors cannot cancel it', (await call('POST', `/requests/${r3.data.request.id}/cancel`, { token: mbell })).status >= 403);
 check('requester can cancel', (await call('POST', `/requests/${r3.data.request.id}/cancel`, { token: pd })).data.request?.status === 'cancelled');
 
+console.log('\nCancelling a game');
+const toCancel = (await call('GET', '/schedule/games?mine=1', { token: coach })).data.games.find((g) => g.canRequest && !g.hasOpenRequest);
+check('a reason is required to ask for a cancellation', (await call('POST', '/requests', { token: coach, body: { gameId: toCancel.id, type: 'cancel', reason: '' } })).status === 400);
+const cReq = await call('POST', '/requests', { token: coach, body: { gameId: toCancel.id, type: 'cancel', reason: 'Snow closed the school; the gym is unavailable.' } });
+check('a coach can ask for a game to be cancelled', cReq.status === 201 && cReq.data.request.type === 'cancel' && cReq.data.request.status === 'pending_director');
+check('it reads as a cancellation', /^Cancel /.test(cReq.data.request.summary), cReq.data.request.summary);
+const cid = cReq.data.request.id;
+const steps = cReq.data.request.steps.filter((x) => x.stage === 'counterpart').map((x) => x.programId);
+check('the other program still has to agree', steps.length >= 1);
+await call('POST', `/requests/${cid}/act`, { token: pd, body: { action: 'approve' } });              // their director
+// The other program agrees when it's Riverbend (the only other director in the test league);
+// otherwise the league signs off directly, which it may do at any stage.
+if (steps.includes(ryb.id)) await call('POST', `/requests/${cid}/act`, { token: mbell, body: { action: 'approve' } });
+const cancelSignOff = await call('POST', `/requests/${cid}/act`, { token: admin, body: { action: 'approve' } });
+const cancelledGame = cancelSignOff.data.request?.game;
+check('the league signs off and the game is cancelled', cancelSignOff.data.request?.status === 'approved' && cancelledGame?.status === 'cancelled');
+check('the reason is kept on the game', cancelledGame.cancelReason === 'Snow closed the school; the gym is unavailable.');
+check('a cancelled game still shows on the schedule', (await call('GET', '/schedule/games', { token: coach })).data.games.some((g) => g.id === toCancel.id && g.status === 'cancelled'));
+check('its referees are released', !(await call('GET', `/schedule/games/${toCancel.id}`, { token: admin })).data.game.refereeNames);
+check('a cancelled game can’t be requested again', (await call('POST', '/requests', { token: coach, body: { gameId: toCancel.id, type: 'cancel', reason: 'Changed my mind about this' } })).status === 400);
+check('a cancelled game can’t be scored', (await call('PUT', `/schedule/games/${toCancel.id}/score`, { token: pd, body: { homeScore: 10, awayScore: 8 } })).status === 409);
+check('the league can restore it', (await call('PUT', `/schedule/games/${toCancel.id}`, { token: admin, body: { action: 'restore' } })).data.game?.status === 'scheduled');
+check('restoring clears the cancellation reason', !(await call('GET', `/schedule/games/${toCancel.id}`, { token: admin })).data.game.cancelReason);
+// A game the director could still ask to change is, by definition, upcoming and unplayed.
+const nfhLive = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: pd })).data.games.find((g) => g.canRequest && !g.hasOpenRequest);
+check('an admin must give a reason to cancel directly', (await call('PUT', `/schedule/games/${nfhLive.id}`, { token: admin, body: { action: 'cancel' } })).status === 400);
+const adminCancel = await call('PUT', `/schedule/games/${nfhLive.id}`, { token: admin, body: { action: 'cancel', reason: 'Gym floor damaged by a leak.' } });
+check('an admin cancels with a reason', adminCancel.data.game?.status === 'cancelled' && adminCancel.data.game.cancelReason === 'Gym floor damaged by a leak.');
+check('both programs see the cancellation in Activity', (await call('GET', '/activity?category=schedule', { token: pd })).data.entries.some((e) => e.details.includes('Gym floor damaged by a leak.')));
+await call('PUT', `/schedule/games/${nfhLive.id}`, { token: admin, body: { action: 'restore' } });
+
 console.log('\nData integrity with a live schedule');
 const liveNfh = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.venueProgramId === nfh.id && g.status === 'scheduled');
 check('gym slot holding a published game cannot be deleted', (await call('DELETE', `/slots/${liveNfh.gymSlotId}`, { token: pd })).status === 409);
@@ -402,7 +433,7 @@ const covered = after.find((g) => g.assignments.every((a) => a.refereeId) && g.d
 const mopts = (await call('GET', `/schedule/games/${covered.id}/options`, { token: admin })).data.options;
 const mv2 = await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { courtId: mopts[0].courtId, date: mopts[0].date, startTime: mopts[0].startTime, endTime: mopts[0].endTime } });
 check('moving a game reports referees kept or removed', mv2.status === 200 && mv2.data.referees && mv2.data.referees.kept + mv2.data.referees.removed === 2);
-const cx = await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { action: 'cancel' } });
+const cx = await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { action: 'cancel', reason: 'Testing that cancelling releases referees.' } });
 const afterCancel = (await call('GET', '/referees/me/assignments', { token: refB })).data.assignments.concat((await call('GET', '/referees/me/assignments', { token: refA })).data.assignments);
 check('cancelling a game releases its referees', cx.status === 200 && !afterCancel.some((a) => a.game.id === covered.id));
 await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { action: 'restore' } });
@@ -494,7 +525,7 @@ check('the other program sees the score in Activity', otherSees.some((e) => e.de
 const sc2 = await call('PUT', `/schedule/games/${played.id}/score`, { token: admin, body: { homeScore: 44, awayScore: 38, note: 'Overtime' } });
 check('the league can correct a score', sc2.data.game?.homeScore === 44 && sc2.data.game.scoreNote === 'Overtime');
 check('corrections are logged with the old score', (await call('GET', '/activity?category=schedule', { token: pd })).data.entries.some((e) => e.details.includes('Corrected the final score') && e.details.includes('(was 42 – 38)')));
-check('a scored game can’t be cancelled', (await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { action: 'cancel' } })).status === 409);
+check('a scored game can’t be cancelled', (await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { action: 'cancel', reason: 'Trying to cancel a played game.' } })).status === 409);
 const mvScored = (await call('GET', `/schedule/games/${played.id}/options`, { token: admin })).data.options[0];
 check('a scored game can’t be moved', !mvScored || (await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { courtId: mvScored.courtId, date: mvScored.date, startTime: mvScored.startTime, endTime: mvScored.endTime } })).status === 409);
 const fl1 = await call('PUT', `/schedule/games/${played.id}`, { token: admin, body: { action: 'flip' } });

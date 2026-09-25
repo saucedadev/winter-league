@@ -34,10 +34,19 @@ The other team's coach and director get an email with the score. If a score is w
 2. Choose what you need:
    - **Move this game:** pick a new time from the list. Every time shown is open at one of the two teams' gyms and fits both teams' schedules. If it's at the other team's gym, you'll see that the home team changes.
    - **Swap with another game:** trade the date, time, and court with another of your team's games.
+   - **Cancel this game:** the game won't be played at all, e.g. snow or a gym closure.
 3. Give a short **reason**, e.g. *"Our gym has a school concert that night."*
 4. Choose **Send request**.
 
 ![Asking for a change](/help/img/coach-request-change.png)
+
+### Cancelling a game
+
+If a game can't be played at all, choose **Cancel this game** and say why: weather, a gym closure, and so on. It goes through the same approvals as a move, so your director, the other program, and the league all see the reason before it's called off.
+
+![Asking to cancel a game](/help/img/coach-cancel-game.png)
+
+A cancelled game stays on the schedule, struck through and marked **Cancelled** with the reason, so there's a record of what happened. Any referees are taken off and told. If the game could still be played another time, ask to **move** it instead.
 
 ## Following your request
 

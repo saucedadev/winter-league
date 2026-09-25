@@ -92,7 +92,7 @@ Click **Publish schedule**. Coaches, directors, and referees see it immediately.
 > **Publishing again later** replaces the current schedule. The app warns you first: open change requests on the old schedule are cancelled, and referee assignments carry over only to games that didn't change.
 
 ### Changes after publishing
-In the Schedule builder, switch to **Published** to move, flip, **Cancel**, or **Restore** a live game. Every change is logged and both teams' directors see it. Referees on a moved game stay on it if they're still free; otherwise they're removed and emailed. Cancelling a game releases its referees.
+In the Schedule builder, switch to **Published** to move, flip, **Cancel**, or **Restore** a live game. Cancelling asks for a reason, which shows on everyone's schedule next to the game; **Restore** puts it back and clears the reason. Coaches and directors can also ask for a cancellation through a change request, which comes to you for sign-off like any other. Every change is logged and both teams' directors see it. Referees on a moved game stay on it if they're still free; otherwise they're removed and emailed. Cancelling a game releases its referees.
 
 ## Final scores
 

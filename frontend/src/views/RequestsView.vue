@@ -108,7 +108,7 @@ function openDeny(r) { denying.value = r; denyNote.value = ''; denyError.value =
     <div v-else class="space-y-4">
       <article v-for="r in sorted" :key="r.id" class="card p-5" :class="needsMe(r) && 'ring-2 ring-accent'">
         <header class="flex flex-wrap items-center gap-2 mb-3">
-          <span class="badge badge-outline">{{ r.type === 'swap' ? 'Swap' : 'Move' }}</span>
+          <span class="badge badge-outline">{{ { swap: 'Swap', cancel: 'Cancel', reschedule: 'Move' }[r.type] }}</span>
           <span class="badge" :class="STATUS_STYLE[r.status]">{{ r.statusLabel }}</span>
           <span v-if="needsMe(r)" class="text-xs font-semibold">Needs your decision</span>
           <span class="text-xs text-text-muted ml-auto">{{ r.game.divisionName }}</span>
@@ -119,11 +119,16 @@ function openDeny(r) { denying.value = r; denyNote.value = ''; denyError.value =
             <p class="text-xs text-text-muted mb-1">{{ r.type === 'swap' ? 'Game 1' : applied(r) ? 'Was' : 'Now' }}{{ r.type === 'swap' && applied(r) ? ' (before swap)' : '' }} · {{ longDate(firstGame(r).date) }}</p>
             <GameRow :game="firstGame(r)" compact :show-division="false" />
           </div>
-          <div class="grid place-items-center text-text-muted text-lg" aria-hidden="true"><span class="rotate-90 md:rotate-0 inline-block">{{ r.type === 'swap' ? '⇄' : '→' }}</span></div>
+          <div class="grid place-items-center text-text-muted text-lg" aria-hidden="true"><span class="rotate-90 md:rotate-0 inline-block">{{ { swap: '⇄', cancel: '✕' }[r.type] || '→' }}</span></div>
           <div class="rounded-lg border border-border p-3 min-w-0">
             <template v-if="r.type === 'swap'">
               <p class="text-xs text-text-muted mb-1">Game 2{{ applied(r) ? ' (before swap)' : '' }} · {{ longDate(secondGame(r).date) }}</p>
               <GameRow :game="secondGame(r)" compact :show-division="false" />
+            </template>
+            <template v-else-if="r.type === 'cancel'">
+              <p class="text-xs text-text-muted mb-1">{{ r.status === 'approved' ? 'Cancelled' : 'Requested' }}</p>
+              <p class="text-sm font-semibold">{{ r.status === 'approved' ? 'This game was cancelled' : 'Cancel this game' }}</p>
+              <p class="text-xs text-text-muted">It won’t be played. Any referees are taken off.</p>
             </template>
             <template v-else>
               <p class="text-xs text-text-muted mb-1">{{ r.status === 'approved' ? 'Moved to' : 'Proposed' }}</p>

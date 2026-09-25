@@ -30,7 +30,8 @@ watch(type, async (t) => {
 const nextStep = computed(() => (auth.user.role === 'league_coach'
   ? 'Your program director reviews it first, then the other program, then the league.'
   : 'The other program reviews it, then the league signs off.'));
-const canSubmit = computed(() => reason.value.trim().length >= 5 && (type.value === 'reschedule' ? !!placement.value : !!swapWith.value));
+const canSubmit = computed(() => reason.value.trim().length >= 5
+  && (type.value === 'cancel' || (type.value === 'reschedule' ? !!placement.value : !!swapWith.value)));
 
 async function submit() {
   error.value = '';
@@ -38,7 +39,7 @@ async function submit() {
   try {
     const body = { gameId: props.game.id, type: type.value, reason: reason.value.trim() };
     if (type.value === 'reschedule') Object.assign(body, { courtId: placement.value.courtId, date: placement.value.date, startTime: placement.value.startTime, endTime: placement.value.endTime });
-    else body.swapGameId = swapWith.value.id;
+    else if (type.value === 'swap') body.swapGameId = swapWith.value.id;
     const { data } = await api.post('/requests', body);
     toast.success(`Request sent. ${data.request.statusLabel}.`);
     emit('created', data.request);
@@ -57,7 +58,7 @@ async function submit() {
 
       <fieldset>
         <legend class="label">What do you need?</legend>
-        <div class="grid sm:grid-cols-2 gap-2">
+        <div class="grid sm:grid-cols-3 gap-2">
           <label class="flex gap-2 items-start rounded-lg border p-3 cursor-pointer" :class="type === 'reschedule' ? 'border-accent' : 'border-border'">
             <input v-model="type" type="radio" value="reschedule" class="mt-1 accent-[var(--color-accent)]" />
             <span class="text-sm"><span class="font-semibold block">Move this game</span><span class="text-text-muted text-xs">Pick another open time at either team’s gym.</span></span>
@@ -66,10 +67,18 @@ async function submit() {
             <input v-model="type" type="radio" value="swap" class="mt-1 accent-[var(--color-accent)]" />
             <span class="text-sm"><span class="font-semibold block">Swap with another game</span><span class="text-text-muted text-xs">The two games trade dates, times, and courts.</span></span>
           </label>
+          <label class="flex gap-2 items-start rounded-lg border p-3 cursor-pointer" :class="type === 'cancel' ? 'border-accent' : 'border-border'">
+            <input v-model="type" type="radio" value="cancel" class="mt-1 accent-[var(--color-accent)]" />
+            <span class="text-sm"><span class="font-semibold block">Cancel this game</span><span class="text-text-muted text-xs">It won’t be played. Weather, a gym closure, and so on.</span></span>
+          </label>
         </div>
       </fieldset>
 
-      <div v-if="type === 'reschedule'">
+      <div v-if="type === 'cancel'" class="rounded-lg border border-border p-3 text-sm">
+        <p class="font-medium">The game won’t be played.</p>
+        <p class="text-text-muted text-xs mt-1">It stays on the schedule marked <strong>Cancelled</strong>, with your reason, so everyone can see what happened. Any referees on it are taken off. If it could be played another time, choose <strong>Move this game</strong> instead.</p>
+      </div>
+      <div v-else-if="type === 'reschedule'">
         <p class="label">New time</p>
         <PlacementPicker v-model="placement" :game="game" />
       </div>
@@ -90,8 +99,9 @@ async function submit() {
       </div>
 
       <div>
-        <label class="label" for="req-reason">Reason</label>
-        <textarea id="req-reason" v-model="reason" rows="2" class="input" maxlength="400" placeholder="e.g. Our gym is closed for a school concert that night." />
+        <label class="label" for="req-reason">{{ type === 'cancel' ? 'Why is it being cancelled?' : 'Reason' }}</label>
+        <textarea id="req-reason" v-model="reason" rows="2" class="input" maxlength="400"
+          :placeholder="type === 'cancel' ? 'e.g. Snow closed the school; the gym is unavailable.' : 'e.g. Our gym is closed for a school concert that night.'" />
         <p class="text-xs text-text-muted mt-1">{{ nextStep }}</p>
       </div>
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>

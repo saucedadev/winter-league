@@ -63,6 +63,7 @@ function involvedPrograms(games) {
 
 function summarize(r, game, swapGame) {
   if (r.type === 'swap') return `Swap ${describeGame(game)} with ${describeGame(swapGame)}`;
+  if (r.type === 'cancel') return `Cancel ${describeGame(game)}`;
   return `Move ${describeGame(game)} to ${r.proposedDate} at ${formatTime12(r.proposedStartTime)}`;
 }
 
@@ -124,7 +125,18 @@ function visibleTo(user, r, game, swapGame, steps) {
 }
 
 // Validates the proposal and returns what applying it would do.
-async function evaluate(r, game, swapGame, { today }) {
+async function evaluate(r, game, swapGame, { today, actorId = null }) {
+  if (r.type === 'cancel') {
+    // Nothing to check beyond the game itself (done when the request is made
+    // and again at sign-off): the game is simply called off.
+    return {
+      errors: [], warnings: [],
+      updates: [{
+        sql: `UPDATE games SET status = 'cancelled', cancel_reason = ?, cancelled_by = ?, cancelled_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        args: [r.reason, actorId, game.id],
+      }],
+    };
+  }
   if (r.type === 'swap') {
     const a = await checkPlacement(game, { courtId: swapGame.courtId, date: swapGame.date, startTime: swapGame.startTime, endTime: swapGame.endTime }, { excludeIds: [swapGame.id], today });
     const b = await checkPlacement(swapGame, { courtId: game.courtId, date: game.date, startTime: game.startTime, endTime: game.endTime }, { excludeIds: [game.id], today });
@@ -203,9 +215,11 @@ router.post('/', ah(async (req, res) => {
   const u = req.user;
   if (isSuperAdmin(u)) throw badRequest('System Admins change games directly from the Schedule builder instead of filing requests.');
   const b = req.body || {};
-  if (!['reschedule', 'swap'].includes(b.type)) throw badRequest('Choose reschedule or swap.');
+  if (!['reschedule', 'swap', 'cancel'].includes(b.type)) throw badRequest('Choose move, swap, or cancel.');
   const reason = trimOrNull(b.reason);
-  if (!reason || reason.length < 5) throw badRequest('Give a short reason so the other program and the league know why.');
+  if (!reason || reason.length < 5) throw badRequest(b.type === 'cancel'
+    ? 'Say why the game has to be called off, so the other program and the league know.'
+    : 'Give a short reason so the other program and the league know why.');
   if (!u.programId) throw forbidden('Your account isn’t assigned to a program.');
 
   const game = await assertRequestableGame(u, b.gameId, 'That game');
@@ -213,7 +227,9 @@ router.post('/', ah(async (req, res) => {
 
   let swapGame = null;
   const draft = { type: b.type, proposedCourtId: null, proposedDate: null, proposedStartTime: null, proposedEndTime: null };
-  if (b.type === 'swap') {
+  if (b.type === 'cancel') {
+    // Nothing else to collect: the reason is the request.
+  } else if (b.type === 'swap') {
     if (!b.swapGameId || b.swapGameId === game.id) throw badRequest('Choose the game to swap with.');
     swapGame = await assertRequestableGame(u, b.swapGameId, 'The other game');
     if (swapGame.runId !== game.runId) throw badRequest('Both games must be on the same schedule.');
@@ -224,7 +240,7 @@ router.post('/', ah(async (req, res) => {
     Object.assign(draft, { proposedCourtId: b.courtId, proposedDate: b.date, proposedStartTime: b.startTime, proposedEndTime: b.endTime });
   }
 
-  const ev = await evaluate(draft, game, swapGame, { today: todayStr() });
+  const ev = await evaluate({ ...draft, reason }, game, swapGame, { today: todayStr() });
   if (ev.errors.length) throw conflict(ev.errors[0], { errors: ev.errors });
 
   const counterparts = involvedPrograms([game, swapGame].filter(Boolean)).filter((p) => p !== u.programId);
@@ -292,7 +308,7 @@ router.post('/:id/act', ah(async (req, res) => {
     next = stillPending.length ? 'pending_counterpart' : 'pending_admin';
   } else {
     // League sign-off: re-check against the schedule as it is NOW, then apply.
-    const ev = await evaluate(r, game, swapGame, { today: todayStr() });
+    const ev = await evaluate(r, game, swapGame, { today: todayStr(), actorId: u.id });
     if (ev.errors.length) throw conflict(`This change no longer fits the schedule: ${ev.errors[0]} Deny it with a note so the requester can pick another option.`, { errors: ev.errors });
     stmts.push(...ev.updates);
     next = 'approved';
