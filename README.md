@@ -104,7 +104,7 @@ The demo league's **programs, venues, and Program Directors** come from `backend
 | `npm run db:reset:test` | The same, but with the built-in test league the smoke tests need. |
 | `npm run migrate:prod`  | Run migrations against Turso using `.env.production.local`. |
 | `npm run seed:prod`     | Seed the production Turso database using `.env.production.local`. |
-| `npm run start:render`  | What Render runs: migrate, then start the server. |
+| `npm run start:render`  | What Render runs. The server applies any pending database updates itself at startup, and stops with the reason if one fails. |
 | `npm run test:smoke`    | 148 API checks (auth, program isolation, slot rules, matchmaker and opponent rules, approval chain, referee assignment, check-in, payouts, branding, phone numbers). Run after `npm run db:reset:test`, with the API up in normal mode (not demo check-in mode). |
 | `npm run test:demo-data` | 18 checks that the demo spreadsheet loads correctly and that broken files are rejected with clear messages. Needs no API or database. |
 

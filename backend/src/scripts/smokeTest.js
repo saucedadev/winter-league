@@ -90,6 +90,12 @@ check('removing blackout restores slots', nov9b.length === nov9.length && nov9b.
 const del = await call('DELETE', `/slots/${repeat.data.slots[2].id}?scope=following`, { token: pd });
 check('delete "this and following" in series', del.data.deleted === repeat.data.slots.length - 2);
 
+console.log('\nHealth check');
+{
+  const h = (await call('GET', '/health')).data;
+  check('health reports the database version', h.ok === true && h.schema >= 7 && /^\d+.*\.sql$/.test(h.latestUpdate || ''), JSON.stringify(h));
+}
+
 console.log('\nLeague time zone');
 check('the league runs on Pacific Time', (await call('GET', '/settings/branding')).data.timezone === 'America/Los_Angeles');
 {

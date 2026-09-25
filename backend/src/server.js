@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from './config.js';
-import { db, isLocalDb } from './db/client.js';
+import { db, one, isLocalDb } from './db/client.js';
+import { migrate } from './db/migrator.js';
 import { HttpError } from './utils/http.js';
 
 import authRoutes from './routes/auth.js';
@@ -32,11 +33,12 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '600kb' })); // room for an uploaded logo (max 300 KB, base64-encoded)
 
-// Health check for Render — also confirms the database is reachable.
+// Health check for Render — also confirms the database is reachable and says
+// which database version it's on, so a deploy can be checked at a glance.
 app.get('/api/health', async (req, res) => {
   try {
-    await db.execute('SELECT 1');
-    res.json({ ok: true, app: 'winter-league', database: isLocalDb ? 'local-sqlite' : 'turso' });
+    const row = await one('SELECT COUNT(*) AS applied, MAX(name) AS latest FROM schema_migrations');
+    res.json({ ok: true, app: 'winter-league', database: isLocalDb ? 'local-sqlite' : 'turso', schema: Number(row?.applied) || 0, latestUpdate: row?.latest || null });
   } catch {
     res.status(503).json({ ok: false, error: 'Database unreachable' });
   }
@@ -72,6 +74,18 @@ app.use((err, req, res, next) => {
 
 // libSQL: enforce foreign keys on this connection (off by default in SQLite).
 await db.execute('PRAGMA foreign_keys = ON');
+
+// Apply any database updates this version needs before serving. The start
+// command can't leave the database behind, and a failed update stops the
+// server rather than running against a half-updated database.
+try {
+  const { applied, total } = await migrate();
+  console.log(applied ? `🗄️  Database updated — ${applied} new, ${total} total.` : `🗄️  Database up to date (${total} updates).`);
+} catch (err) {
+  console.error(`❌ Database update failed: ${err.message}`);
+  console.error('   The server did not start. Fix the problem and deploy again; nothing was left half-applied.');
+  process.exit(1);
+}
 
 app.listen(config.port, () => {
   console.log(`🕒 League time zone: ${config.leagueTimezone}`);

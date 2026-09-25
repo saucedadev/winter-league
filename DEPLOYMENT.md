@@ -120,7 +120,7 @@ Render dashboard → **New +** → **Web Service** → connect the `winter-leagu
 | **Start Command** | `npm run start:render` |
 | Instance type | Free works; see note below |
 
-`start:render` runs any pending migrations and then starts the server. Future schema changes (Phase 2 onward) apply automatically on each deploy; you won't need `migrate:prod` again unless you prefer to run it by hand.
+The server applies any pending database updates itself as it starts, so every deploy brings the database up to date whatever the start command is. If an update fails, the server stops with the reason in the log rather than running against a half-updated database, and Render keeps the previous version serving. You won't need `migrate:prod` unless you prefer to run updates by hand.
 
 ### 2.3 Generate a JWT secret
 On your machine:
@@ -160,9 +160,9 @@ In the deploy log, look for the migration line followed by the server starting. 
 ```
 https://winter-league-api.onrender.com/api/health
 ```
-Expected:
+Expected (`schema` is how many database updates have been applied, and `latestUpdate` the most recent one — handy for confirming a deploy landed):
 ```json
-{"ok":true,"app":"winter-league","database":"turso"}
+{"ok":true,"app":"winter-league","database":"turso","schema":7,"latestUpdate":"007_cancel_requests.sql"}
 ```
 Save the base URL plus `/api` as the **API URL**, e.g. `https://winter-league-api.onrender.com/api`.
 

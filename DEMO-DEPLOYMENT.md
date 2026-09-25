@@ -146,7 +146,7 @@ Render → **New +** → **Web Service** → the same GitHub repository.
 | **Start Command** | `npm run start:render` |
 | Instance type | Free is fine for a demo |
 
-> **Use exactly `npm run start:render`.** It applies any new database updates before starting. With a different start command, a future version can fail with "Something went wrong on the server".
+> **Use exactly `npm run start:render`** (note the colon). The server applies any new database updates itself at startup, so this is really just the standard start command; watch out for typos like `npm run start render`, which silently runs something else.
 
 **Environment variables:**
 
@@ -165,7 +165,7 @@ Leave `LEAGUE_TIMEZONE` out (it defaults to Pacific) and don't set `PORT` (Rende
 
 **Settings → Health Check Path:** `/api/health`. Then create the service.
 
-When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect `{"ok":true,"app":"winter-league","database":"turso"}`. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
+When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect something like `{"ok":true,"app":"winter-league","database":"turso","schema":7,"latestUpdate":"007_cancel_requests.sql"}`. `schema` is how many database updates have been applied, so you can confirm a deploy landed. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
 
 ## 2.4 Vercel: the demo site
 
