@@ -4,7 +4,7 @@
 -- Before: each activity entry had one program_id, which for change
 -- requests was only the program that asked, so the other program's
 -- director never saw it, and the Activity screen showed that program's
--- code next to whoever acted (e.g. "Misty Sauceda · FGYB").
+-- code next to whoever acted (e.g. "Colleen Rogers · FGYB").
 --
 -- Now:
 --   actor_program_id / actor_role: the acting person's own program and role

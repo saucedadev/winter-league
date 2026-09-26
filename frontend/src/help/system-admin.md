@@ -91,13 +91,32 @@ Click **Generate draft** (or **Regenerate draft** to start over). It takes a few
 Read the summary cards (games placed, home/away balance, longest trip, season span, anything needing attention) and **Notes from the matchmaker**, which explain in plain words anything it couldn't do, such as a team left short of games and which setting would fix it.
 
 ### 3. Review and adjust
-- **By date:** every game. **Move** picks a new time from a list that already passes every rule; **Flip** swaps home and away; **Unplace** takes a game off the calendar.
-- **Unplaced:** pairings the matchmaker couldn't fit. Use **Place game** to put them somewhere by hand.
+- **By date:** every game. **Move** picks a new time from a list that already passes every rule; **Flip** swaps home and away; **Unplace** takes a game off the calendar but keeps the pairing; **Remove** deletes the pairing from the draft.
+- **Unplaced:** pairings the matchmaker couldn't fit. Use **Place game** to put them somewhere by hand, or **Remove** to drop one.
 - **Team balance:** each team's games and home/away count. Bold rows are more than one game off 50/50 or short of the target.
 
 ![Moving a game](/help/img/sa-builder-move.png)
 
 ![Team balance](/help/img/sa-builder-balance.png)
+
+#### Removing and adding games
+Not every pairing has to come from the matchmaker.
+
+- **Remove** (drafts only) deletes a game from the draft after you confirm. Each team then has one game fewer, which shows on the **Team balance** tab. On the published schedule, games are **cancelled** instead, so there's a record of them.
+- **+ Add game** (next to the division filter) creates a game by hand, in the draft or on the published schedule:
+  1. Choose the **Team**, then the **Opponent**. Each opponent shows how often the two teams already play and how many games it has. Opponents within the league rules are listed first.
+  2. Pick a time. Like **Move**, the list only offers open game slots at either team's gyms that pass every rule (court free, no blackout, days between games, games per week). The court decides who hosts. In a draft you can instead tick **Add to Unplaced** and place it later.
+  3. Add a reason if you like (it's kept with the game) and click **Add game**.
+
+![Adding a game](/help/img/sa-builder-add.png)
+
+**Exceptions.** Opponents that break a league rule (a team in another division, a team from the same program, or a pair that already meets as often as **Most games against the same opponent** allows) are listed under **Exceptions to the league rules**. Choosing one shows which rule it breaks. To add it anyway, tick **Add it anyway, as an exception** and say why. The rule and your reason are kept with the game, which shows an **Exception** badge (hover over it for the details). Games added by hand show an **Added** badge.
+
+![Adding a game as an exception](/help/img/sa-builder-exception.png)
+
+If either team would go over **Games per team**, the dialog says so. That's a note, not a block.
+
+> **Regenerating a draft** starts over from the rules, so games you added or removed in the draft are lost. Make those edits last.
 
 ### 4. Publish
 Click **Publish schedule**. Coaches, directors, and referees see it immediately. **Discard draft** throws a draft away without affecting anything published.
@@ -105,7 +124,7 @@ Click **Publish schedule**. Coaches, directors, and referees see it immediately.
 > **Publishing again later** replaces the current schedule. The app warns you first: open change requests on the old schedule are cancelled, and referee assignments carry over only to games that didn't change.
 
 ### Changes after publishing
-In the Schedule builder, switch to **Published** to move, flip, **Cancel**, or **Restore** a live game. Cancelling asks for a reason, which shows on everyone's schedule next to the game; **Restore** puts it back and clears the reason. Coaches and directors can also ask for a cancellation through a change request, which comes to you for sign-off like any other. Every change is logged and both teams' directors see it. Referees on a moved game stay on it if they're still free; otherwise they're removed and emailed. Cancelling a game releases its referees.
+In the Schedule builder, switch to **Published** to move, flip, **Cancel**, or **Restore** a live game, or use **+ Add game** to add one. An added game goes live straight away: both teams' directors and coaches are emailed, both programs see it in Activity, and it gets referee slots for the assignor to fill. Cancelling asks for a reason, which shows on everyone's schedule next to the game; **Restore** puts it back and clears the reason. Coaches and directors can also ask for a cancellation through a change request, which comes to you for sign-off like any other. Every change is logged and both teams' directors see it. Referees on a moved game stay on it if they're still free; otherwise they're removed and emailed. Cancelling a game releases its referees.
 
 ## Final scores
 
@@ -117,11 +136,12 @@ Coaches and directors of the two teams enter final scores after each game, and y
 
 ## Change requests: league sign-off
 
-Coaches and directors ask for changes from the Schedule page. A request goes to the requesting coach's own director, then to every other program involved, and finally to you.
+Coaches and directors ask for changes from the Schedule page: moving, swapping, or cancelling a game, or adding an extra one (**Request a game**). A request goes to the requesting coach's own director, then to every other program involved, and finally to you.
 
 **Menu → League → Requests.** Requests waiting on you say **Needs your decision**.
 - **Approve & apply** checks the change against the schedule as it is right now, then applies it. If something has taken that time in the meantime, it tells you, and you can deny with a note so the requester can pick another time.
 - **Deny** needs a short note for the requester. You can deny at any stage.
+- A request to **add a game** (marked **Add game**) creates the game when you approve it, after checking again that the time is still free and the two teams are still within the league rules. Requests can't be exceptions. If a team needs a game outside the rules, add it yourself with **+ Add game**.
 
 ![A request waiting for league sign-off](/help/img/sa-requests-signoff.png)
 

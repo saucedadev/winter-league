@@ -49,6 +49,7 @@ export const GAME_SELECT = `SELECT g.*,
   at.head_coach_user_id AS away_coach_id,
   su.first_name || ' ' || su.last_name AS score_entered_by_name,
   cu.first_name || ' ' || cu.last_name AS cancelled_by_name,
+  adu.first_name || ' ' || adu.last_name AS added_by_name,
   (SELECT GROUP_CONCAT(n, ', ') FROM (SELECT ru.first_name || ' ' || ru.last_name AS n FROM referee_assignments ra
      JOIN users ru ON ru.id = ra.referee_id WHERE ra.game_id = g.id ORDER BY ra.position)) AS referee_names,
   (SELECT COUNT(*) FROM referee_assignments ra WHERE ra.game_id = g.id) AS referee_slots,
@@ -64,12 +65,14 @@ export const GAME_SELECT = `SELECT g.*,
   JOIN teams at ON at.id = g.away_team_id JOIN programs ap ON ap.id = at.program_id
   LEFT JOIN courts c ON c.id = g.court_id LEFT JOIN venues v ON v.id = c.venue_id
   LEFT JOIN users su ON su.id = g.score_entered_by
-  LEFT JOIN users cu ON cu.id = g.cancelled_by`;
+  LEFT JOIN users cu ON cu.id = g.cancelled_by
+  LEFT JOIN users adu ON adu.id = g.added_by`;
 
 export const GAME_ORDER = `ORDER BY g.date IS NULL, g.date, g.start_time, d.sort_order, v.name COLLATE NOCASE, c.name COLLATE NOCASE`;
 
 export function shapeGame(g) {
-  return { ...g, hasBlackoutConflict: !!g.blackoutReason, hasOpenRequest: !!g.openRequestId, hasScore: g.homeScore != null && g.awayScore != null };
+  return { ...g, hasBlackoutConflict: !!g.blackoutReason, hasOpenRequest: !!g.openRequestId, hasScore: g.homeScore != null && g.awayScore != null,
+    isAdded: !!g.addedAt, isException: !!g.exceptionNote };
 }
 
 export async function getGame(id) {

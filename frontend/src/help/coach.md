@@ -48,13 +48,26 @@ If a game can't be played at all, choose **Cancel this game** and say why: weath
 
 A cancelled game stays on the schedule, struck through and marked **Cancelled** with the reason, so there's a record of what happened. Any referees are taken off and told. If the game could still be played another time, ask to **move** it instead.
 
+## Asking for an extra game
+
+If your team needs another game, for example because one was cancelled, choose **Request a game** at the top of the **Schedule** page.
+
+1. Choose your **Team** (if you coach more than one) and the **Opponent**. Only opponents within the league rules are listed. If there are none, your team already plays everyone it can as often as the league allows, so ask your director or the league.
+2. Pick a time from the list. Each one is an open game slot at one of the two teams' gyms that fits both teams' schedules. It says which team hosts.
+3. Give a short **reason**, e.g. *"Replaces our game that was cancelled for snow."*
+4. Choose **Send request**.
+
+![Asking for an extra game](/help/img/coach-request-game.png)
+
+It goes through the same approvals as a move. Once the league signs off, the game appears on your schedule marked **Added**.
+
 ## Following your request
 
 **Menu → League → Requests** shows your requests and where each one is:
 
 1. **Your Program Director** endorses it.
 2. **The other program** agrees.
-3. **The league** signs off, and the game moves.
+3. **The league** signs off, and the change is made (the game moves, is cancelled, or is added).
 
 ![Where a request is](/help/img/coach-requests.png)
 

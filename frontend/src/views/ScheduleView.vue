@@ -10,6 +10,7 @@ import EmptyState from '../components/EmptyState.vue';
 import GameRow from '../components/GameRow.vue';
 import RequestChangeModal from '../components/RequestChangeModal.vue';
 import ScoreModal from '../components/ScoreModal.vue';
+import AddGameModal from '../components/AddGameModal.vue';
 
 const auth = useAuthStore();
 const toast = useToast();
@@ -87,6 +88,8 @@ const requesting = ref(null);
 const scoring = ref(null);
 async function onScored() { scoring.value = null; await load(); }
 async function onCreated() { requesting.value = null; await load(); }
+const requestingGame = ref(false);
+function onGameRequested() { requestingGame.value = false; }
 </script>
 
 <template>
@@ -94,6 +97,7 @@ async function onCreated() { requesting.value = null; await load(); }
     <PageHeader title="Schedule"
       :subtitle="data?.published ? `${data.season.name} · published ${timestamp(data.publishedAt)} · All times ${leagueTimeZoneLabel()}` : 'League games for the active season'">
       <RouterLink v-if="auth.isSuperAdmin" to="/schedule/builder" class="btn btn-secondary">Open schedule builder</RouterLink>
+      <button v-if="hasOwn && data?.published" class="btn btn-secondary" @click="requestingGame = true">Request a game</button>
     </PageHeader>
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
@@ -144,6 +148,7 @@ async function onCreated() { requesting.value = null; await load(); }
     </template>
 
     <RequestChangeModal v-if="requesting" :game="requesting" @close="requesting = null" @created="onCreated" />
+ <AddGameModal v-if="requestingGame" mode="request" @close="requestingGame = false" @created="onGameRequested" />
     <ScoreModal v-if="scoring" :game="scoring" @close="scoring = null" @saved="onScored" />
   </div>
 </template>

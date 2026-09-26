@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { one, all, run, db } from '../db/client.js';
+import { one, all, run, db, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, isSuperAdmin } from '../middleware/auth.js';
 import { ah, badRequest, conflict, forbidden, notFound } from '../utils/http.js';
-import { assertDate, assertTime, isValidDate } from '../utils/validate.js';
+import { assertDate, assertTime, isValidDate, formatTime12 } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
 import { normalizeRules } from '../scheduling/core.js';
 import {
@@ -12,6 +12,8 @@ import {
 import { onGamesChanged, syncSlots, carryOverAssignments, upcomingAssignmentCount, leagueNow, notifyUsers } from '../referees/data.js';
 import { config } from '../config.js';
 import { toMinutes } from '../scheduling/core.js';
+import { getTeam, teamsForRun, pairingCheck, pairingContext, addOptions, checkAddPlacement, insertGame } from '../scheduling/addGame.js';
+import { runRules } from '../scheduling/data.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -217,6 +219,147 @@ router.get('/games/:id/swap-options', ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------
+// Adding a game (System Admin: directly; coach / director: by request)
+// ---------------------------------------------------------------------
+// Which schedule an add is for. A System Admin names it (?runId=, draft or
+// published); everyone else works on the published schedule.
+async function addRunFor(req, runId = req.query.runId) {
+  let r;
+  if (isSuperAdmin(req.user) && runId) r = await one('SELECT * FROM schedule_runs WHERE id = ?', [runId]);
+  else {
+    const season = await activeSeason();
+    r = season && await publishedRun(season.id);
+  }
+  if (!r) throw notFound('Schedule');
+  if (!['draft', 'published'].includes(r.status)) throw conflict('That schedule has been replaced. Add games to the current one.');
+  return r;
+}
+// Teams a coach or director may add a game for (a System Admin: any).
+export const canAddFor = (user, team) => isSuperAdmin(user)
+  || (user.role === 'league_coach' && team.coachId === user.id)
+  || (user.role === 'program_director' && team.programId === user.programId);
+const requesterOnly = (req) => {
+  if (!isSuperAdmin(req.user) && !['program_director', 'league_coach'].includes(req.user.role)) throw forbidden('Only coaches, directors, and the league can add games.');
+};
+async function teamFor(req, id, label = 'Team') {
+  const t = await getTeam(id);
+  if (!t) throw notFound(label);
+  return t;
+}
+
+// GET /api/schedule/add-game/teams?runId= — every active team with its game
+// count, plus which ones the signed-in user may add a game for.
+router.get('/add-game/teams', ah(async (req, res) => {
+  requesterOnly(req);
+  const r = await addRunFor(req);
+  const rules = await runRules(r.id);
+  const teams = await teamsForRun(r.id);
+  res.json({ run: { id: r.id, status: r.status }, gamesPerTeam: rules.gamesPerTeam,
+    teams: teams.map((t) => ({ id: t.id, name: t.name, divisionId: t.divisionId, divisionName: t.divisionName, programId: t.programId, programName: t.programName, games: t.games, mine: canAddFor(req.user, t) })) });
+}));
+
+// GET /api/schedule/add-game/opponents?runId=&teamId= — possible opponents.
+// A System Admin sees every team, each with the rules it would be an
+// exception to; a coach or director sees only opponents within the rules.
+router.get('/add-game/opponents', ah(async (req, res) => {
+  requesterOnly(req);
+  const r = await addRunFor(req);
+  const team = await teamFor(req, req.query.teamId);
+  if (!canAddFor(req.user, team)) throw forbidden('You can only add games for your own teams.');
+  const [rules, ctx, teams] = await Promise.all([runRules(r.id), pairingContext(r.id), teamsForRun(r.id)]);
+  const opponents = [];
+  for (const o of teams) {
+    if (o.id === team.id) continue;
+    const c = await pairingCheck(r, team, o, { rules, ctx });
+    if (c.errors.length) continue;
+    if (!isSuperAdmin(req.user) && c.exceptions.length) continue;
+    opponents.push({ id: o.id, name: o.name, divisionId: o.divisionId, divisionName: o.divisionName, programName: o.programName,
+      games: o.games, meetings: c.meetings, sameDivision: o.divisionId === team.divisionId, exceptions: c.exceptions });
+  }
+  // Same division first, then fewest meetings so far.
+  opponents.sort((a, b) => Number(b.sameDivision) - Number(a.sameDivision) || a.exceptions.length - b.exceptions.length || a.meetings - b.meetings || a.name.localeCompare(b.name));
+  res.json({ team: { id: team.id, name: team.name, divisionName: team.divisionName, games: ctx.games(team.id) }, gamesPerTeam: rules.gamesPerTeam, opponents });
+}));
+
+// GET /api/schedule/add-game/options?runId=&teamId=&opponentId= — open times
+// for the new game, already filtered by every placement rule.
+router.get('/add-game/options', ah(async (req, res) => {
+  requesterOnly(req);
+  const r = await addRunFor(req);
+  const team = await teamFor(req, req.query.teamId);
+  const opponent = await teamFor(req, req.query.opponentId, 'Opponent');
+  if (!canAddFor(req.user, team)) throw forbidden('You can only add games for your own teams.');
+  const check = await pairingCheck(r, team, opponent);
+  if (check.errors.length) throw badRequest(check.errors[0]);
+  if (!isSuperAdmin(req.user) && check.exceptions.length) throw conflict(`That game isn’t allowed: ${check.exceptions[0]}`);
+  const today = isSuperAdmin(req.user) && r.status === 'draft' ? null : todayStr();
+  const { options } = await addOptions(r, team, opponent, { today });
+  res.json({ options, exceptions: check.exceptions, warnings: check.warnings });
+}));
+
+// POST /api/schedule/runs/:id/games — a System Admin adds a game.
+//   { teamId, opponentId, courtId, date, startTime, endTime, reason, exception }
+//   Leave out the time to add it to Unplaced (drafts only).
+//   exception: true acknowledges the league rules it breaks; a reason is then required.
+router.post('/runs/:id/games', adminOnly, ah(async (req, res) => {
+  const r = await addRunFor(req, req.params.id);
+  const b = req.body || {};
+  const team = await teamFor(req, b.teamId);
+  const opponent = await teamFor(req, b.opponentId, 'Opponent');
+  const hasTime = b.courtId || b.date || b.startTime || b.endTime;
+  if (!hasTime && r.status !== 'draft') throw badRequest('Choose a time for the game. Only a draft can hold unplaced games.');
+  const pairing = await pairingCheck(r, team, opponent);
+  if (pairing.errors.length) throw badRequest(pairing.errors[0]);
+  const reason = typeof b.reason === 'string' ? b.reason.trim().slice(0, 300) : '';
+  if (pairing.exceptions.length) {
+    if (b.exception !== true) {
+      throw conflict(`This game breaks a league rule: ${pairing.exceptions.join(' ')} Add it as an exception, with a reason, if it’s intended.`,
+        { code: 'EXCEPTION_REQUIRED', exceptions: pairing.exceptions });
+    }
+    if (reason.length < 5) throw badRequest('Say why this game is an exception to the league rules (it’s kept with the game).');
+  }
+  let target = null;
+  let check = null;
+  let home = team;
+  let away = opponent;
+  if (hasTime) {
+    assertDate(b.date); assertTime(b.startTime, 'Start time'); assertTime(b.endTime, 'End time');
+    if (!b.courtId) throw badRequest('Choose a court.');
+    if (b.startTime >= b.endTime) throw badRequest('End time must be after start time.');
+    target = { courtId: b.courtId, date: b.date, startTime: b.startTime, endTime: b.endTime };
+    check = await checkAddPlacement(r, team, opponent, target, { today: r.status === 'draft' ? null : todayStr() });
+    if (check.errors.length) throw conflict(check.errors[0], { errors: check.errors, warnings: check.warnings });
+    ({ home, away } = check);
+  }
+  const id = newId();
+  const exceptionNote = pairing.exceptions.length ? pairing.exceptions.join(' ') : null;
+  await db.execute(insertGame({ id, run: r, home, away, target, check, userId: req.user.id, reason, exceptionNote }));
+  const game = await getGame(id);
+  const where = target ? ` on ${target.date} ${target.startTime} at ${check.court.venueName} – ${check.court.name}` : ' (not placed yet)';
+  const detail = `Added ${home.name} vs ${away.name}${where}${exceptionNote ? ` as an exception: ${exceptionNote}` : ''}${reason ? ` Reason: ${reason}` : ''}`;
+  let referees = null;
+  if (r.status === 'published') {
+    await logActivity({ category: 'schedule', action: 'added', actor: req.user, programId: home.programId, programIds: [home.programId, away.programId], details: detail });
+    referees = await onGamesChanged([id], req.user); // gives the new game its referee slots
+    // Both programs' directors and both coaches hear about a new game.
+    await notifyUsers("id != ? AND ((role = 'program_director' AND program_id IN (?, ?)) OR id IN (?, ?))",
+      [req.user.id, home.programId, away.programId, home.coachId || '', away.coachId || ''],
+      `Game added: ${home.name} vs ${away.name}`,
+      `The league added a game to the schedule:\n${home.name} vs ${away.name}\n${game.date} at ${formatTime12(game.startTime)} · ${game.venueName} – ${game.courtName}${reason ? `\nReason: ${reason}` : ''}`);
+  }
+  res.status(201).json({ game, warnings: [...pairing.warnings, ...(check?.warnings || [])], referees });
+}));
+
+// DELETE /api/schedule/games/:id — remove a pairing from a DRAFT. (On the
+// published schedule, games are cancelled instead, so there's a record.)
+router.delete('/games/:id', adminOnly, ah(async (req, res) => {
+  const game = await loadGameFor(req, { requireEditable: true });
+  if (game.runStatus !== 'draft') throw conflict('Games on the published schedule can’t be removed. Cancel the game instead, so there’s a record of it.');
+  await run('DELETE FROM games WHERE id = ?', [game.id]);
+  res.json({ ok: true, removed: { id: game.id, homeTeamName: game.homeTeamName, awayTeamName: game.awayTeamName } });
+}));
+
+// ---------------------------------------------------------------------
 // Admin edits (draft or published). Body is one of:
 //   { courtId, date, startTime, endTime }  move / place
 //   { action: 'flip' }                     swap home and away
@@ -348,8 +491,9 @@ router.post('/runs/:id/publish', adminOnly, ah(async (req, res) => {
     stmts.push({ sql: "UPDATE schedule_runs SET status = 'superseded' WHERE id = ?", args: [current.id] });
     stmts.push({
       sql: `UPDATE change_requests SET status = 'cancelled', decision_note = 'Cancelled automatically: a new schedule was published.', decided_at = datetime('now'), updated_at = datetime('now')
-            WHERE status IN ('pending_director', 'pending_counterpart', 'pending_admin') AND game_id IN (SELECT id FROM games WHERE run_id = ?)`,
-      args: [current.id],
+            WHERE status IN ('pending_director', 'pending_counterpart', 'pending_admin')
+              AND (game_id IN (SELECT id FROM games WHERE run_id = ?) OR (type = 'add' AND run_id = ?))`,
+      args: [current.id, current.id],
     });
   }
   stmts.push({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [req.user.id, r.id] });

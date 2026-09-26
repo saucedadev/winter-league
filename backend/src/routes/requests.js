@@ -1,4 +1,4 @@
-// Module D — reschedule & swap requests on the published schedule.
+// Module D — reschedule, swap, cancel, and add-a-game requests on the published schedule.
 //
 //   coach asks ──▶ pending_director ──▶ pending_counterpart ──▶ pending_admin ──▶ approved (applied)
 //   director asks ───────────────────▶ pending_counterpart ──▶ ...
@@ -16,8 +16,9 @@ import { assertDate, assertTime, trimOrNull, formatTime12 } from '../utils/valid
 import { logActivity } from '../utils/activityLog.js';
 import { sendEmail } from '../utils/email.js';
 import { config } from '../config.js';
-import { getGame, checkPlacement, placementUpdate, todayStr, describeGame } from '../scheduling/data.js';
-import { canRequestFor, hasBeenPlayed } from './schedule.js';
+import { getGame, checkPlacement, placementUpdate, todayStr, describeGame, activeSeason, publishedRun } from '../scheduling/data.js';
+import { getTeam, virtualGame, pairingCheck, checkAddPlacement, insertGame } from '../scheduling/addGame.js';
+import { canRequestFor, canAddFor, hasBeenPlayed } from './schedule.js';
 import { onGamesChanged } from '../referees/data.js';
 
 const router = Router();
@@ -62,6 +63,7 @@ function involvedPrograms(games) {
 }
 
 function summarize(r, game, swapGame) {
+  if (r.type === 'add') return `Add ${game.homeTeamName} vs ${game.awayTeamName} on ${r.proposedDate} at ${formatTime12(r.proposedStartTime)}`;
   if (r.type === 'swap') return `Swap ${describeGame(game)} with ${describeGame(swapGame)}`;
   if (r.type === 'cancel') return `Cancel ${describeGame(game)}`;
   return `Move ${describeGame(game)} to ${r.proposedDate} at ${formatTime12(r.proposedStartTime)}`;
@@ -80,7 +82,7 @@ function actionsFor(user, r, steps) {
   return acts;
 }
 
-const REQUEST_SELECT = `SELECT r.*, u.first_name || ' ' || u.last_name AS requested_by_name, u.role AS requested_by_role,
+const REQUEST_SELECT = `SELECT r.*, v.program_id AS proposed_program_id, u.first_name || ' ' || u.last_name AS requested_by_name, u.role AS requested_by_role,
     p.name AS requesting_program_name, p.short_code AS requesting_program_code,
     c.name AS proposed_court_name, v.name AS proposed_venue_name,
     du.first_name || ' ' || du.last_name AS decided_by_name
@@ -98,10 +100,24 @@ export const snapshotOf = (game, swapGame) => JSON.stringify({
   swapGame: swapGame ? Object.fromEntries(SNAP_FIELDS.map((k) => [k, swapGame[k]])) : null,
 });
 
+// The game(s) a request is about. An add request has no game until it's
+// approved, so it gets a stand-in built from the two teams and the proposed time.
+async function requestGames(r) {
+  if (r.type === 'add' && !r.gameId) {
+    const [home, away] = await Promise.all([getTeam(r.addHomeTeamId), getTeam(r.addAwayTeamId)]);
+    const game = virtualGame({ id: r.runId, seasonId: null }, home, away, {
+      id: null, date: r.proposedDate, startTime: r.proposedStartTime, endTime: r.proposedEndTime, courtId: r.proposedCourtId,
+      courtName: r.proposedCourtName, venueName: r.proposedVenueName, venueProgramId: r.proposedProgramId,
+    });
+    return { game, swapGame: null };
+  }
+  const [game, swapGame] = await Promise.all([getGame(r.gameId), r.swapGameId ? getGame(r.swapGameId) : null]);
+  return { game, swapGame };
+}
+
 async function hydrate(r, user) {
-  const [game, swapGame, steps] = await Promise.all([
-    getGame(r.gameId),
-    r.swapGameId ? getGame(r.swapGameId) : null,
+  const [{ game, swapGame }, steps] = await Promise.all([
+    requestGames(r),
     all(`SELECT s.*, p.name AS program_name, p.short_code AS program_code, u.first_name || ' ' || u.last_name AS decided_by_name
          FROM change_request_steps s JOIN programs p ON p.id = s.program_id LEFT JOIN users u ON u.id = s.decided_by
          WHERE s.request_id = ? ORDER BY s.stage = 'counterpart', p.name`, [r.id]),
@@ -126,6 +142,26 @@ function visibleTo(user, r, game, swapGame, steps) {
 
 // Validates the proposal and returns what applying it would do.
 async function evaluate(r, game, swapGame, { today, actorId = null }) {
+  if (r.type === 'add') {
+    // The pairing must be within the league rules (a request can't be an
+    // exception), and the time must pass every placement rule, both when
+    // it's asked for and again at league sign-off.
+    const run = await one('SELECT * FROM schedule_runs WHERE id = ?', [r.runId]);
+    if (run?.status !== 'published') return { errors: ['The schedule this game was requested for has been replaced.'], warnings: [], updates: [] };
+    const [team, opponent] = await Promise.all([getTeam(r.addHomeTeamId), getTeam(r.addAwayTeamId)]);
+    const pairing = await pairingCheck(run, team, opponent);
+    const target = { courtId: r.proposedCourtId, date: r.proposedDate, startTime: r.proposedStartTime, endTime: r.proposedEndTime };
+    const check = await checkAddPlacement(run, team, opponent, target, { today });
+    const newGameId = newId();
+    return {
+      errors: [...pairing.errors, ...pairing.exceptions, ...check.errors], warnings: [...pairing.warnings, ...check.warnings],
+      home: check.home, away: check.away, newGameId,
+      updates: [
+        insertGame({ id: newGameId, run, home: check.home, away: check.away, target, check, userId: r.requestedBy, reason: r.reason }),
+        { sql: "UPDATE change_requests SET game_id = ?, updated_at = datetime('now') WHERE id = ?", args: [newGameId, r.id] },
+      ],
+    };
+  }
   if (r.type === 'cancel') {
     // Nothing to check beyond the game itself (done when the request is made
     // and again at sign-off): the game is simply called off.
@@ -164,6 +200,56 @@ async function assertRequestableGame(user, id, label) {
   return g;
 }
 
+// A coach or director asks for a new game on the published schedule:
+//   { type: 'add', teamId, opponentId, courtId, date, startTime, endTime, reason }
+// teamId is one of their own teams. The game is created only when the league
+// signs off. The court decides who hosts.
+async function createAddRequest(req, res, reason) {
+  const u = req.user;
+  const b = req.body || {};
+  const season = await activeSeason();
+  const run = season && await publishedRun(season.id);
+  if (!run) throw conflict('Games can only be requested once the schedule is published.');
+  const [team, opponent] = await Promise.all([getTeam(b.teamId), getTeam(b.opponentId)]);
+  if (!team) throw notFound('Team');
+  if (!opponent) throw notFound('Opponent');
+  if (!canAddFor(u, team)) throw forbidden('You can only request games for your own teams.');
+  assertDate(b.date); assertTime(b.startTime, 'Start time'); assertTime(b.endTime, 'End time');
+  if (!b.courtId) throw badRequest('Choose when and where the game would be played.');
+  const pairing = await pairingCheck(run, team, opponent);
+  if (pairing.errors.length) throw badRequest(pairing.errors[0]);
+  if (pairing.exceptions.length) throw conflict(`That game isn’t allowed: ${pairing.exceptions[0]} Contact the league if it should be an exception.`);
+  const target = { courtId: b.courtId, date: b.date, startTime: b.startTime, endTime: b.endTime };
+  const check = await checkAddPlacement(run, team, opponent, target, { today: todayStr() });
+  if (check.errors.length) throw conflict(check.errors[0], { errors: check.errors });
+  const dup = await one(`SELECT id FROM change_requests WHERE type = 'add' AND run_id = ? AND status IN ${OPEN_SQL}
+    AND ((add_home_team_id = ? AND add_away_team_id = ?) OR (add_home_team_id = ? AND add_away_team_id = ?))`,
+  [run.id, team.id, opponent.id, opponent.id, team.id]);
+  if (dup) throw conflict('There’s already an open request to add a game between these two teams. Wait for it to be decided or withdraw it first.');
+
+  const { home, away } = check;
+  const programs = [...new Set([home.programId, away.programId])];
+  const counterparts = programs.filter((p) => p !== u.programId);
+  const status = u.role === 'league_coach' ? 'pending_director' : counterparts.length ? 'pending_counterpart' : 'pending_admin';
+  const id = newId();
+  const stmts = [{
+    sql: `INSERT INTO change_requests (id, game_id, type, run_id, add_home_team_id, add_away_team_id, proposed_court_id, proposed_date, proposed_start_time, proposed_end_time,
+          reason, requested_by, requesting_program_id, status) VALUES (?, NULL, 'add', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [id, run.id, home.id, away.id, b.courtId, b.date, b.startTime, b.endTime, reason, u.id, u.programId, status],
+  }];
+  if (u.role === 'league_coach') stmts.push({ sql: 'INSERT INTO change_request_steps (id, request_id, stage, program_id) VALUES (?, ?, ?, ?)', args: [newId(), id, 'director', u.programId] });
+  for (const p of counterparts) stmts.push({ sql: 'INSERT INTO change_request_steps (id, request_id, stage, program_id) VALUES (?, ?, ?, ?)', args: [newId(), id, 'counterpart', p] });
+  await db.batch(stmts, 'write');
+
+  const summary = `Add ${home.name} vs ${away.name} on ${b.date} at ${formatTime12(b.startTime)}`;
+  await logActivity({ category: 'request', action: 'created', actor: u, programId: u.programId, programIds: programs, details: `Requested: ${summary}` });
+  const text = `${u.firstName} ${u.lastName} asked to add a game:\n${summary} at ${check.court.venueName} – ${check.court.name}\nReason: ${reason}`;
+  if (status === 'pending_director') await notify({ role: 'program_director', programIds: [u.programId], subject: 'A request to add a game needs your review', text });
+  else if (status === 'pending_counterpart') await notify({ role: 'program_director', programIds: counterparts, subject: 'Another program asked to add a game with your team', text });
+  else await notify({ role: 'super_admin', subject: 'A request to add a game needs league sign-off', text });
+  res.status(201).json({ request: await hydrate(await loadRequest(id), u), warnings: [...pairing.warnings, ...check.warnings] });
+}
+
 // ---------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------
@@ -180,8 +266,9 @@ router.get('/', ah(async (req, res) => {
     args.push(u.programId, u.programId);
   } else if (u.role === 'league_coach') {
     where.push(`(r.requested_by = ? OR EXISTS (SELECT 1 FROM games g JOIN teams t ON t.id IN (g.home_team_id, g.away_team_id)
-      WHERE g.id IN (r.game_id, r.swap_game_id) AND t.head_coach_user_id = ?))`);
-    args.push(u.id, u.id);
+      WHERE g.id IN (r.game_id, r.swap_game_id) AND t.head_coach_user_id = ?)
+      OR EXISTS (SELECT 1 FROM teams t WHERE t.id IN (r.add_home_team_id, r.add_away_team_id) AND t.head_coach_user_id = ?))`);
+    args.push(u.id, u.id, u.id);
   }
   const rows = await all(`${REQUEST_SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY r.created_at DESC LIMIT 200`, args);
   const requests = await Promise.all(rows.map((r) => hydrate(r, u)));
@@ -215,12 +302,13 @@ router.post('/', ah(async (req, res) => {
   const u = req.user;
   if (isSuperAdmin(u)) throw badRequest('System Admins change games directly from the Schedule builder instead of filing requests.');
   const b = req.body || {};
-  if (!['reschedule', 'swap', 'cancel'].includes(b.type)) throw badRequest('Choose move, swap, or cancel.');
+  if (!['reschedule', 'swap', 'cancel', 'add'].includes(b.type)) throw badRequest('Choose move, swap, cancel, or add a game.');
   const reason = trimOrNull(b.reason);
   if (!reason || reason.length < 5) throw badRequest(b.type === 'cancel'
     ? 'Say why the game has to be called off, so the other program and the league know.'
     : 'Give a short reason so the other program and the league know why.');
   if (!u.programId) throw forbidden('Your account isn’t assigned to a program.');
+  if (b.type === 'add') return createAddRequest(req, res, reason);
 
   const game = await assertRequestableGame(u, b.gameId, 'That game');
   if (!canRequestFor(u, game)) throw forbidden('You can only request changes to your own teams’ games.');
@@ -280,8 +368,7 @@ router.post('/:id/act', ah(async (req, res) => {
   }
   if (action === 'deny' && (!note || note.length < 3)) throw badRequest('Add a short note explaining the denial.');
 
-  const game = await getGame(r.gameId);
-  const swapGame = r.swapGameId ? await getGame(r.swapGameId) : null;
+  const { game, swapGame } = await requestGames(r);
   const summary = summarize(r, game, swapGame);
   const requesterNote = `${summary}${note ? `\nNote: ${note}` : ''}`;
   const stmts = [];
@@ -298,6 +385,7 @@ router.post('/:id/act', ah(async (req, res) => {
   }
 
   let next;
+  let appliedGameId = null;
   if (action === 'deny') {
     next = 'denied';
     stmts.push({ sql: "UPDATE change_requests SET status = 'denied', decision_note = ?, decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", args: [note, u.id, r.id] });
@@ -311,6 +399,7 @@ router.post('/:id/act', ah(async (req, res) => {
     const ev = await evaluate(r, game, swapGame, { today: todayStr(), actorId: u.id });
     if (ev.errors.length) throw conflict(`This change no longer fits the schedule: ${ev.errors[0]} Deny it with a note so the requester can pick another option.`, { errors: ev.errors });
     stmts.push(...ev.updates);
+    appliedGameId = ev.newGameId || null;
     next = 'approved';
     stmts.push({ sql: "UPDATE change_requests SET status = 'approved', decision_note = ?, decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", args: [note, u.id, r.id] });
   }
@@ -318,7 +407,7 @@ router.post('/:id/act', ah(async (req, res) => {
     stmts.push({ sql: "UPDATE change_requests SET status = ?, updated_at = datetime('now') WHERE id = ?", args: [next, r.id] });
   }
   await db.batch(stmts, 'write');
-  if (next === 'approved') await onGamesChanged([game.id, swapGame?.id].filter(Boolean), u);
+  if (next === 'approved') await onGamesChanged([appliedGameId || game.id, swapGame?.id].filter(Boolean), u);
 
   const verb = action === 'deny' ? 'Denied' : next === 'approved' ? 'Approved and applied' : 'Approved';
   await logActivity({ category: 'request', action: action === 'deny' ? 'denied' : next === 'approved' ? 'applied' : 'approved', actor: u, programId: r.requestingProgramId, programIds: involvedPrograms([game, swapGame].filter(Boolean)),
@@ -344,8 +433,7 @@ router.post('/:id/cancel', ah(async (req, res) => {
     throw OPEN.includes(r.status) ? forbidden('Only the person who asked, or their program director, can cancel this.') : conflict(`This request is already ${r.status}.`);
   }
   await db.execute({ sql: "UPDATE change_requests SET status = 'cancelled', decided_by = ?, decided_at = datetime('now'), updated_at = datetime('now') WHERE id = ?", args: [req.user.id, r.id] });
-  const game = await getGame(r.gameId);
-  const swapGame = r.swapGameId ? await getGame(r.swapGameId) : null;
+  const { game, swapGame } = await requestGames(r);
   await logActivity({ category: 'request', action: 'cancelled', actor: req.user, programId: r.requestingProgramId, programIds: involvedPrograms([game, swapGame].filter(Boolean)), details: `Cancelled request: ${summarize(r, game, swapGame)}` });
   res.json({ request: await hydrate(await loadRequest(r.id), req.user) });
 }));

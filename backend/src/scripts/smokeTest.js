@@ -262,6 +262,40 @@ if (other) {
 const fl = await call('PUT', `/schedule/games/${target.id}`, { token: admin, body: { action: 'flip' } });
 check('flip swaps home and away', fl.data.game.homeTeamId === mv.data.game.awayTeamId);
 
+console.log('\nRemoving and adding games (draft)');
+const dGames = (await call('GET', `/schedule/runs/${draftId}/games`, { token: admin })).data.games;
+const toRemove = dGames.find((g) => g.id !== target.id && g.status === 'scheduled');
+const rm = await call('DELETE', `/schedule/games/${toRemove.id}`, { token: admin });
+check('admin removes a pairing from the draft', rm.status === 200 && !(await call('GET', `/schedule/runs/${draftId}/games`, { token: admin })).data.games.some((g) => g.id === toRemove.id));
+check('only the System Admin can remove games', (await call('DELETE', `/schedule/games/${target.id}`, { token: pd })).status === 403);
+const addTeams = (await call('GET', `/schedule/add-game/teams?runId=${draftId}`, { token: admin })).data;
+check('add-a-game lists every team with its game count', addTeams.teams.length >= 20 && addTeams.teams.every((t) => Number.isInteger(t.games) && t.mine));
+const removedTeam = addTeams.teams.find((t) => t.id === toRemove.homeTeamId);
+const opp = (await call('GET', `/schedule/add-game/opponents?runId=${draftId}&teamId=${removedTeam.id}`, { token: admin })).data;
+const ruleOpp = opp.opponents.find((o) => o.id === toRemove.awayTeamId);
+check('opponents include the removed pairing, within the rules again', !!ruleOpp && ruleOpp.exceptions.length === 0, JSON.stringify(ruleOpp));
+const crossOpp = opp.opponents.find((o) => !o.sameDivision);
+check('a System Admin also sees other divisions, marked as exceptions', !!crossOpp && crossOpp.exceptions.some((e) => e.includes('Different divisions')));
+const addOpts = (await call('GET', `/schedule/add-game/options?runId=${draftId}&teamId=${removedTeam.id}&opponentId=${ruleOpp.id}`, { token: admin })).data;
+check('open times are offered for the new game', addOpts.options.length > 0 && addOpts.exceptions.length === 0);
+const ao = addOpts.options[0];
+const added = await call('POST', `/schedule/runs/${draftId}/games`, { token: admin, body: { teamId: removedTeam.id, opponentId: ruleOpp.id, courtId: ao.courtId, date: ao.date, startTime: ao.startTime, endTime: ao.endTime, reason: 'Replacing the removed pairing' } });
+check('admin adds a game at an open time', added.status === 201 && added.data.game.status === 'scheduled' && added.data.game.date === ao.date && added.data.game.isAdded && !added.data.game.isException, JSON.stringify(added.data).slice(0, 200));
+check('the court decides who hosts', added.data.game.venueProgramId === (ao.flip ? teamProgAll[ruleOpp.id] : teamProgAll[removedTeam.id]));
+check('the added game records who added it and why', added.data.game.addedByName === 'Grace Kim' && added.data.game.addedReason === 'Replacing the removed pairing');
+const sameSpot = await call('POST', `/schedule/runs/${draftId}/games`, { token: admin, body: { teamId: removedTeam.id, opponentId: ruleOpp.id, courtId: ao.courtId, date: ao.date, startTime: ao.startTime, endTime: ao.endTime } });
+check('a taken court (or a rule) blocks a second game at the same time', sameSpot.status === 409);
+const noFlag = await call('POST', `/schedule/runs/${draftId}/games`, { token: admin, body: { teamId: removedTeam.id, opponentId: crossOpp.id } });
+check('a game that breaks a league rule needs to be marked an exception', noFlag.status === 409 && noFlag.data.code === 'EXCEPTION_REQUIRED' && noFlag.data.exceptions.length >= 1);
+check('an exception needs a reason', (await call('POST', `/schedule/runs/${draftId}/games`, { token: admin, body: { teamId: removedTeam.id, opponentId: crossOpp.id, exception: true, reason: '' } })).status === 400);
+const excAdd = await call('POST', `/schedule/runs/${draftId}/games`, { token: admin, body: { teamId: removedTeam.id, opponentId: crossOpp.id, exception: true, reason: 'Scrimmage agreed by both clubs' } });
+check('an exception is added, with the rule it breaks kept on the game', excAdd.status === 201 && excAdd.data.game.isException && excAdd.data.game.exceptionNote.includes('Different divisions'));
+check('in a draft, a game can be added without a time (to Unplaced)', excAdd.data.game?.status === 'unscheduled');
+check('added games are marked in the draft', (await call('GET', `/schedule/runs/${draftId}/games`, { token: admin })).data.games.filter((g) => g.isAdded).length === 2);
+// Leave the draft with one added game (the replacement) so publishing carries it.
+for (const g of [excAdd.data.game]) await call('DELETE', `/schedule/games/${g.id}`, { token: admin });
+const addedDraftGame = added.data.game;
+
 console.log('\nPublishing');
 const openBefore = (await call('GET', '/requests?state=open', { token: admin })).data.requests.length;
 check('demo has open sample requests', openBefore >= 1);
@@ -374,6 +408,66 @@ const adminCancel = await call('PUT', `/schedule/games/${nfhLive.id}`, { token: 
 check('an admin cancels with a reason', adminCancel.data.game?.status === 'cancelled' && adminCancel.data.game.cancelReason === 'Gym floor damaged by a leak.');
 check('both programs see the cancellation in Activity', (await call('GET', '/activity?category=schedule', { token: pd })).data.entries.some((e) => e.details.includes('Gym floor damaged by a leak.')));
 await call('PUT', `/schedule/games/${nfhLive.id}`, { token: admin, body: { action: 'restore' } });
+
+console.log('\nAdding games (published schedule)');
+const pubAdded = (await call('GET', '/schedule/games', { token: coach })).data.games.find((g) => g.id === addedDraftGame.id); // publishing keeps the draft's game rows
+check('a game added to the draft is published like any other', !!pubAdded && pubAdded.isAdded);
+check('published games can’t be removed (cancel instead)', (await call('DELETE', `/schedule/games/${pubAdded.id}`, { token: admin })).status === 409);
+const coachTeams = (await call('GET', '/schedule/add-game/teams', { token: coach })).data;
+const myTeam = coachTeams.teams.find((t) => t.mine);
+check('a coach may add games only for their own teams', !!myTeam && coachTeams.teams.filter((t) => t.mine).every((t) => t.programId === nfh.id));
+const otherTeam = coachTeams.teams.find((t) => !t.mine);
+check('asking for another team’s opponents is refused', (await call('GET', `/schedule/add-game/opponents?teamId=${otherTeam.id}`, { token: coach })).status === 403);
+check('a team that already meets every opponent the limit has none to request', (await call('GET', `/schedule/add-game/opponents?teamId=${myTeam.id}`, { token: coach })).data.opponents.length === 0);
+// Two of its upcoming games are called off, so it needs replacements.
+const myUpcoming = (await call('GET', '/schedule/games?mine=1', { token: coach })).data.games.filter((g) => g.canRequest && !g.hasOpenRequest && [g.homeTeamId, g.awayTeamId].includes(myTeam.id));
+const offOpponents = [];
+for (const g of myUpcoming) {
+  const o = g.homeTeamId === myTeam.id ? g.awayTeamId : g.homeTeamId;
+  if (offOpponents.includes(o)) continue;
+  await call('PUT', `/schedule/games/${g.id}`, { token: admin, body: { action: 'cancel', reason: 'Opponent forfeited the game.' } });
+  offOpponents.push(o);
+  if (offOpponents.length === 2) break;
+}
+const coachOpp = (await call('GET', `/schedule/add-game/opponents?teamId=${myTeam.id}`, { token: coach })).data.opponents;
+check('after a cancellation, that opponent can be played again', offOpponents.every((o) => coachOpp.some((x) => x.id === o)), JSON.stringify(coachOpp.map((o) => o.name)));
+check('a coach only sees opponents within the league rules', coachOpp.length > 0 && coachOpp.every((o) => o.sameDivision && !o.exceptions.length && teamProgAll[o.id] !== nfh.id));
+const outOfRules = coachTeams.teams.find((t) => t.divisionId !== myTeam.divisionId);
+check('a request can’t be an exception', (await call('GET', `/schedule/add-game/options?teamId=${myTeam.id}&opponentId=${outOfRules.id}`, { token: coach })).status === 409);
+const rybOpp = coachOpp.find((o) => teamProgAll[o.id] === ryb.id && offOpponents.includes(o.id)) || coachOpp[0];
+const leagueTodayNow = (await import('../utils/leagueTime.js')).leagueToday();
+const reqOpts = (await call('GET', `/schedule/add-game/options?teamId=${myTeam.id}&opponentId=${rybOpp.id}`, { token: coach })).data.options;
+check('open future times are offered for a requested game', reqOpts.length > 0 && reqOpts.every((o) => o.date >= leagueTodayNow));
+const ro = reqOpts[0];
+const addBody = { type: 'add', teamId: myTeam.id, opponentId: rybOpp.id, courtId: ro.courtId, date: ro.date, startTime: ro.startTime, endTime: ro.endTime, reason: 'Our opponent dropped out; we need a replacement game.' };
+check('a coach can’t request a game for another team', (await call('POST', '/requests', { token: coach, body: { ...addBody, teamId: otherTeam.id } })).status === 403);
+const addReq = await call('POST', '/requests', { token: coach, body: addBody });
+check('a coach asks to add a game', addReq.status === 201 && addReq.data.request.type === 'add' && addReq.data.request.status === 'pending_director', JSON.stringify(addReq.data).slice(0, 200));
+check('it reads as an added game', /^Add /.test(addReq.data.request.summary) && addReq.data.request.game.homeTeamName, addReq.data.request.summary);
+check('only one open request per pair of teams', (await call('POST', '/requests', { token: coach, body: addBody })).status === 409);
+const arId = addReq.data.request.id;
+check('the other program can see the request', (await call('GET', '/requests', { token: mbell })).data.requests.some((r) => r.id === arId) || teamProgAll[rybOpp.id] !== ryb.id);
+await call('POST', `/requests/${arId}/act`, { token: pd, body: { action: 'approve' } });
+if (teamProgAll[rybOpp.id] === ryb.id) await call('POST', `/requests/${arId}/act`, { token: mbell, body: { action: 'approve' } });
+const addSignOff = await call('POST', `/requests/${arId}/act`, { token: admin, body: { action: 'approve' } });
+const newGame = addSignOff.data.request?.game;
+check('the league signs off and the game is created', addSignOff.data.request?.status === 'approved' && newGame?.id && newGame.status === 'scheduled' && newGame.isAdded, JSON.stringify(addSignOff.data).slice(0, 200));
+check('the new game is on the published schedule', (await call('GET', '/schedule/games?mine=1', { token: coach })).data.games.some((g) => g.id === newGame.id));
+check('the new game gets referee slots', (await call('GET', `/schedule/games/${newGame.id}`, { token: admin })).data.game.refereeSlots > 0);
+check('the request’s reason is kept on the game', newGame.addedReason === addBody.reason);
+check('Activity shows the request', (await call('GET', '/activity?category=request', { token: pd })).data.entries.some((e) => e.details.includes('Requested: Add')));
+// A System Admin adds straight onto the published schedule.
+const adminOpts = (await call('GET', `/schedule/add-game/options?teamId=${myTeam.id}&opponentId=${rybOpp.id}`, { token: admin })).data.options;
+check('a published game needs a time', (await call('POST', `/schedule/runs/${pubr.data.published.id}/games`, { token: admin, body: { teamId: myTeam.id, opponentId: rybOpp.id } })).status === 400);
+const ao2 = adminOpts.find((o) => o.date !== ro.date) || adminOpts[0];
+const liveAdd = await call('POST', `/schedule/runs/${pubr.data.published.id}/games`, { token: admin, body: { teamId: myTeam.id, opponentId: rybOpp.id, courtId: ao2.courtId, date: ao2.date, startTime: ao2.startTime, endTime: ao2.endTime, exception: true, reason: 'Make-up game for the snow day' } });
+check('admin adds a game to the published schedule', liveAdd.status === 201 && liveAdd.data.game.status === 'scheduled', JSON.stringify(liveAdd.data).slice(0, 300));
+check('both programs see the added game in Activity', (await call('GET', '/activity?category=schedule', { token: pd })).data.entries.some((e) => e.details.startsWith('Added ') && e.details.includes('Make-up game for the snow day')));
+// Left open on purpose: publishing a new schedule later must cancel it.
+const pendingOpp = coachOpp.find((o) => o.id !== rybOpp.id);
+const pendingOpts = (await call('GET', `/schedule/add-game/options?teamId=${myTeam.id}&opponentId=${pendingOpp.id}`, { token: pd })).data.options;
+const pendingAdd = await call('POST', '/requests', { token: pd, body: { type: 'add', teamId: myTeam.id, opponentId: pendingOpp.id, courtId: pendingOpts[0].courtId, date: pendingOpts[0].date, startTime: pendingOpts[0].startTime, endTime: pendingOpts[0].endTime, reason: 'Extra practice game before the playoffs.' } });
+check('a director asks to add a game (skips the director step)', pendingAdd.status === 201 && pendingAdd.data.request.status !== 'pending_director', JSON.stringify(pendingAdd.data).slice(0, 200));
 
 console.log('\nData integrity with a live schedule');
 const liveNfh = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.venueProgramId === nfh.id && g.status === 'scheduled');
@@ -583,6 +677,7 @@ check('unchanged games keep their referees', rep.status === 200 && rep.data.refe
 check('worked games still count for pay after republishing', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data.totals.games === 1);
 const newGames = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games;
 const kept = newGames.find((g) => [g.homeTeamId, g.awayTeamId].sort().join() === [keep.homeTeamId, keep.awayTeamId].sort().join() && g.date === keep.date && g.startTime === keep.startTime);
+check('publishing a new schedule cancels open requests to add games', (await call('GET', `/requests/${pendingAdd.data.request.id}`, { token: admin })).data.request.status === 'cancelled');
 check('final scores carry over to unchanged games when republishing', !!kept && kept.hasScore && (kept.homeTeamId === keep.homeTeamId ? kept.homeScore === 51 : kept.awayScore === 51));
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

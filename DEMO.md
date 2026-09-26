@@ -65,6 +65,7 @@ Email addresses are safe placeholders (`…@demo.example` for directors, `…@ex
 - **Division overrides** (optional, 1 min). The demo data fits the league rules, so nobody comes up short at first. To show an override: set **Most games against the same opponent** to 1 and click **Regenerate draft**. The notes now list divisions whose teams can't reach 8 games with no rematches (e.g. "7th Grade Boys (6 teams)"). Under **Division overrides**, add **7th Grade Boys → 2** and regenerate: 7th Grade Boys drops off that list while every other division still plays each opponent once, and the draft shows a "Built with division override" line. Set the league value back to 2, **Remove** the override, and regenerate before moving on.
 - Read the summary cards: games placed, home/away balance, longest trip, and anything needing attention. Read one line from **Notes from the matchmaker**.
 - **Team balance** tab: find a bold row, go back to **By date**, and use **Flip** or **Move** on one of that team's games. The Move dialog only offers times that pass every rule.
+- **Remove and Add game.** **Remove** one game from the draft (the team drops a game on Team balance), then **+ Add game** to put a different one in: pick the team, an opponent, and an open time. Choose an opponent under **Exceptions to the league rules** to show that breaking a rule needs a tick and a reason, and that the game is marked **Exception**.
 - **Publish schedule.** Point out the warning: publishing replaces the current schedule and says how many referee assignments carry over.
 
 *Talking point:* the matchmaker produces a draft for a person to review, not a final answer. That's deliberate.
@@ -72,6 +73,7 @@ Email addresses are safe placeholders (`…@demo.example` for directors, `…@ex
 ### 3. A coach asks for a change (Tasha Greene, `tgreene`) — 2 min
 - **Schedule → My teams.** Choose **Request change** on a game against Forest Grove, pick **Move this game**, choose a new time, and give a reason.
 - Point out the line under the reason explaining the path: her director, then the other program, then the league.
+- Optional: **Request a game** (top of Schedule) shows how a coach asks for an extra game. Only opponents within the league rules are listed; if her team already plays everyone as often as the league allows, the list is empty and it says so. That's the rule working, and a System Admin can still add a game as an exception.
 
 ### 4. The approval chain — 3 min
 - **Colleen (`crogers`) → Requests.** The nav badge shows what's waiting on her: the new request plus two sample ones. Click **Endorse** on Tasha's.

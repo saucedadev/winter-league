@@ -5,7 +5,16 @@ import { longDate, time12 } from '../utils/format';
 
 // Lists every open game window this game could move to (already filtered
 // server-side by all scheduling rules). v-model is the chosen option.
-const props = defineProps({ game: { type: Object, required: true }, modelValue: Object });
+// For a game that doesn't exist yet (adding a game), pass `url` and `params`
+// for the add-game options endpoint and `addMode`; `game` then only needs the
+// two team names (homeTeamName = the team, awayTeamName = the opponent).
+const props = defineProps({
+  game: { type: Object, required: true },
+  modelValue: Object,
+  url: { type: String, default: '' },
+  params: { type: Object, default: () => ({}) },
+  addMode: { type: Boolean, default: false },
+});
 const emit = defineEmits(['update:modelValue']);
 
 const options = ref([]);
@@ -14,7 +23,11 @@ const error = ref('');
 const venueFilter = ref('');
 
 onMounted(async () => {
-  try { options.value = (await api.get(`/schedule/games/${props.game.id}/options`)).data.options; }
+  try {
+    options.value = props.url
+      ? (await api.get(props.url, { params: props.params })).data.options
+      : (await api.get(`/schedule/games/${props.game.id}/options`)).data.options;
+  }
   catch (err) { error.value = errorMessage(err); }
   finally { loading.value = false; }
 });
@@ -38,7 +51,7 @@ const selectedKey = computed(() => (props.modelValue ? key(props.modelValue) : '
     <p v-if="loading" class="text-sm text-text-muted">Finding open times…</p>
     <p v-else-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
     <p v-else-if="!options.length" class="text-sm text-text-muted">
-      No open game windows fit both teams. Programs can add weeknight or weekend game slots, or try a swap instead.
+      No open game windows fit both teams. Programs can add weeknight or weekend game slots{{ addMode ? '' : ', or try a swap instead' }}.
     </p>
     <template v-else>
       <div class="flex items-center justify-between gap-2 mb-2">
@@ -58,7 +71,8 @@ const selectedKey = computed(() => (props.modelValue ? key(props.modelValue) : '
             <span class="text-sm min-w-0">
               <span class="font-medium">{{ time12(o.startTime) }}</span>
               <span class="text-text-muted"> · {{ o.venueName }} – {{ o.courtName }}</span>
-              <span v-if="o.flip" class="flex items-center gap-1.5 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />{{ game.awayTeamName }} would become the home team</span>
+              <span v-if="addMode" class="block text-xs text-text-muted">{{ o.flip ? game.awayTeamName : game.homeTeamName }} hosts</span>
+              <span v-else-if="o.flip" class="flex items-center gap-1.5 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />{{ game.awayTeamName }} would become the home team</span>
               <span v-if="o.overTravelCap" class="flex items-center gap-1.5 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-danger" aria-hidden="true" />{{ o.travelMiles }} miles: over the travel cap</span>
             </span>
           </label>

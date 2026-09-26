@@ -11,6 +11,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue';
 import GameRow from '../components/GameRow.vue';
 import CancelGameModal from '../components/CancelGameModal.vue';
 import PlacementPicker from '../components/PlacementPicker.vue';
+import AddGameModal from '../components/AddGameModal.vue';
 
 const toast = useToast();
 const overview = ref(null);
@@ -184,6 +185,22 @@ async function update(g, body, msg) {
     if (editing.value) editError.value = errorMessage(err); else toast.error(errorMessage(err));
   } finally { saving.value = false; }
 }
+// ---- remove (drafts) / add ----
+const removing = ref(null);
+async function removeGame() {
+  const g = removing.value;
+  saving.value = true;
+  try {
+    await api.delete(`/schedule/games/${g.id}`);
+    games.value = games.value.filter((x) => x.id !== g.id);
+    toast.success(`Removed ${g.homeTeamName} vs ${g.awayTeamName} from the draft.`);
+    removing.value = null;
+  } catch (err) { toast.error(errorMessage(err)); }
+  finally { saving.value = false; }
+}
+const adding = ref(false);
+async function onAdded() { adding.value = false; await loadGames(); }
+
 const saveMove = () => update(editing.value, { courtId: choice.value.courtId, date: choice.value.date, startTime: choice.value.startTime, endTime: choice.value.endTime },
   editing.value.status === 'unscheduled' ? 'Game placed.' : 'Game moved.');
 
@@ -359,6 +376,7 @@ const publishMessage = computed(() => {
             <option value="">All divisions</option>
             <option v-for="[id, name] in divisions" :key="id" :value="id">{{ name }}</option>
           </select>
+          <button class="btn btn-secondary ml-auto" @click="adding = true">+ Add game</button>
         </div>
         <p v-if="gamesLoading" class="text-sm text-text-muted">Loading games…</p>
 
@@ -373,6 +391,7 @@ const publishMessage = computed(() => {
                     <button v-if="g.status === 'scheduled'" class="btn btn-ghost text-xs" @click="openEdit(g)">Move</button>
                     <button v-if="g.status === 'scheduled'" class="btn btn-ghost text-xs" :disabled="saving" title="Swap home and away" @click="update(g, { action: 'flip' }, 'Home and away swapped.')">Flip</button>
                     <button v-if="view === 'draft'" class="btn btn-ghost text-xs" :disabled="saving" @click="update(g, { action: 'unschedule' }, 'Moved to unplaced.')">Unplace</button>
+                    <button v-if="view === 'draft'" class="btn btn-ghost text-xs hover:!text-danger" :disabled="saving" @click="removing = g">Remove</button>
                     <button v-else-if="g.status === 'scheduled'" class="btn btn-ghost text-xs hover:!text-danger" :disabled="saving" @click="cancelling = g">Cancel</button>
                     <button v-else-if="g.status === 'cancelled'" class="btn btn-ghost text-xs" :disabled="saving" @click="update(g, { action: 'restore' }, 'Game restored.')">Restore</button>
                   </template>
@@ -390,7 +409,10 @@ const publishMessage = computed(() => {
           <ul v-else class="card card-blocky divide-y divide-border">
             <li v-for="g in unplacedList" :key="g.id" class="px-4 py-2.5">
               <GameRow :game="g">
-                <template #actions><button class="btn btn-secondary !py-1 !px-2.5 text-xs" @click="openEdit(g)">Place game</button></template>
+                <template #actions>
+                  <button class="btn btn-secondary !py-1 !px-2.5 text-xs" @click="openEdit(g)">Place game</button>
+                  <button v-if="view === 'draft'" class="btn btn-ghost text-xs hover:!text-danger" :disabled="saving" @click="removing = g">Remove</button>
+                </template>
               </GameRow>
             </li>
           </ul>
@@ -434,11 +456,15 @@ const publishMessage = computed(() => {
 
     <CancelGameModal v-if="cancelling" :game="cancelling" @close="cancelling = null" @cancelled="onCancelled" />
     <ConfirmDialog v-if="confirmRegenerate" title="Regenerate the draft?" confirm-label="Regenerate" tone="primary" :busy="generating"
-      message="This builds a fresh draft from the current rules, gym slots, and blackouts. Any edits you made to the current draft are lost. The published schedule isn’t affected."
+      message="This builds a fresh draft from the current rules, gym slots, and blackouts. Any edits you made to the current draft, including games you added or removed, are lost. The published schedule isn’t affected."
       @confirm="generate" @close="confirmRegenerate = false" />
     <ConfirmDialog v-if="confirmPublish" title="Publish this schedule?" confirm-label="Publish schedule" tone="primary" :busy="busy" :message="publishMessage"
       @confirm="publish" @close="confirmPublish = false" />
     <ConfirmDialog v-if="confirmDiscard" title="Discard the draft?" confirm-label="Discard draft" :busy="busy"
       message="The draft and any edits to it are deleted. The published schedule isn’t affected." @confirm="discard" @close="confirmDiscard = false" />
+    <ConfirmDialog v-if="removing" title="Remove this game from the draft?" confirm-label="Remove game" :busy="saving"
+      :message="`${removing.homeTeamName} vs ${removing.awayTeamName} is deleted from the draft, so each team has one game fewer (see Team balance). To put a game back, use Add game.`"
+      @confirm="removeGame" @close="removing = null" />
+    <AddGameModal v-if="adding" mode="admin" :run-id="run.id" :run-status="view" @close="adding = false" @added="onAdded" />
   </div>
 </template>

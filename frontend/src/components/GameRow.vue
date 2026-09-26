@@ -49,6 +49,8 @@ defineProps({
     <div v-if="!compact" class="flex flex-wrap items-center gap-1.5">
       <span v-if="game.hasScore" class="badge badge-outline" :title="game.scoreEnteredByName ? `Entered by ${game.scoreEnteredByName}` : undefined">Final{{ game.scoreNote ? ` · ${game.scoreNote}` : '' }}</span>
       <span v-if="game.status === 'cancelled'" class="badge badge-outline">Cancelled</span>
+      <span v-if="game.isException" class="badge badge-outline" :title="`Exception to the league rules: ${game.exceptionNote}${game.addedReason ? ` Reason: ${game.addedReason}` : ''}`">Exception</span>
+      <span v-else-if="game.isAdded" class="badge badge-outline" :title="`Added by hand${game.addedByName ? ` by ${game.addedByName}` : ''}${game.addedReason ? `: ${game.addedReason}` : ''}`">Added</span>
       <span v-if="game.hasBlackoutConflict" class="badge bg-unavailable text-white" :title="game.blackoutReason">Blackout conflict</span>
       <span v-if="game.hasOpenRequest" class="badge bg-pending text-black">Change requested</span>
       <slot name="actions" />

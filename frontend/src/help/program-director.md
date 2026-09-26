@@ -91,6 +91,17 @@ When a game needs to change, anyone involved can ask. **Request change** on a ga
 
 A cancelled game stays on the schedule marked **Cancelled** with the reason, so everyone can see what happened, and its referees are taken off.
 
+### Requesting an extra game
+To add a game for one of your teams, for example to replace a cancelled one, choose **Request a game** at the top of the **Schedule** page:
+
+1. Choose your **Team** and the **Opponent**. Only opponents within the league rules are listed: the same division, another program, and not already played as often as the league allows. If none are listed, your team already plays everyone it can. Contact the league if it needs a game outside the rules.
+2. Pick a time. Every time listed is an open game slot at either team's gym that fits both teams' schedules, and the court decides who hosts.
+3. Give a reason and choose **Send request**.
+
+It follows the same path as other requests, and the game appears on the schedule, with referee slots, when the league signs off. Games added this way show an **Added** badge.
+
+![A request to add a game](/help/img/pd-add-request.png)
+
 Every request follows the same path:
 
 1. **Your approval**, if one of your coaches asked.

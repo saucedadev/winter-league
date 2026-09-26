@@ -91,7 +91,7 @@ function openDeny(r) { denying.value = r; denyNote.value = ''; denyError.value =
 
 <template>
   <div>
-    <PageHeader title="Change requests" subtitle="Moves and swaps on the published schedule. Coach requests go to their director first, then every other program involved agrees, then the league signs off." />
+    <PageHeader title="Change requests" subtitle="Moves, swaps, cancellations, and added games on the published schedule. Coach requests go to their director first, then every other program involved agrees, then the league signs off." />
 
     <div class="flex flex-wrap items-center gap-3 mb-4">
       <div class="inline-flex rounded-lg border border-border overflow-hidden text-sm" role="tablist">
@@ -103,18 +103,30 @@ function openDeny(r) { denying.value = r; denyNote.value = ''; denyError.value =
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
     <EmptyState v-else-if="!sorted.length" :title="state === 'open' ? 'No open requests' : 'No decided requests yet'"
-      :body="auth.isSuperAdmin ? 'Coaches and directors file requests from the Schedule page.' : 'To ask for a change, open the Schedule and choose Request change on one of your games.'" />
+      :body="auth.isSuperAdmin ? 'Coaches and directors file requests from the Schedule page.' : 'To ask for a change, open the Schedule and choose Request change on one of your games, or Request a game for an extra one.'" />
 
     <div v-else class="space-y-4">
       <article v-for="r in sorted" :key="r.id" class="card p-5" :class="needsMe(r) && 'ring-2 ring-accent'">
         <header class="flex flex-wrap items-center gap-2 mb-3">
-          <span class="badge badge-outline">{{ { swap: 'Swap', cancel: 'Cancel', reschedule: 'Move' }[r.type] }}</span>
+          <span class="badge badge-outline">{{ { swap: 'Swap', cancel: 'Cancel', reschedule: 'Move', add: 'Add game' }[r.type] }}</span>
           <span class="badge" :class="STATUS_STYLE[r.status]">{{ r.statusLabel }}</span>
           <span v-if="needsMe(r)" class="text-xs font-semibold">Needs your decision</span>
           <span class="text-xs text-text-muted ml-auto">{{ r.game.divisionName }}</span>
         </header>
 
-        <div class="grid gap-3 md:grid-cols-[1fr_auto_1fr] items-stretch">
+        <div v-if="r.type === 'add'" class="grid gap-3 md:grid-cols-[1fr_auto_1fr] items-stretch">
+          <div class="rounded-lg border border-border p-3 min-w-0">
+            <p class="text-xs text-text-muted mb-1">{{ r.status === 'approved' ? 'Added' : 'Proposed new game' }} · {{ longDate(r.game.date) }}</p>
+            <GameRow :game="r.game" compact :show-division="false" />
+          </div>
+          <div class="grid place-items-center text-text-muted text-lg" aria-hidden="true">+</div>
+          <div class="rounded-lg border border-border p-3 min-w-0">
+            <p class="text-xs text-text-muted mb-1">{{ r.status === 'approved' ? 'On the schedule' : 'Requested' }}</p>
+            <p class="text-sm font-semibold">{{ r.status === 'approved' ? 'This game was added' : 'Add this game to the schedule' }}</p>
+            <p class="text-xs text-text-muted">It counts like any other game. It gets referees and can be scored once it’s on the schedule.</p>
+          </div>
+        </div>
+        <div v-else class="grid gap-3 md:grid-cols-[1fr_auto_1fr] items-stretch">
           <div class="rounded-lg border border-border p-3 min-w-0">
             <p class="text-xs text-text-muted mb-1">{{ r.type === 'swap' ? 'Game 1' : applied(r) ? 'Was' : 'Now' }}{{ r.type === 'swap' && applied(r) ? ' (before swap)' : '' }} · {{ longDate(firstGame(r).date) }}</p>
             <GameRow :game="firstGame(r)" compact :show-division="false" />
