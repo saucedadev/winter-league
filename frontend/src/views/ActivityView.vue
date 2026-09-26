@@ -19,7 +19,7 @@ const CATEGORY_LABELS = { slot: 'Gym slots', blackout: 'Blackouts', venue: 'Venu
 const chips = auth.isSuperAdmin ? Object.keys(CATEGORY_LABELS) : ['slot', 'blackout', 'venue', 'team', 'request'];
 
 // Beside the name: the person's own program (as it was when they acted), or
-// their role for league-wide accounts, e.g. "Misty Sauceda · GYB",
+// their role for league-wide accounts, e.g. "Colleen Rogers · GYB",
 // "Grace Kim · System Admin".
 function actorTag(e) {
   if (e.actorProgramCode) return e.actorProgramCode;

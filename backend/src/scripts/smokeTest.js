@@ -182,7 +182,8 @@ async function draftWith(rules) {
   const games = (await call('GET', `/schedule/runs/${r.data.draft.id}/games`, { token: admin })).data.games;
   const meets = {};
   for (const g of games) { const k = [g.homeTeamId, g.awayTeamId].sort().join('|'); meets[k] = (meets[k] || 0) + 1; }
-  return { draft: r.data.draft, games, most: Math.max(...Object.values(meets)), same: games.filter((g) => teamProgAll[g.homeTeamId] === teamProgAll[g.awayTeamId]).length };
+  const mostIn = (divId, not = false) => Math.max(0, ...games.filter((g) => (g.divisionId === divId) !== not).map((g) => meets[[g.homeTeamId, g.awayTeamId].sort().join('|')]));
+  return { status: r.status, error: r.data?.error, draft: r.data.draft, games, most: Math.max(...Object.values(meets)), mostIn, same: games.filter((g) => teamProgAll[g.homeTeamId] === teamProgAll[g.awayTeamId]).length };
 }
 const dOff = await draftWith({ allowSameProgram: false, maxVsSameOpponent: 2 });
 check('no games between teams from the same program (default)', dOff.same === 0);
@@ -195,7 +196,33 @@ check('a limit of 1 means no rematches', d1.most === 1 && d1.same === 0);
 const dNone = await draftWith({ maxVsSameOpponent: null });
 check('"No limit" saves and generates', dNone.draft.rules.maxVsSameOpponent === null && dNone.same === 0);
 check('rules saved with the draft are the league rules now', (await call('GET', '/schedule/rules', { token: admin })).data.rules.maxVsSameOpponent === null);
+
+console.log('\nDivision overrides');
+check('no division overrides by default', Object.keys(defaultRules.divisionOverrides || {}).length === 0);
+const ovBad = await call('PUT', '/schedule/rules', { token: admin, body: { divisionOverrides: { [g6.id]: { maxVsSameOpponent: 9 } } } });
+check('override above 6 is rejected, naming the division', ovBad.status === 400 && ovBad.data.error.includes('6th Grade Girls'), ovBad.data.error);
+check('override for a division that doesn’t exist is rejected', (await call('PUT', '/schedule/rules', { token: admin, body: { divisionOverrides: { nope: { maxVsSameOpponent: 3 } } } })).status === 400);
+check('only the rematch limit can be overridden (for now)', (await call('PUT', '/schedule/rules', { token: admin, body: { divisionOverrides: { [g6.id]: { gamesPerTeam: 4 } } } })).status === 400);
+const ovOverview = (await call('GET', '/schedule/overview', { token: admin })).data;
+check('builder overview lists divisions to override', ovOverview.divisions?.some((d) => d.id === g6.id && d.name === '6th Grade Girls'));
+// League: no rematches. 6th Grade Girls: up to 3 meetings.
+const dOv = await draftWith({ maxVsSameOpponent: 1, divisionOverrides: { [g6.id]: { maxVsSameOpponent: 3 } } });
+check('draft with an override generates', dOv.status === 201, dOv.error);
+check('the overridden division uses its own limit', dOv.mostIn(g6.id) > 1 && dOv.mostIn(g6.id) <= 3, `most in 6th Grade Girls: ${dOv.mostIn(g6.id)}`);
+check('every other division keeps the league limit', dOv.mostIn(g6.id, true) === 1, `most elsewhere: ${dOv.mostIn(g6.id, true)}`);
+check('the override still keeps same-program teams apart', dOv.same === 0);
+check('the draft records the override it was built with', dOv.draft.rules.divisionOverrides?.[g6.id]?.maxVsSameOpponent === 3 && dOv.draft.rules.maxVsSameOpponent === 1);
+const savedOv = (await call('GET', '/schedule/rules', { token: admin })).data.rules;
+check('overrides are saved with the league rules', savedOv.divisionOverrides?.[g6.id]?.maxVsSameOpponent === 3);
+const dOvNone = await draftWith({ maxVsSameOpponent: 1, divisionOverrides: { [g6.id]: { maxVsSameOpponent: null } } });
+check('an override can be “No limit”', dOvNone.draft.rules.divisionOverrides?.[g6.id]?.maxVsSameOpponent === null && dOvNone.mostIn(g6.id) > 1 && dOvNone.mostIn(g6.id, true) === 1);
+const dOvTight = await draftWith({ maxVsSameOpponent: 2, divisionOverrides: { [g6.id]: { maxVsSameOpponent: 1 } } });
+check('a note names the override when it leaves teams short', dOvTight.draft.warnings.some((w) => w.includes('6th Grade Girls division override') || w.includes('6th Grade Girls (') && /6th Grade Girls \([^)]*division override: 1 game against each/.test(w)), dOvTight.draft.warnings.join(' | ').slice(0, 300));
+check('removing the override returns the division to the league value', (await draftWith({ maxVsSameOpponent: 1, divisionOverrides: {} })).mostIn(g6.id) === 1);
+const log = (await call('GET', '/activity?category=schedule', { token: admin })).data;
+check('the activity log names division overrides', JSON.stringify(log).includes('division overrides'), JSON.stringify(log).slice(0, 200));
 await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
+check('overrides cleared when the rules are reset', Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.divisionOverrides).length === 0);
 
 console.log('\nMatchmaker draft');
 const gen = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2 } } });

@@ -70,6 +70,19 @@ Once programs have entered their gym slots, blackouts, and teams, the Schedule b
 | Most games against the same opponent | How often the same two teams can meet | 2 |
 | Teams from the same program can play each other | Off means a program's own teams never meet | Off |
 
+#### Division overrides
+The rules above apply to every division. When one division needs something different, add a **division override** under the rules instead of changing the league value for everyone. For now, the setting a division can override is **Most games against the same opponent**.
+
+1. Under **Division overrides**, choose the division and click **Add override**.
+2. Pick that division's value (1–6, or **No limit**). It starts one step above the league value, since the usual reason is a small division that needs more rematches to reach its games-per-team target.
+3. Click **Generate draft** (or **Regenerate draft**). Overrides, like the other rules, are saved when you generate.
+
+Every other division keeps the league value. To go back to the league value, click **Remove** next to the division. "Same as the league value" next to a row means the override currently changes nothing.
+
+**When to use one:** the matchmaker's notes say a team "got 4 of 8 games: it has 2 possible opponents in 7th Grade Boys and a limit of 2 games against each". Rather than raising the limit for the whole league, give just that division an override of 4.
+
+After you generate, a line above the notes shows the overrides the draft was built with (for example, *Built with division override: 7th Grade Boys — at most 4 games against the same opponent*). Each draft keeps its own copy of the rules, so changing an override later doesn't change a draft or published schedule already built. If an override is what leaves teams short, the note says so and tells you to raise the division override. The Activity log records override changes with the rules.
+
 ### 2. Generate a draft
 Click **Generate draft** (or **Regenerate draft** to start over). It takes a few seconds. Changed rules are saved when you generate.
 

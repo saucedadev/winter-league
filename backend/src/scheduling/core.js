@@ -10,8 +10,36 @@ export const DEFAULT_RULES = Object.freeze({
   maxGamesPerWeek: 2,     // per team, Monday–Sunday
   allowSameProgram: false, // may two teams from the same program play each other?
   maxVsSameOpponent: 2,   // most games between the same two teams (1–6), or null = no limit
+  // Per-division exceptions to the league rules: { [divisionId]: { maxVsSameOpponent } }.
+  // A division without an entry uses the league value. Only the rules listed in
+  // DIVISION_OVERRIDE_KEYS can be overridden (more can be added later).
+  divisionOverrides: Object.freeze({}),
 });
 export const MAX_VS_SAME_OPPONENT_LIMIT = 6;
+export const DIVISION_OVERRIDE_KEYS = ['maxVsSameOpponent'];
+
+// The rematch limit: 1–6, or "no limit" (null, '', or 'none'). Returns
+// { value } or { error }.
+function parseRematchLimit(v, label) {
+  if (v === null || v === '' || v === 'none') return { value: null };
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_VS_SAME_OPPONENT_LIMIT) return { error: `${label} must be 1 to ${MAX_VS_SAME_OPPONENT_LIMIT}, or no limit.` };
+  return { value: n };
+}
+
+// The rules one division plays under: the league rules with that division's
+// overrides applied.
+export function rulesForDivision(rules, divisionId) {
+  const o = rules?.divisionOverrides?.[divisionId];
+  if (!o) return rules;
+  const out = { ...rules };
+  for (const k of DIVISION_OVERRIDE_KEYS) if (Object.prototype.hasOwnProperty.call(o, k)) out[k] = o[k];
+  return out;
+}
+
+// True when a division has its own value for this rule.
+export const hasOverride = (rules, divisionId, key) =>
+  !!rules?.divisionOverrides?.[divisionId] && Object.prototype.hasOwnProperty.call(rules.divisionOverrides[divisionId], key);
 
 const RULE_LIMITS = {
   gamesPerTeam: [1, 40, 'Games per team'],
@@ -22,8 +50,11 @@ const RULE_LIMITS = {
 };
 
 // Returns clean rules or throws a message listing what's wrong.
-export function normalizeRules(input = {}) {
-  const out = { ...DEFAULT_RULES };
+// divisionNames (optional): { id: name } of the divisions that exist. When
+// given, an override for a division not in it is an error, and messages use
+// division names.
+export function normalizeRules(input = {}, { divisionNames } = {}) {
+  const out = { ...DEFAULT_RULES, divisionOverrides: {} };
   const errors = [];
   for (const [key, [min, max, label]] of Object.entries(RULE_LIMITS)) {
     if (input[key] === undefined || input[key] === null || input[key] === '') continue;
@@ -38,12 +69,27 @@ export function normalizeRules(input = {}) {
   }
   // Rematch limit: 1–6, or "no limit" (null, '', or 'none').
   if (input.maxVsSameOpponent !== undefined) {
-    const v = input.maxVsSameOpponent;
-    if (v === null || v === '' || v === 'none') out.maxVsSameOpponent = null;
+    const r = parseRematchLimit(input.maxVsSameOpponent, '“Most games against the same opponent”');
+    if (r.error) errors.push(r.error); else out.maxVsSameOpponent = r.value;
+  }
+  // Division overrides.
+  const ov = input.divisionOverrides;
+  if (ov !== undefined && ov !== null) {
+    if (typeof ov !== 'object' || Array.isArray(ov)) errors.push('Division overrides must be a list of divisions and their values.');
     else {
-      const n = Number(v);
-      if (!Number.isInteger(n) || n < 1 || n > MAX_VS_SAME_OPPONENT_LIMIT) errors.push(`“Most games against the same opponent” must be 1 to ${MAX_VS_SAME_OPPONENT_LIMIT}, or no limit.`);
-      else out.maxVsSameOpponent = n;
+      for (const [divisionId, values] of Object.entries(ov)) {
+        const name = divisionNames?.[divisionId];
+        if (divisionNames && !name) { errors.push('A division override is for a division that doesn’t exist. Remove it and try again.'); continue; }
+        if (!values || typeof values !== 'object' || Array.isArray(values)) { errors.push(`The override for ${name || 'a division'} is not valid.`); continue; }
+        const unknown = Object.keys(values).filter((k) => !DIVISION_OVERRIDE_KEYS.includes(k));
+        if (unknown.length) { errors.push(`${name || 'A division'}: only “Most games against the same opponent” can be set per division.`); continue; }
+        const clean = {};
+        if (values.maxVsSameOpponent !== undefined) {
+          const r = parseRematchLimit(values.maxVsSameOpponent, `${name || 'A division'}’s “Most games against the same opponent”`);
+          if (r.error) errors.push(r.error); else clean.maxVsSameOpponent = r.value;
+        }
+        if (Object.keys(clean).length) out.divisionOverrides[divisionId] = clean;
+      }
     }
   }
   if (errors.length) {

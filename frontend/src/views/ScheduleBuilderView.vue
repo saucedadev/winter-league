@@ -29,7 +29,7 @@ const RULE_FIELDS = [
 async function loadOverview() {
   const { data } = await api.get('/schedule/overview');
   overview.value = data;
-  if (!rules.value) rules.value = { ...data.rules };
+  if (!rules.value) rules.value = { ...data.rules, divisionOverrides: cloneOverrides(data.rules.divisionOverrides) };
   if (!view.value || (view.value === 'draft' && !data.draft) || (view.value === 'published' && !data.published)) {
     view.value = data.draft ? 'draft' : data.published ? 'published' : null;
   }
@@ -70,10 +70,47 @@ async function generate() {
   finally { generating.value = false; }
 }
 const REMATCH_OPTIONS = [1, 2, 3, 4, 5, 6];
+const limitLabel = (v) => (v == null ? 'No limit' : String(v));
+
+// ---- division overrides (exceptions to the league rules, per division) ----
+function cloneOverrides(o) {
+  return Object.fromEntries(Object.entries(o || {}).map(([id, v]) => [id, { ...v }]));
+}
+const divisionName = (id) => overview.value?.divisions?.find((d) => d.id === id)?.name || 'Unknown division';
+const overrideRows = computed(() => {
+  const order = new Map((overview.value?.divisions || []).map((d, i) => [d.id, i]));
+  return Object.keys(rules.value?.divisionOverrides || {})
+    .sort((a, b) => (order.get(a) ?? 999) - (order.get(b) ?? 999))
+    .map((id) => ({ id, name: divisionName(id), isActive: overview.value?.divisions?.find((d) => d.id === id)?.isActive !== false }));
+});
+const divisionsWithoutOverride = computed(() => (overview.value?.divisions || [])
+  .filter((d) => d.isActive && !rules.value?.divisionOverrides?.[d.id]));
+const newOverrideDivision = ref('');
+function addOverride() {
+  const id = newOverrideDivision.value;
+  if (!id) return;
+  // Start one step looser than the league value, since that's the usual reason for an override.
+  const league = rules.value.maxVsSameOpponent;
+  const start = league == null ? 2 : league < REMATCH_OPTIONS.at(-1) ? league + 1 : null;
+  rules.value.divisionOverrides = { ...rules.value.divisionOverrides, [id]: { maxVsSameOpponent: start } };
+  newOverrideDivision.value = '';
+}
+function removeOverride(id) {
+  const next = { ...rules.value.divisionOverrides };
+  delete next[id];
+  rules.value.divisionOverrides = next;
+}
+const overridesKey = (o) => JSON.stringify(Object.keys(o || {}).sort().map((id) => [id, o[id].maxVsSameOpponent ?? null]));
+
 const rulesDirty = computed(() => overview.value && (
   RULE_FIELDS.some((f) => Number(rules.value?.[f.key]) !== overview.value.rules[f.key])
   || (rules.value?.maxVsSameOpponent ?? null) !== (overview.value.rules.maxVsSameOpponent ?? null)
-  || !!rules.value?.allowSameProgram !== !!overview.value.rules.allowSameProgram));
+  || !!rules.value?.allowSameProgram !== !!overview.value.rules.allowSameProgram
+  || overridesKey(rules.value?.divisionOverrides) !== overridesKey(overview.value.rules.divisionOverrides)));
+
+// Overrides the draft/published schedule on screen was built with.
+const runOverrides = computed(() => Object.entries(run.value?.rules?.divisionOverrides || {})
+  .map(([id, o]) => ({ id, name: divisionName(id), value: o.maxVsSameOpponent ?? null })));
 
 // ---- live summary (recomputed from the games, so it reflects edits) ----
 const stats = computed(() => {
@@ -241,6 +278,31 @@ const publishMessage = computed(() => {
             <p class="text-xs text-text-muted mt-1">Off: a program’s own teams (e.g. its Competitive and Developmental 6th Grade Girls) never play each other.</p>
           </div>
         </div>
+        <!-- Division overrides -->
+        <div class="mt-4 pt-4 border-t border-border">
+          <h3 class="font-semibold text-sm">Division overrides</h3>
+          <p class="text-sm text-text-muted mb-3">Give one division its own “Most games against the same opponent”, for example to let a small division meet a third time. Every other division keeps the league value above ({{ limitLabel(rules.maxVsSameOpponent).toLowerCase() }}).</p>
+          <ul v-if="overrideRows.length" class="card card-blocky divide-y divide-border mb-3">
+            <li v-for="row in overrideRows" :key="row.id" class="px-4 py-2.5 flex flex-wrap items-center gap-3">
+              <span class="font-medium text-sm min-w-40 flex-1">{{ row.name }}<span v-if="!row.isActive" class="text-xs text-text-muted"> (inactive)</span></span>
+              <label class="text-sm text-text-muted" :for="`override-${row.id}`">Most games against the same opponent</label>
+              <select :id="`override-${row.id}`" v-model="rules.divisionOverrides[row.id].maxVsSameOpponent" class="input !w-auto">
+                <option v-for="n in REMATCH_OPTIONS" :key="n" :value="n">{{ n }}</option>
+                <option :value="null">No limit</option>
+              </select>
+              <span v-if="(rules.divisionOverrides[row.id].maxVsSameOpponent ?? null) === (rules.maxVsSameOpponent ?? null)" class="text-xs text-text-muted">Same as the league value</span>
+              <button type="button" class="btn btn-ghost text-xs hover:!text-danger ml-auto" :aria-label="`Remove the override for ${row.name}`" @click="removeOverride(row.id)">Remove</button>
+            </li>
+          </ul>
+          <div v-if="divisionsWithoutOverride.length" class="flex flex-wrap items-center gap-2">
+            <select v-model="newOverrideDivision" class="input !w-auto" aria-label="Division to override">
+              <option value="">Choose a division…</option>
+              <option v-for="d in divisionsWithoutOverride" :key="d.id" :value="d.id">{{ d.name }}</option>
+            </select>
+            <button type="button" class="btn btn-secondary" :disabled="!newOverrideDivision" @click="addOverride">Add override</button>
+          </div>
+          <p v-else-if="!overrideRows.length" class="text-sm text-text-muted">Add divisions under League setup first.</p>
+        </div>
         <p v-if="rulesDirty" class="text-xs mt-3 font-medium">Changed rules are saved when you generate.</p>
       </section>
 
@@ -273,6 +335,11 @@ const publishMessage = computed(() => {
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Season span</p><p class="text-base font-bold mt-1.5">{{ stats.first ? dateRange(stats.first, stats.last) : '—' }}</p><p class="text-xs text-text-muted">{{ run.rules.gamesPerTeam }} games per team target</p></div>
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Needs attention</p><p class="text-2xl font-bold">{{ stats.conflicts + stats.unplaced }}</p><p class="text-xs text-text-muted">{{ stats.conflicts }} blackout conflict{{ stats.conflicts === 1 ? '' : 's' }} · {{ stats.unplaced }} unplaced</p></div>
         </div>
+
+        <p v-if="runOverrides.length" class="text-sm text-text-muted mb-4">
+          Built with division override{{ runOverrides.length === 1 ? '' : 's' }}:
+          <span v-for="(o, i) in runOverrides" :key="o.id"><strong class="text-text">{{ o.name }}</strong> — {{ o.value == null ? 'no limit' : `at most ${o.value} game${o.value === 1 ? '' : 's'}` }} against the same opponent{{ i < runOverrides.length - 1 ? '; ' : '.' }}</span>
+        </p>
 
         <section v-if="run.warnings?.length" class="card card-blocky p-4 mb-5">
           <h2 class="font-semibold text-sm mb-2">Notes from the matchmaker</h2>

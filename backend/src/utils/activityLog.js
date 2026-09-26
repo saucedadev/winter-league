@@ -9,7 +9,7 @@ import { db, newId } from '../db/client.js';
 //               program is any of these. programId is always included.
 //   actor:      who did it. Their own program and role are recorded as they
 //               are right now, so the Activity screen shows e.g.
-//               "Misty Sauceda · GYB" regardless of which program the entry is about.
+//               "Colleen Rogers · GYB" regardless of which program the entry is about.
 //
 // Logging must never break the action being logged, so failures are
 // reported to the console and swallowed.

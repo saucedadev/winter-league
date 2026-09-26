@@ -1,7 +1,7 @@
 import { one, all, db, newId } from '../db/client.js';
 import { addDays, formatTime12 } from '../utils/validate.js';
 import { leagueToday } from '../utils/leagueTime.js';
-import { DEFAULT_RULES, normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes } from './core.js';
+import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes } from './core.js';
 import { buildSchedule } from './matchmaker.js';
 
 export const GAME_CATEGORIES = ['WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK'];
@@ -10,10 +10,25 @@ const CAT_SQL = `('WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK')`;
 // ---------------------------------------------------------------------
 // Rules
 // ---------------------------------------------------------------------
+// { divisionId: name } for every division — used to check division overrides.
+export async function divisionNameMap() {
+  const rows = await all('SELECT id, name FROM divisions');
+  return Object.fromEntries(rows.map((d) => [d.id, d.name]));
+}
+
+// League rules as saved. Overrides for divisions that have since been
+// deleted are dropped so they can't block saving the rules again.
 export async function getRules() {
   const row = await one("SELECT value FROM app_settings WHERE key = 'schedule_rules'");
-  if (!row) return { ...DEFAULT_RULES };
-  try { return normalizeRules(JSON.parse(row.value)); } catch { return { ...DEFAULT_RULES }; }
+  if (!row) return normalizeRules({});
+  let rules;
+  try { rules = normalizeRules(JSON.parse(row.value)); } catch { return normalizeRules({}); }
+  const ids = Object.keys(rules.divisionOverrides);
+  if (ids.length) {
+    const names = await divisionNameMap();
+    for (const id of ids) if (!names[id]) delete rules.divisionOverrides[id];
+  }
+  return rules;
 }
 
 export async function saveRules(rules) {
@@ -132,7 +147,7 @@ export async function generateDraft(season, rules, userId) {
 // ---------------------------------------------------------------------
 export async function runRules(runId) {
   const r = await one('SELECT rules FROM schedule_runs WHERE id = ?', [runId]);
-  try { return normalizeRules(JSON.parse(r?.rules || '{}')); } catch { return { ...DEFAULT_RULES }; }
+  try { return normalizeRules(JSON.parse(r?.rules || '{}')); } catch { return normalizeRules({}); }
 }
 
 async function programHomeMap() {

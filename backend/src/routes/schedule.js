@@ -6,7 +6,7 @@ import { assertDate, assertTime, isValidDate } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
 import { normalizeRules } from '../scheduling/core.js';
 import {
-  getRules, saveRules, generateDraft, GAME_SELECT, GAME_ORDER, shapeGame, getGame,
+  getRules, saveRules, divisionNameMap, generateDraft, GAME_SELECT, GAME_ORDER, shapeGame, getGame,
   checkPlacement, placementOptions, placementUpdate, todayStr, describeGame, activeSeason, publishedRun,
 } from '../scheduling/data.js';
 import { onGamesChanged, syncSlots, carryOverAssignments, upcomingAssignmentCount, leagueNow, notifyUsers } from '../referees/data.js';
@@ -69,11 +69,24 @@ async function loadGameFor(req, { requireEditable = false } = {}) {
 // ---------------------------------------------------------------------
 router.get('/rules', adminOnly, ah(async (req, res) => res.json({ rules: await getRules() })));
 
+// Validate rules from the browser, including division overrides (which must
+// name divisions that exist).
+async function cleanRules(input) {
+  const divisionNames = await divisionNameMap();
+  try { return { rules: normalizeRules(input || {}, { divisionNames }), divisionNames }; }
+  catch (e) { throw badRequest(e.message); }
+}
+const limitText = (v) => (v == null ? 'no limit' : `at most ${v} game${v === 1 ? '' : 's'}`);
+function overridesText(rules, divisionNames) {
+  const list = Object.entries(rules.divisionOverrides || {})
+    .map(([id, o]) => `${divisionNames[id] || 'a division'}: ${limitText(o.maxVsSameOpponent)} against the same opponent`);
+  return list.length ? `; division overrides — ${list.join(', ')}` : '';
+}
+
 router.put('/rules', adminOnly, ah(async (req, res) => {
-  let rules;
-  try { rules = normalizeRules(req.body || {}); } catch (e) { throw badRequest(e.message); }
+  const { rules, divisionNames } = await cleanRules(req.body);
   await saveRules(rules);
-  await logActivity({ category: 'schedule', action: 'rules', actor: req.user, details: `Updated schedule rules: ${rules.gamesPerTeam} games per team, ${rules.gameMinutes}-minute games, ${rules.maxTravelMiles}-mile travel cap` });
+  await logActivity({ category: 'schedule', action: 'rules', actor: req.user, details: `Updated schedule rules: ${rules.gamesPerTeam} games per team, ${rules.gameMinutes}-minute games, ${rules.maxTravelMiles}-mile travel cap${overridesText(rules, divisionNames)}` });
   res.json({ rules });
 }));
 
@@ -89,7 +102,9 @@ router.get('/overview', adminOnly, ah(async (req, res) => {
     one("SELECT COUNT(*) AS n FROM change_requests WHERE status IN ('pending_director', 'pending_counterpart', 'pending_admin')"),
   ]);
   const assignedAhead = published ? await upcomingAssignmentCount(published.id, leagueNow().date) : 0;
-  res.json({ season, rules: await getRules(), draft: shapeRun(draft), published: shapeRun(published), openRequests: Number(openRequests.n), assignedAhead });
+  const divisions = (await all('SELECT id, name, is_active FROM divisions ORDER BY sort_order, name'))
+    .map((d) => ({ id: d.id, name: d.name, isActive: !!d.isActive }));
+  res.json({ season, rules: await getRules(), divisions, draft: shapeRun(draft), published: shapeRun(published), openRequests: Number(openRequests.n), assignedAhead });
 }));
 
 // ---------------------------------------------------------------------
@@ -98,14 +113,16 @@ router.get('/overview', adminOnly, ah(async (req, res) => {
 router.post('/generate', adminOnly, ah(async (req, res) => {
   const season = await requireSeason();
   let rules = await getRules();
+  let divisionNames = null;
   if (req.body?.rules) {
-    try { rules = normalizeRules(req.body.rules); } catch (e) { throw badRequest(e.message); }
+    ({ rules, divisionNames } = await cleanRules(req.body.rules));
     await saveRules(rules);
   }
   const started = Date.now();
   const result = await generateDraft(season, rules, req.user.id);
+  divisionNames ||= await divisionNameMap();
   await logActivity({ category: 'schedule', action: 'generated', actor: req.user,
-    details: `Generated a draft schedule for ${season.name}: ${result.summary.scheduledGames} games placed, ${result.summary.unscheduledGames} unplaced` });
+    details: `Generated a draft schedule for ${season.name}: ${result.summary.scheduledGames} games placed, ${result.summary.unscheduledGames} unplaced${overridesText(rules, divisionNames)}` });
   const draft = await one('SELECT * FROM schedule_runs WHERE id = ?', [result.runId]);
   res.status(201).json({ draft: shapeRun(draft), ms: Date.now() - started });
 }));

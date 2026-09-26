@@ -15,10 +15,12 @@
 //     have coordinates)
 //   • teams from the same program never play each other (unless
 //     rules.allowSameProgram is on)
-//   • two teams meet at most rules.maxVsSameOpponent times (null = no limit)
+//   • two teams meet at most rules.maxVsSameOpponent times (null = no limit);
+//     a division override (rules.divisionOverrides) replaces the league
+//     value for that division
 // Soft goals: every team reaches rules.gamesPerTeam, home/away near 50/50,
 // games spread evenly across the season.
-import { milesBetween, weekOf, teamProblems, windowKey } from './core.js';
+import { milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride } from './core.js';
 
 export function buildSchedule({ teams, windows, homes, programBlackouts, rules, programNames = {} }) {
   const warnings = [];
@@ -58,6 +60,9 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       warnings.push(`${divTeams[0].divisionName} has only one team (${divTeams[0].name}), so no games were created for it.`);
       continue;
     }
+    // This division's rematch limit: its override if it has one, else the league's.
+    const maxVs = rulesForDivision(rules, divisionId).maxVsSameOpponent;
+    const overridden = hasOverride(rules, divisionId, 'maxVsSameOpponent');
     const count = new Map(divTeams.map((t) => [t.id, 0]));
     const met = new Map(); // "idA|idB" -> games scheduled between them
     const pairKey = (a, b) => (a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`);
@@ -79,7 +84,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       }
     }
     const canStillPlay = (a, b) => count.get(a.id) < rules.gamesPerTeam && count.get(b.id) < rules.gamesPerTeam
-      && (rules.maxVsSameOpponent == null || meetings(a, b) < rules.maxVsSameOpponent);
+      && (maxVs == null || meetings(a, b) < maxVs);
     const optionsLeft = (t) => opponents.get(t.id).filter((o) => canStillPlay(t, o)).length;
 
     // Build rounds (each team plays at most once per round). In each round the
@@ -134,7 +139,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     //   one team A short by 2+ + existing game C–D ->  A–C and A–D
     // C and D keep the same number of games; every rule is re-checked.
     const isOpponent = (x, y) => opponents.get(x.id).includes(y);
-    const underLimit = (x, y) => rules.maxVsSameOpponent == null || meetings(x, y) < rules.maxVsSameOpponent;
+    const underLimit = (x, y) => maxVs == null || meetings(x, y) < maxVs;
     const legal = (x, y) => x !== y && isOpponent(x, y) && underLimit(x, y);
     const addMatch = (x, y, r) => {
       const [a, b] = (homeSuggested.get(x.id) || 0) <= (homeSuggested.get(y.id) || 0) ? [x, y] : [y, x];
@@ -193,8 +198,12 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       const excluded = sister && !rules.allowSameProgram ? ` (not counting ${sister} other team${sister > 1 ? 's' : ''} from its own program)` : '';
       if (!eligible) {
         pairingShort.push({ team: t, text: `${t.name} has no possible opponents in ${t.divisionName}${excluded}, so it has no games. Turn on “Teams from the same program can play each other” or move it to another division.` });
-      } else if (rules.maxVsSameOpponent != null && eligible * rules.maxVsSameOpponent < rules.gamesPerTeam) {
-        pairingShort.push({ team: t, text: `${t.name} got ${got} of ${rules.gamesPerTeam} games: it has ${eligible} possible opponent${eligible > 1 ? 's' : ''} in ${t.divisionName}${excluded} and a limit of ${rules.maxVsSameOpponent} game${rules.maxVsSameOpponent > 1 ? 's' : ''} against each. Raise “Most games against the same opponent” or lower “Games per team”.` });
+      } else if (maxVs != null && eligible * maxVs < rules.gamesPerTeam) {
+        const limit = `${overridden ? `the ${t.divisionName} division override of ` : 'a limit of '}${maxVs} game${maxVs > 1 ? 's' : ''} against each`;
+        const fix = overridden
+          ? `Raise the ${t.divisionName} division override, or lower “Games per team”.`
+          : `Raise “Most games against the same opponent” (or add a division override for ${t.divisionName}), or lower “Games per team”.`;
+        pairingShort.push({ team: t, overrideNote: overridden ? `division override: ${maxVs} game${maxVs > 1 ? 's' : ''} against each` : '', text: `${t.name} got ${got} of ${rules.gamesPerTeam} games: it has ${eligible} possible opponent${eligible > 1 ? 's' : ''} in ${t.divisionName}${excluded} and ${limit}. ${fix}` });
       }
     }
     const totalRounds = Math.max(round, 1);
@@ -203,7 +212,17 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   }
   // One line per short team when there are a few; a summary when there are many.
   if (pairingShort.length <= 6) warnings.push(...pairingShort.map((p) => p.text));
-  else warnings.push(`${pairingShort.length} teams can’t reach ${rules.gamesPerTeam} games under the opponent rules, e.g. ${pairingShort[0].text} Check the Team balance tab for the full list.`);
+  else {
+    // Group by division, and name any division override involved.
+    const groups = new Map();
+    for (const p of pairingShort) {
+      const g = groups.get(p.team.divisionName) || { n: 0, note: p.overrideNote || '' };
+      g.n++; if (p.overrideNote) g.note = p.overrideNote;
+      groups.set(p.team.divisionName, g);
+    }
+    const parts = [...groups.entries()].map(([div, g]) => `${div} (${g.n} team${g.n > 1 ? 's' : ''}${g.note ? `; ${g.note}` : ''})`);
+    warnings.push(`${pairingShort.length} teams can’t reach ${rules.gamesPerTeam} games under the opponent rules: ${parts.join(', ')}. For example, ${pairingShort[0].text} Check the Team balance tab for the full list.`);
+  }
   for (const { a, b, d } of tooFar) {
     warnings.push(`${a.name} and ${b.name} weren’t paired: their programs are ${d} miles apart (cap ${rules.maxTravelMiles}).`);
   }
