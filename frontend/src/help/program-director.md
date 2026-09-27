@@ -67,6 +67,23 @@ Each game shows the referees assigned to it, or **Referees: not assigned yet** i
 
 **Travel.** The league has one travel cap (30 miles by default) for how far a team travels to an away game. If your program needs a shorter one, ask the league to set a **program travel cap** for you. Your teams then never travel further than that, and opponents beyond it come to your gyms instead. That means more home games for your teams, so make sure you have enough game slots, and possibly fewer games if there isn't enough gym time.
 
+## Reviewing the draft schedule
+
+Before the league publishes a schedule, you're asked to check your program's games. When a draft is shared you get an email, and your **Dashboard** shows a card linking to it.
+
+![The dashboard card](/help/img/pd-draft-dashboard.png)
+
+**Menu → Scheduling → Draft review** shows every draft game involving your program (not other programs' games), read-only. Only you and the league can see it: coaches and referees see the schedule once it's published.
+
+- **Sign off** if your games work. You can add a note for the league.
+- **Flag** a game that doesn't work, with a note, e.g. *"11/5 clashes with our school event."* The league is emailed and either changes the game or replies. Either way you're emailed, and the reply shows under **Your flags**. When your games work, sign off. Signing off withdraws any flags still open.
+
+![Draft review](/help/img/pd-draft-review.png)
+
+Please respond by the deadline shown at the top. If the league changes one of your games after you've signed off, your status goes back to **Waiting**, you're emailed with what changed, and the page shows it, so please review again. Changes to other programs' games don't affect your sign-off.
+
+The league publishes once every program has signed off. If the deadline passes without a response, the league can publish anyway, and that's recorded.
+
 ## Referee payouts for your program
 
 **Menu → My program → Referee payouts** shows the referees who worked **your program's games**, and what each is owed for them. Other programs' games aren't included.

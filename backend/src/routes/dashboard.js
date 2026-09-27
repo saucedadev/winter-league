@@ -112,10 +112,20 @@ router.get('/', ah(async (req, res) => {
     [programId, programId, programId, programId, programId, ...(season ? [season.id] : []), programId]);
   }
 
+  // Step 5: a shared draft waiting for this director's review.
+  let draftReview = null;
+  if (u.role === 'program_director' && programId && season) {
+    const d = await one(`SELECT r.review_deadline, v.status, v.reset_reason FROM schedule_runs r
+      JOIN draft_reviews v ON v.run_id = r.id AND v.program_id = ?
+      WHERE r.season_id = ? AND r.status = 'draft' AND r.shared_at IS NOT NULL`, [programId, season.id]);
+    if (d) draftReview = { status: d.status, deadline: d.reviewDeadline, changed: !!d.resetReason };
+  }
+
   res.json({
     schedule,
     referees,
     setup,
+    draftReview,
     season: season ? { ...season, isActive: true } : null,
     counts,
     maxPrograms: config.maxPrograms,

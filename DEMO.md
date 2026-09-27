@@ -68,6 +68,8 @@ Email addresses are safe placeholders (`…@demo.example` for directors, `…@ex
 - **Program travel cap** (optional). Under **Program overrides**, give one program a lower cap (e.g. 10 miles) and regenerate. Its teams now host every game against programs further than 10 miles, the draft shows a "Built with program override" line, and home/away balance shifts toward that program. Remove it and regenerate before moving on.
 - **Guest teams** (optional). **Programs → Guest programs → Add guest program** (e.g. *Sherwood Youth Basketball*, `SHW`), add a *Sherwood 5th Boys* team in 5th Grade Boys, then in the builder use **+ Add game** to give a league 5th Grade Boys team a game against it. Point out that only the league team's gyms are offered, and that the game shows *(guest)* and **Guest game** but doesn't change the team's count on **Team balance**.
 - **Remove and Add game.** **Remove** one game from the draft (the team drops a game on Team balance), then **+ Add game** to put a different one in: pick the team, an opponent, and an open time. Choose an opponent under **Exceptions to the league rules** to show that breaking a rule needs a tick and a reason, and that the game is marked **Exception**.
+- **Director sign-off.** **Publish schedule** is greyed out: the draft has to be signed off first. In **Director review**, click **Share with directors**. Sign in as Colleen (`crogers`): her **Dashboard** says the draft is ready, and **Draft review** shows only Glencoe's games. **Flag** one game with a note, then back as Grace show the flag under **Flagged games** and **Resolve** it. As Colleen, **Sign off**. *Talking point:* if Grace now changes a Glencoe game, only Glencoe (and the other team's program) have to sign off again.
+- Rather than signing in as every director, run `npm run demo:signoff` in `backend/` (hosted demo: see DEMO-DEPLOYMENT.md). It signs off the remaining programs, recorded as *"Signed off by the demo script"*. Refresh the builder: every program shows **Signed off**.
 - **Publish schedule.** Point out the warning: publishing replaces the current schedule and says how many referee assignments carry over.
 
 *Talking point:* the matchmaker produces a draft for a person to review, not a final answer. That's deliberate.
@@ -120,6 +122,8 @@ Show that nobody has games yet, which makes the moment of publishing land:
 - Read the summary cards: games placed (every pairing placed), home/away balance (typically every team within one game of 50/50), longest trip, season span, and needs attention.
 - **Team balance** tab: every team's home and away count. **By date:** Move or Flip one game to show the admin can adjust anything before publishing.
 - *Talking point:* the draft is private. Switch to Tasha's tab and refresh: still "hasn't been published yet".
+- **Director sign-off.** **Publish schedule** is greyed out: the draft has to be signed off first. In **Director review**, click **Share with directors**. Sign in as Colleen (`crogers`): her **Dashboard** says the draft is ready, and **Draft review** shows only Glencoe's games. **Flag** one game with a note, then back as Grace show the flag under **Flagged games** and **Resolve** it. As Colleen, **Sign off**. *Talking point:* if Grace now changes a Glencoe game, only Glencoe (and the other team's program) have to sign off again.
+- Rather than signing in as every director, run `npm run demo:signoff` in `backend/` (hosted demo: see DEMO-DEPLOYMENT.md). It signs off the remaining programs, recorded as *"Signed off by the demo script"*. Refresh the builder: every program shows **Signed off**.
 - Back as Grace, click **Publish schedule**. The dialog says how many games everyone will see. Confirm.
 
 ### 4. It's live — 2 min
@@ -129,7 +133,7 @@ Show that nobody has games yet, which makes the moment of publishing land:
 ### 5. Assigning referees from scratch (Priya, `pnair`) — 4 min
 - **Assignments:** every slot is open (the header says e.g. "0 of 296 upcoming referee slots filled").
 - Click **Auto-fill all upcoming** and confirm. With the demo's 8 referees it fills roughly two-thirds of the slots. The rest stay open because several games tip off at the same time and nobody is double-booked.
-- *Talking point:* open one of the still-open slots to show why each referee can't take it (already workruse at that time, marked unavailable, back-to-back at another gym). Then **Referees → Add referee** is how the assignor would close the gap.
+- *Talking point:* open one of the still-open slots to show why each referee can't take it (already working at that time, marked unavailable, back-to-back at another gym). Then **Referees → Add referee** is how the assignor would close the gap.
 - **Avery:** refresh **My games**. Their assigned games are there.
 
 ### 6. A change request and the approval chain — 4 min

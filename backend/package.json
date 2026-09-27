@@ -13,6 +13,7 @@
     "migrate": "node src/scripts/migrate.js",
     "seed": "node src/scripts/seed.js",
     "seed:demo": "node src/scripts/seedDemo.js",
+    "demo:signoff": "node src/scripts/demoSignOff.js",
     "db:reset": "node src/scripts/resetDb.js",
     "db:reset:test": "node src/scripts/resetDb.js --dataset=test",
     "migrate:prod": "node src/scripts/migrate.js --env=.env.production.local",

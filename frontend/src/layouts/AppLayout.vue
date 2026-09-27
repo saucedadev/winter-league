@@ -60,7 +60,10 @@ const menuGroups = computed(() => {
       { to: '/payouts', label: 'Referee payouts', show: role.value === 'program_director' },
       { to: '/activity', label: 'Activity', show: auth.canManage && !sa },
     ] },
-    { id: 'scheduling', label: 'Scheduling', items: [{ to: '/schedule/builder', label: 'Schedule builder', show: sa }] },
+    { id: 'scheduling', label: 'Scheduling', items: [
+      { to: '/schedule/builder', label: 'Schedule builder', show: sa },
+      { to: '/schedule/draft', label: 'Draft review', show: role.value === 'program_director' },
+    ] },
     { id: 'referees', label: 'Referees', items: [
       { to: '/assignments', label: 'Referee assignments', show: sa },
       { to: '/referees', label: 'Referees', show: sa },

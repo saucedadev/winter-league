@@ -344,6 +344,62 @@ check('added games are marked in the draft', (await call('GET', `/schedule/runs/
 for (const g of [excAdd.data.game]) await call('DELETE', `/schedule/games/${g.id}`, { token: admin });
 const addedDraftGame = added.data.game;
 
+console.log('\nDraft review and sign-off');
+// Every program signs off: directors for their own programs, the admin for programs without one.
+async function signOffAll(runId) {
+  await call('POST', `/schedule/runs/${runId}/share`, { token: admin, body: {} });
+  const st = (await call('GET', `/schedule/runs/${runId}/review`, { token: admin })).data.review;
+  for (const r of st.reviews) {
+    if (r.status === 'signed_off') continue;
+    if (!r.hasDirector) await call('POST', `/schedule/runs/${runId}/review/${r.programId}/sign-off`, { token: admin, body: {} });
+    else await call('POST', '/schedule/draft-review/sign-off', { token: r.programId === nfh.id ? pd : mbell, body: {} });
+  }
+}
+const reviewOf = async (runId) => (await call('GET', `/schedule/runs/${runId}/review`, { token: admin })).data.review;
+const addDays = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const leagueTodayStr = (await import('../utils/leagueTime.js')).leagueToday();
+const notShared = await call('POST', `/schedule/runs/${draftId}/publish`, { token: admin, body: { replace: true } });
+check('a draft can’t be published before it’s shared for sign-off', notShared.status === 409 && notShared.data.code === 'NOT_SHARED');
+check('directors see nothing until the draft is shared', (await call('GET', '/schedule/draft-review', { token: pd })).data.shared === false);
+check('coaches never see the draft review', (await call('GET', '/schedule/draft-review', { token: coach })).status === 403);
+check('a review deadline can’t be in the past', (await call('POST', `/schedule/runs/${draftId}/share`, { token: admin, body: { deadline: addDays(leagueTodayStr, -1) } })).status === 400);
+const shareRes = await call('POST', `/schedule/runs/${draftId}/share`, { token: admin, body: { deadline: addDays(leagueTodayStr, 7) } });
+const rv0 = shareRes.data.review;
+check('sharing creates a review for every program with teams', shareRes.status === 200 && rv0.shared && rv0.counts.total >= 5 && rv0.counts.waiting === rv0.counts.total, JSON.stringify(rv0.counts));
+check('guest programs don’t review', !rv0.reviews.some((r) => r.programName.includes('Sherwood')));
+const pdView = (await call('GET', '/schedule/draft-review', { token: pd })).data;
+check('a director sees only their own program’s draft games', pdView.shared && pdView.games.length > 0 && pdView.games.every((g) => [g.homeProgramId, g.awayProgramId].includes(nfh.id)));
+check('draft games still aren’t visible on the game pages', (await call('GET', `/schedule/games/${pdView.games[0].id}`, { token: pd })).status === 404);
+const notMineDraft = (await call('GET', `/schedule/runs/${draftId}/games`, { token: admin })).data.games.find((g) => ![g.homeProgramId, g.awayProgramId].includes(nfh.id));
+check('a director can’t flag another program’s game', (await call('POST', '/schedule/draft-review/flags', { token: pd, body: { gameId: notMineDraft.id, note: 'Not our game at all' } })).status === 404);
+check('a flag needs a note', (await call('POST', '/schedule/draft-review/flags', { token: pd, body: { gameId: pdView.games[0].id, note: '' } })).status === 400);
+const flagRes = await call('POST', '/schedule/draft-review/flags', { token: pd, body: { gameId: pdView.games[0].id, note: 'That date clashes with our school event.' } });
+const rv1 = await reviewOf(draftId);
+check('a director flags a game', flagRes.status === 201 && rv1.reviews.find((r) => r.programId === nfh.id).status === 'flagged' && rv1.flags.some((f) => f.status === 'open' && f.note.includes('school event')));
+check('the admin can’t sign off for a program that has a director', (await call('POST', `/schedule/runs/${draftId}/review/${nfh.id}/sign-off`, { token: admin, body: {} })).status === 409);
+const noDir = rv1.reviews.find((r) => !r.hasDirector);
+const behalf = await call('POST', `/schedule/runs/${draftId}/review/${noDir.programId}/sign-off`, { token: admin, body: { note: 'Confirmed by phone with their contact' } });
+check('the admin signs off on behalf of a program without a director (recorded)', behalf.data.review?.reviews.find((r) => r.programId === noDir.programId)?.onBehalf === true);
+const blocked = await call('POST', `/schedule/runs/${draftId}/publish`, { token: admin, body: { replace: true } });
+check('publishing waits for every sign-off before the deadline', blocked.status === 409 && blocked.data.code === 'SIGNOFF_REQUIRED' && blocked.data.pending.some((p) => p.programId === nfh.id));
+check('even with an override, before the deadline', (await call('POST', `/schedule/runs/${draftId}/publish`, { token: admin, body: { replace: true, override: true } })).data.code === 'SIGNOFF_REQUIRED');
+const openFlag = rv1.flags.find((f) => f.status === 'open');
+check('the admin resolves a flag', (await call('POST', `/schedule/flags/${openFlag.id}/resolve`, { token: admin, body: { note: 'Checked with the other program; the date stays.' } })).data.review?.flags.find((f) => f.id === openFlag.id).status === 'resolved');
+await signOffAll(draftId);
+const rv2 = await reviewOf(draftId);
+check('every program signed off', rv2.allSignedOff === true, JSON.stringify(rv2.counts));
+// Changing a game after sign-off: only the two programs in it review again.
+const moveMe = (await call('GET', `/schedule/runs/${draftId}/games`, { token: admin })).data.games.find((g) => g.status === 'scheduled' && [g.homeProgramId, g.awayProgramId].includes(nfh.id) && ![g.homeProgramId, g.awayProgramId].includes(ryb.id));
+await call('PUT', `/schedule/games/${moveMe.id}`, { token: admin, body: { action: 'flip' } });
+const rv3 = await reviewOf(draftId);
+const affected = [moveMe.homeProgramId, moveMe.awayProgramId];
+check('only the programs in a changed game have to sign off again', rv3.reviews.filter((r) => r.status === 'waiting').map((r) => r.programId).sort().join() === affected.sort().join() && rv3.reviews.find((r) => r.programId === ryb.id).status === 'signed_off', JSON.stringify(rv3.reviews.map((r) => [r.programName, r.status])));
+check('they’re told what changed', rv3.reviews.find((r) => r.programId === nfh.id).resetReason?.includes(moveMe.awayTeamName));
+check('the director sees the change on their review page', (await call('GET', '/schedule/draft-review', { token: pd })).data.review.resetReason?.includes('Swapped home/away'));
+check('the director’s dashboard shows the review', (await call('GET', '/dashboard', { token: pd })).data.draftReview?.status === 'waiting');
+await signOffAll(draftId);
+check('the Activity log records sign-offs', (await call('GET', '/activity?category=schedule', { token: admin })).data.entries.some((e) => e.details.includes('on behalf of')));
+
 console.log('\nPublishing');
 const openBefore = (await call('GET', '/requests?state=open', { token: admin })).data.requests.length;
 check('demo has open sample requests', openBefore >= 1);
@@ -764,9 +820,17 @@ const draftKeys = new Set((await call('GET', `/schedule/runs/${regen.data.draft.
 check('the matchmaker never schedules guest teams', !(await call('GET', `/schedule/runs/${regen.data.draft.id}/games`, { token: admin })).data.games.some((g) => g.isGuestGame));
 const keep = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.status === 'scheduled' && draftKeys.has(gameKey(g)));
 await (await import('../db/client.js')).run('UPDATE games SET home_score = 51, away_score = 49 WHERE id = ?', [keep.id]);
-const needs = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: {} });
+// Publish after the review deadline without every sign-off: allowed, and recorded.
+await call('POST', `/schedule/runs/${regen.data.draft.id}/share`, { token: admin, body: { deadline: leagueTodayStr } });
+check('before the deadline has passed, it can’t be overridden', (await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { replace: true, override: true } })).data.code === 'SIGNOFF_REQUIRED');
+await (await import('../db/client.js')).run('UPDATE schedule_runs SET review_deadline = ? WHERE id = ?', [addDays(leagueTodayStr, -1), regen.data.draft.id]); // the deadline passes
+const needsOverride = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { replace: true } });
+check('after the deadline, publishing without every sign-off needs an explicit override', needsOverride.data.code === 'OVERRIDE_REQUIRED' && needsOverride.data.pending.length > 0);
+const needs = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { override: true } });
 check('republish warns about referee assignments', needs.data.code === 'REPLACE_REQUIRED' && needs.data.assignedAhead > 0);
-const rep = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { replace: true } });
+const rep = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: { replace: true, override: true, overrideNote: 'Two directors didn’t respond' } });
+check('the override is recorded on the schedule', rep.data.published?.publishOverride?.pending.length > 0 && rep.data.published.publishOverride.note === 'Two directors didn’t respond');
+check('and in the Activity log', (await call('GET', '/activity?category=schedule', { token: admin })).data.entries.some((e) => e.details.includes('review deadline without sign-off from')));
 check('unchanged games keep their referees', rep.status === 200 && rep.data.referees.carried > 0, JSON.stringify(rep.data.referees));
 check('worked games still count for pay after republishing', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data.totals.games === 1);
 const newGames = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games;

@@ -136,8 +136,23 @@ If either team would go over **Games per team**, the dialog says so. That's a no
 
 > **Regenerating a draft** starts over from the rules, so games you added or removed in the draft are lost. Make those edits last.
 
-### 4. Publish
-Click **Publish schedule**. Coaches, directors, and referees see it immediately. **Discard draft** throws a draft away without affecting anything published.
+### 4. Share with directors and collect sign-offs
+Before a draft can be published, every program with teams in it has to sign off. The **Director review** panel sits between the rules and the draft.
+
+1. Pick a **Sign-off deadline** (a week from today to start with) and click **Share with directors**. Each Program Director is emailed. They see **only their own program's games**, read-only, under **Draft review**. Coaches, referees, and the assignor still see nothing until you publish.
+2. The panel shows each program's status: **Waiting**, **Signed off**, or **Flagged**, with who decided and when.
+3. **Flags.** A director who has a problem with a game flags it with a note (e.g. *"11/5 clashes with our school event"*). You're emailed, and the flag appears under **Flagged games**. Either fix the game (**Move**, **Flip**, **Remove**, **Add game**), or click **Resolve** and add a note explaining why it stays. The director is emailed either way and signs off when their games work. Signing off withdraws that program's open flags.
+4. **Programs without a director.** Click **Sign off for them**. It's recorded as signed off by you *on the program's behalf*, so the record shows nobody from the program reviewed it. Programs with a director always sign off themselves.
+5. **Changes after sign-off.** When you change a game in a shared draft, only the programs in that game go back to **Waiting**. Their directors are emailed with what changed, and the panel shows *"Needs to review again: …"*. Every other program keeps its sign-off.
+
+![Director review](/help/img/sa-draft-review.png)
+
+**Change** next to the deadline moves it (it can't be in the past). **Regenerate draft** starts a brand-new draft that has to be shared and signed off again.
+
+### 5. Publish
+**Publish schedule** unlocks when every program has signed off. Until then it's greyed out, with a line saying how many programs are still to sign off. Coaches, directors, and referees see the schedule as soon as it's published. **Discard draft** throws a draft away without affecting anything published.
+
+**Publishing without every sign-off.** Once the deadline has passed (the day after the deadline date, Pacific time), the button becomes **Publish anyway…**. It lists the programs that haven't signed off and asks why you're publishing now. The override is recorded on the schedule (who, when, which programs, and your note), in **Activity**, and in the Schedule builder's **Published** view. Before the deadline there's no override. Move the deadline if you need to.
 
 > **Publishing again later** replaces the current schedule. The app warns you first: open change requests on the old schedule are cancelled, and referee assignments carry over only to games that didn't change.
 

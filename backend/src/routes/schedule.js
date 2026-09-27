@@ -14,13 +14,14 @@ import { config } from '../config.js';
 import { toMinutes } from '../scheduling/core.js';
 import { getTeam, teamsForRun, pairingCheck, pairingContext, addOptions, checkAddPlacement, insertGame } from '../scheduling/addGame.js';
 import { runRules } from '../scheduling/data.js';
+import { reviewState, shareDraft, draftChanged, deadlinePassed, gameLabel, REVIEW_LABELS } from '../scheduling/review.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
 const adminOnly = requireRole('super_admin');
 
 const parseJson = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
-const shapeRun = (r) => r && ({ ...r, rules: parseJson(r.rules, {}), summary: parseJson(r.summary, null), warnings: parseJson(r.warnings, []) });
+const shapeRun = (r) => r && ({ ...r, rules: parseJson(r.rules, {}), summary: parseJson(r.summary, null), warnings: parseJson(r.warnings, []), publishOverride: parseJson(r.publishOverride, null) });
 
 async function requireSeason() {
   const s = await activeSeason();
@@ -356,6 +357,8 @@ router.post('/runs/:id/games', adminOnly, ah(async (req, res) => {
       `Game added: ${home.name} vs ${away.name}`,
       `The league added a game to the schedule:\n${home.name} vs ${away.name}\n${game.date} at ${formatTime12(game.startTime)} · ${game.venueName} – ${game.courtName}${reason ? `\nReason: ${reason}` : ''}`);
   }
+  // In a shared draft, both programs have to review again.
+  if (r.status === 'draft') await draftChanged(r.id, [home.programId, away.programId], `${home.name} vs ${away.name} was added${where}.`, req.user);
   res.status(201).json({ game, warnings: [...pairing.warnings, ...(check?.warnings || [])], referees });
 }));
 
@@ -365,6 +368,7 @@ router.delete('/games/:id', adminOnly, ah(async (req, res) => {
   const game = await loadGameFor(req, { requireEditable: true });
   if (game.runStatus !== 'draft') throw conflict('Games on the published schedule can’t be removed. Cancel the game instead, so there’s a record of it.');
   await run('DELETE FROM games WHERE id = ?', [game.id]);
+  await draftChanged(game.runId, [game.homeProgramId, game.awayProgramId], `${gameLabel(game)} was removed from the draft.`, req.user);
   res.json({ ok: true, removed: { id: game.id, homeTeamName: game.homeTeamName, awayTeamName: game.awayTeamName } });
 }));
 
@@ -427,6 +431,9 @@ router.put('/games/:id', adminOnly, ah(async (req, res) => {
     await logActivity({ category: 'schedule', action: 'edited', actor: req.user, programId: game.homeProgramId, programIds: [game.homeProgramId, game.awayProgramId], details: detail });
     // Moves, cancels, and restores affect referee slots; a flip doesn't.
     if (b.action !== 'flip') referees = await onGamesChanged([game.id], req.user);
+  } else {
+    // A shared draft: the two teams' programs have to review again.
+    await draftChanged(game.runId, [game.homeProgramId, game.awayProgramId], `${detail}.`, req.user);
   }
   res.json({ game: await getGame(game.id), warnings, referees });
 }));
@@ -483,12 +490,162 @@ router.delete('/games/:id/score', ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------
+// Draft sharing and director sign-off
+// ---------------------------------------------------------------------
+async function draftRun(id) {
+  const r = await one('SELECT * FROM schedule_runs WHERE id = ?', [id]);
+  if (!r) throw notFound('Schedule');
+  if (r.status !== 'draft') throw conflict('Only a draft can be shared for review.');
+  return r;
+}
+const readDeadline = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  assertDate(v, 'Deadline');
+  if (v < leagueNow().date) throw badRequest('The deadline can’t be in the past.');
+  return v;
+};
+
+// GET /api/schedule/runs/:id/review — each program's status and every flag.
+router.get('/runs/:id/review', adminOnly, ah(async (req, res) => {
+  const r = await one('SELECT * FROM schedule_runs WHERE id = ?', [req.params.id]);
+  if (!r) throw notFound('Schedule');
+  res.json({ review: await reviewState(r) });
+}));
+
+// POST /api/schedule/runs/:id/share  { deadline }  — share with directors
+// (again on a shared draft: change the deadline).
+router.post('/runs/:id/share', adminOnly, ah(async (req, res) => {
+  const r = await draftRun(req.params.id);
+  const deadline = readDeadline(req.body?.deadline);
+  await shareDraft(r, { deadline, actor: req.user });
+  res.json({ review: await reviewState(await one('SELECT * FROM schedule_runs WHERE id = ?', [r.id])) });
+}));
+
+// POST /api/schedule/runs/:id/review/:programId/sign-off  { note }
+// The System Admin signs off for a program that has no active director.
+router.post('/runs/:id/review/:programId/sign-off', adminOnly, ah(async (req, res) => {
+  const r = await draftRun(req.params.id);
+  if (!r.sharedAt) throw conflict('Share the draft with directors first.');
+  const rev = await one('SELECT * FROM draft_reviews WHERE run_id = ? AND program_id = ?', [r.id, req.params.programId]);
+  if (!rev) throw notFound('Program review');
+  const director = await one("SELECT 1 FROM users WHERE program_id = ? AND role = 'program_director' AND is_active = 1", [rev.programId]);
+  if (director) throw conflict('This program has a director, who signs off for it. You can sign off only for programs without one.');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 300) : '';
+  await run(`UPDATE draft_reviews SET status = 'signed_off', decided_by = ?, decided_at = datetime('now'), on_behalf = 1, note = ?, reset_reason = NULL, updated_at = datetime('now') WHERE id = ?`,
+    [req.user.id, note || null, rev.id]);
+  const prog = await one('SELECT name FROM programs WHERE id = ?', [rev.programId]);
+  await logActivity({ category: 'schedule', action: 'signed off', actor: req.user, programId: rev.programId,
+    details: `Signed off the draft schedule on behalf of ${prog.name} (no director)${note ? `: ${note}` : ''}` });
+  res.json({ review: await reviewState(r) });
+}));
+
+// POST /api/schedule/flags/:id/resolve  { note } — the admin answers a flag.
+router.post('/flags/:id/resolve', adminOnly, ah(async (req, res) => {
+  const f = await one('SELECT * FROM draft_flags WHERE id = ?', [req.params.id]);
+  if (!f) throw notFound('Flag');
+  if (f.status === 'resolved') throw conflict('That flag is already resolved.');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 300) : '';
+  await run(`UPDATE draft_flags SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'), resolution_note = ? WHERE id = ?`, [req.user.id, note || null, f.id]);
+  await logActivity({ category: 'schedule', action: 'flag resolved', actor: req.user, programId: f.programId, details: `Resolved a draft flag on ${f.gameLabel}${note ? `: ${note}` : ''}` });
+  await notifyUsers("role = 'program_director' AND program_id = ?", [f.programId], 'The league answered your flag on the draft',
+    `Your flag on ${f.gameLabel} has been resolved.${note ? `\n${note}` : ''}\nCheck your games under Draft review and sign off when they work.`);
+  const r = await one('SELECT * FROM schedule_runs WHERE id = ?', [f.runId]);
+  res.json({ review: await reviewState(r) });
+}));
+
+// ---- the director's side ----
+const directorOnly = requireRole('program_director');
+async function sharedDraftFor(user) {
+  if (!user.programId) throw forbidden('Your account isn’t assigned to a program.');
+  const season = await activeSeason();
+  const r = season && await one("SELECT * FROM schedule_runs WHERE season_id = ? AND status = 'draft' AND shared_at IS NOT NULL", [season.id]);
+  if (!r) return { run: null };
+  const review = await one('SELECT * FROM draft_reviews WHERE run_id = ? AND program_id = ?', [r.id, user.programId]);
+  return { run: r, review };
+}
+
+// GET /api/schedule/draft-review — the shared draft, as this director's program sees it.
+router.get('/draft-review', directorOnly, ah(async (req, res) => {
+  const { run: r, review } = await sharedDraftFor(req.user);
+  if (!r || !review) return res.json({ shared: false });
+  // Their own program's games only (the league's decision): all they need to review.
+  const games = (await all(`${GAME_SELECT} WHERE g.run_id = ? AND (ht.program_id = ? OR at.program_id = ?) ${GAME_ORDER}`,
+    [r.id, req.user.programId, req.user.programId])).map(shapeGame);
+  const flags = await all(`SELECT f.*, ru.first_name || ' ' || ru.last_name AS resolved_by_name FROM draft_flags f
+    LEFT JOIN users ru ON ru.id = f.resolved_by WHERE f.run_id = ? AND f.program_id = ? ORDER BY f.created_at DESC`, [r.id, req.user.programId]);
+  const decider = review.decidedBy ? await one("SELECT first_name || ' ' || last_name AS n FROM users WHERE id = ?", [review.decidedBy]) : null;
+  res.json({ shared: true, run: { id: r.id, sharedAt: r.sharedAt, deadline: r.reviewDeadline, deadlinePassed: deadlinePassed(r), createdAt: r.createdAt },
+    review: { ...review, onBehalf: !!review.onBehalf, statusLabel: REVIEW_LABELS[review.status], decidedByName: decider?.n || null }, games, flags });
+}));
+
+// POST /api/schedule/draft-review/sign-off  { note }
+router.post('/draft-review/sign-off', directorOnly, ah(async (req, res) => {
+  const { run: r, review } = await sharedDraftFor(req.user);
+  if (!r || !review) throw conflict('There’s no draft waiting for your review.');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 300) : '';
+  await db.batch([
+    { sql: `UPDATE draft_reviews SET status = 'signed_off', decided_by = ?, decided_at = datetime('now'), on_behalf = 0, note = ?, reset_reason = NULL, updated_at = datetime('now') WHERE id = ?`,
+      args: [req.user.id, note || null, review.id] },
+    // Signing off means the games work as they are, so any open flags are withdrawn.
+    { sql: `UPDATE draft_flags SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'), resolution_note = 'Withdrawn: the program signed off.'
+      WHERE run_id = ? AND program_id = ? AND status = 'open'`, args: [req.user.id, r.id, req.user.programId] },
+  ], 'write');
+  await logActivity({ category: 'schedule', action: 'signed off', actor: req.user, programId: req.user.programId, details: `Signed off the draft schedule${note ? `: ${note}` : ''}` });
+  const left = await one("SELECT COUNT(*) AS n FROM draft_reviews WHERE run_id = ? AND status != 'signed_off'", [r.id]);
+  if (Number(left.n) === 0) {
+    await notifyUsers("role = 'super_admin'", [], 'Every program has signed off the draft', 'Every program has signed off the draft schedule. You can publish it from the Schedule builder.');
+  }
+  res.json({ ok: true, remaining: Number(left.n) });
+}));
+
+// POST /api/schedule/draft-review/flags  { gameId, note } — flag one of your games.
+router.post('/draft-review/flags', directorOnly, ah(async (req, res) => {
+  const { run: r, review } = await sharedDraftFor(req.user);
+  if (!r || !review) throw conflict('There’s no draft waiting for your review.');
+  const game = await getGame(req.body?.gameId);
+  if (!game || game.runId !== r.id || ![game.homeProgramId, game.awayProgramId].includes(req.user.programId)) throw notFound('Game');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  if (note.length < 5) throw badRequest('Say what’s wrong with this game, e.g. “11/5 clashes with our school event.”');
+  const label = gameLabel(game);
+  await db.batch([
+    { sql: 'INSERT INTO draft_flags (id, run_id, program_id, game_id, game_label, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [newId(), r.id, req.user.programId, game.id, label, note.slice(0, 400), req.user.id] },
+    { sql: `UPDATE draft_reviews SET status = 'flagged', decided_by = ?, decided_at = datetime('now'), on_behalf = 0, note = NULL, updated_at = datetime('now') WHERE id = ?`, args: [req.user.id, review.id] },
+  ], 'write');
+  await logActivity({ category: 'schedule', action: 'flagged', actor: req.user, programId: req.user.programId, details: `Flagged a draft game: ${label}: ${note.slice(0, 200)}` });
+  await notifyUsers("role = 'super_admin'", [], 'A director flagged a game in the draft',
+    `${req.user.firstName} ${req.user.lastName} flagged a game in the draft schedule:\n${label}\n“${note.slice(0, 400)}”\nReview it in the Schedule builder.`);
+  res.status(201).json({ ok: true });
+}));
+
+// ---------------------------------------------------------------------
 // Publish / discard
 // ---------------------------------------------------------------------
 router.post('/runs/:id/publish', adminOnly, ah(async (req, res) => {
   const r = await one('SELECT * FROM schedule_runs WHERE id = ?', [req.params.id]);
   if (!r) throw notFound('Schedule');
   if (r.status !== 'draft') throw conflict('Only a draft can be published.');
+  // Director sign-off: every program with teams must have signed off. After
+  // the review deadline has passed, the admin may publish anyway (override),
+  // and that's recorded on the schedule.
+  const review = await reviewState(r);
+  let override = null;
+  if (!review.shared) {
+    throw conflict('Share the draft with the Program Directors and collect their sign-offs before publishing.', { code: 'NOT_SHARED' });
+  }
+  if (!review.allSignedOff) {
+    const names = review.pending.map((p) => `${p.programName} (${REVIEW_LABELS[p.status].toLowerCase()})`).join(', ');
+    if (!review.deadlinePassed) {
+      throw conflict(`Every program has to sign off before publishing. Still to sign off: ${names}.${review.deadline ? ` You can publish anyway after the ${review.deadline} deadline.` : ' Set a review deadline if you may need to publish without every sign-off.'}`,
+        { code: 'SIGNOFF_REQUIRED', pending: review.pending, deadline: review.deadline });
+    }
+    if (req.body?.override !== true) {
+      throw conflict(`The review deadline (${review.deadline}) has passed, but not every program has signed off: ${names}. Confirm to publish anyway; the override is recorded.`,
+        { code: 'OVERRIDE_REQUIRED', pending: review.pending, deadline: review.deadline });
+    }
+    const note = typeof req.body?.overrideNote === 'string' ? req.body.overrideNote.trim().slice(0, 300) : '';
+    override = { by: req.user.id, byName: `${req.user.firstName} ${req.user.lastName}`, at: new Date().toISOString(), deadline: review.deadline, pending: review.pending, note: note || null };
+  }
   const current = await publishedRun(r.seasonId);
   const assignedAhead = current ? await upcomingAssignmentCount(current.id, leagueNow().date) : 0;
   if (current && req.body?.replace !== true) {
@@ -505,7 +662,7 @@ router.post('/runs/:id/publish', adminOnly, ah(async (req, res) => {
       args: [current.id, current.id],
     });
   }
-  stmts.push({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now') WHERE id = ?", args: [req.user.id, r.id] });
+  stmts.push({ sql: "UPDATE schedule_runs SET status = 'published', published_by = ?, published_at = datetime('now'), publish_override = ? WHERE id = ?", args: [req.user.id, override ? JSON.stringify(override) : null, r.id] });
   await db.batch(stmts, 'write');
   // Module C: every published game gets its referee slots; carry referees
   // over to unchanged games when replacing an earlier schedule.
@@ -534,7 +691,8 @@ router.post('/runs/:id/publish', adminOnly, ah(async (req, res) => {
   }
   const counts = await one("SELECT SUM(status = 'scheduled') AS scheduled, SUM(status = 'unscheduled') AS unscheduled FROM games WHERE run_id = ?", [r.id]);
   await logActivity({ category: 'schedule', action: 'published', actor: req.user,
-    details: `Published the schedule: ${counts.scheduled || 0} games${counts.unscheduled ? ` (${counts.unscheduled} unplaced pairings left off)` : ''}${current ? ', replacing the previous schedule' : ''}` });
+    details: `Published the schedule: ${counts.scheduled || 0} games${counts.unscheduled ? ` (${counts.unscheduled} unplaced pairings left off)` : ''}${current ? ', replacing the previous schedule' : ''}${override
+      ? `. Published after the ${override.deadline} review deadline without sign-off from ${override.pending.map((p) => p.programName).join(', ')}${override.note ? ` (${override.note})` : ''}` : ''}` });
   res.json({ published: shapeRun(await one('SELECT * FROM schedule_runs WHERE id = ?', [r.id])), referees: carry });
 }));
 

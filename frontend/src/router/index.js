@@ -27,6 +27,7 @@ const routes = [
       { path: 'league', component: () => import('../views/LeagueSetupView.vue'), meta: { roles: SA, title: 'League setup' } },
       { path: 'users', component: () => import('../views/UsersView.vue'), meta: { roles: SA, title: 'Users' } },
       { path: 'schedule', component: () => import('../views/ScheduleView.vue'), meta: { title: 'Schedule' } },
+      { path: 'schedule/draft', component: () => import('../views/DraftReviewView.vue'), meta: { roles: ['program_director'], title: 'Draft review' } },
       { path: 'schedule/builder', component: () => import('../views/ScheduleBuilderView.vue'), meta: { roles: SA, title: 'Schedule builder' } },
       { path: 'requests', component: () => import('../views/RequestsView.vue'), meta: { roles: TEAM_VIEWERS, title: 'Change requests' } },
       { path: 'assignments', component: () => import('../views/AssignmentsView.vue'), meta: { roles: REF_MANAGERS, title: 'Referee assignments' } },

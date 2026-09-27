@@ -6,7 +6,7 @@ import UpcomingGamesCard from '../components/UpcomingGamesCard.vue';
 import RefCoverageCard from '../components/RefCoverageCard.vue';
 import MyNextGamesCard from '../components/MyNextGamesCard.vue';
 import SetupChecklistCard from '../components/SetupChecklistCard.vue';
-import { CATEGORY, dateRange, todayISO } from '../utils/format';
+import { CATEGORY, dateRange, todayISO, longDate } from '../utils/format';
 
 const auth = useAuthStore();
 const data = ref(null);
@@ -79,6 +79,15 @@ const greeting = computed(() => {
       </section>
 
       <!-- Managers -->
+      <!-- A shared draft waiting for this director's review -->
+      <RouterLink v-if="data.draftReview && data.draftReview.status !== 'signed_off'" to="/schedule/draft"
+        class="card p-4 mb-6 flex flex-wrap items-center gap-3 ring-2 ring-accent hover:bg-background">
+        <span class="flex-1 min-w-[14rem]">
+          <span class="font-semibold block">{{ data.draftReview.changed ? 'The draft changed: please review again' : data.draftReview.status === 'flagged' ? 'You flagged a game in the draft schedule' : 'The draft schedule is ready for your review' }}</span>
+          <span class="text-sm text-text-muted">Check your program’s games and sign off{{ data.draftReview.deadline ? ` by ${longDate(data.draftReview.deadline)}` : '' }}.</span>
+        </span>
+        <span class="btn btn-primary">Review the draft</span>
+      </RouterLink>
       <SetupChecklistCard v-if="data.setup" :setup="data.setup" class="mb-6" />
       <MyNextGamesCard v-if="auth.user.role === 'referee'" class="mb-6" />
       <RefCoverageCard v-if="data.referees" :referees="data.referees" class="mb-6" />

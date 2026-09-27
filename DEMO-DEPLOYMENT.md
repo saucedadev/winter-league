@@ -165,7 +165,7 @@ Leave `LEAGUE_TIMEZONE` out (it defaults to Pacific) and don't set `PORT` (Rende
 
 **Settings → Health Check Path:** `/api/health`. Then create the service.
 
-When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect something like `{"ok":true,"app":"winter-league","database":"turso","schema":9,"latestUpdate":"009_guest_programs.sql"}`. `schema` is how many database updates have been applied, so you can confirm a deploy landed. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
+When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect something like `{"ok":true,"app":"winter-league","database":"turso","schema":10,"latestUpdate":"010_draft_review.sql"}`. `schema` is how many database updates have been applied, so you can confirm a deploy landed. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
 
 ## 2.4 Vercel: the demo site
 
@@ -247,6 +247,7 @@ Both demo services redeploy whenever `main` changes, so the demo always runs the
 
 # 6. Things to know
 
+- **Publishing needs every program's sign-off.** In a demo, share the draft, show one director signing off live, then sign off the rest with the demo helper. From `backend/`: locally `npm run demo:signoff`; for the hosted demo `node src/scripts/demoSignOff.js --env=.env.demo.local --force`. It only works on a shared draft, and each sign-off is recorded as *"Signed off by the demo script"*. **Never run it against the real league.**
 - **The demo season is Winter 2026–27** (Nov 2, 2026 – Feb 28, 2027), fixed in the loader. Demos work best before or during that season; after it, there are no upcoming games and the dates in `backend/src/scripts/seedDemo.js` should be moved forward.
 - **Demo check-ins and scores count** toward the demo's payouts and results. That's expected.
 - **Anyone with the address can sign in** with the shared password. Share it only with the people you're presenting to, and never put real data in a demo.

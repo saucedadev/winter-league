@@ -12,6 +12,7 @@ import GameRow from '../components/GameRow.vue';
 import CancelGameModal from '../components/CancelGameModal.vue';
 import PlacementPicker from '../components/PlacementPicker.vue';
 import AddGameModal from '../components/AddGameModal.vue';
+import DraftReviewPanel from '../components/DraftReviewPanel.vue';
 
 const toast = useToast();
 const overview = ref(null);
@@ -54,6 +55,29 @@ async function loadGames() {
   finally { gamesLoading.value = false; }
 }
 function setView(v) { if (view.value !== v) { view.value = v; loadGames(); } }
+
+// ---- director review of the draft ----
+const review = ref(null);
+async function loadReview() {
+  const d = overview.value?.draft;
+  if (!d) { review.value = null; return; }
+  try { review.value = (await api.get(`/schedule/runs/${d.id}/review`)).data.review; }
+  catch (err) { toast.error(errorMessage(err)); }
+}
+watch(() => overview.value?.draft?.id, loadReview);
+// What publishing needs right now: 'share' | 'wait' | 'override' | 'ok'.
+const publishGate = computed(() => {
+  if (!review.value?.shared) return 'share';
+  if (review.value.allSignedOff) return 'ok';
+  return review.value.deadlinePassed ? 'override' : 'wait';
+});
+const publishHint = computed(() => ({
+  share: 'Share the draft with directors first (Director review above).',
+  wait: `Waiting on ${review.value?.pending?.length || 0} program${review.value?.pending?.length === 1 ? '' : 's'} to sign off${review.value?.deadline ? ` (deadline ${review.value.deadline})` : ''}.`,
+  override: 'The deadline has passed without every sign-off. You can publish anyway; it’s recorded.',
+  ok: '',
+}[publishGate.value]));
+const overrideNote = ref('');
 
 // ---- generate ----
 const confirmRegenerate = ref(false);
@@ -215,6 +239,7 @@ async function update(g, body, msg) {
       ? ` Referees: ${refs.kept ? `${refs.kept} kept and notified` : ''}${refs.kept && refs.removed ? ', ' : ''}${refs.removed ? `${refs.removed} removed and notified` : ''}.` : '';
     toast.success(msg + refNote + (data.warnings?.length ? ` Note: ${data.warnings.join(' ')}` : ''));
     editing.value = null;
+    if (view.value === 'draft' && review.value?.shared) loadReview();
     if (body.courtId) games.value.sort((a, b) => (a.date || '9').localeCompare(b.date || '9') || (a.startTime || '').localeCompare(b.startTime || ''));
   } catch (err) {
     if (editing.value) editError.value = errorMessage(err); else toast.error(errorMessage(err));
@@ -230,11 +255,12 @@ async function removeGame() {
     games.value = games.value.filter((x) => x.id !== g.id);
     toast.success(`Removed ${g.homeTeamName} vs ${g.awayTeamName} from the draft.`);
     removing.value = null;
+    if (review.value?.shared) loadReview();
   } catch (err) { toast.error(errorMessage(err)); }
   finally { saving.value = false; }
 }
 const adding = ref(false);
-async function onAdded() { adding.value = false; await loadGames(); }
+async function onAdded() { adding.value = false; await loadGames(); if (view.value === 'draft' && review.value?.shared) loadReview(); }
 
 const saveMove = () => update(editing.value, { courtId: choice.value.courtId, date: choice.value.date, startTime: choice.value.startTime, endTime: choice.value.endTime },
   editing.value.status === 'unscheduled' ? 'Game placed.' : 'Game moved.');
@@ -246,7 +272,9 @@ const busy = ref(false);
 async function publish() {
   busy.value = true;
   try {
-    const { data } = await api.post(`/schedule/runs/${overview.value.draft.id}/publish`, { replace: !!overview.value.published });
+    const body = { replace: !!overview.value.published };
+    if (publishGate.value === 'override') Object.assign(body, { override: true, overrideNote: overrideNote.value.trim() });
+    const { data } = await api.post(`/schedule/runs/${overview.value.draft.id}/publish`, body);
     const r = data.referees || {};
     toast.success(`Schedule published. Everyone can see it now.${r.carried || r.dropped ? ` ${r.carried} referee assignment${r.carried === 1 ? '' : 's'} carried over${r.dropped ? `; ${r.dropped} need reassigning` : ''}.` : ''}`);
     confirmPublish.value = false;
@@ -275,6 +303,7 @@ const publishMessage = computed(() => {
   if (overview.value?.published) m += ' This replaces the current published schedule, and any open change requests on it are cancelled.';
   const n = overview.value?.assignedAhead || 0;
   if (overview.value?.published && n) m += ` ${n} upcoming referee assignment${n === 1 ? '' : 's'} carry over only to games that didn’t change (same teams, date, time, and court). The rest need reassigning.`;
+  if (publishGate.value === 'override') m += ` Not every program has signed off (${review.value.pending.map((p) => p.programName).join(', ')}). Publishing anyway is recorded, with your note.`;
   return m;
 });
 </script>
@@ -387,15 +416,20 @@ const publishMessage = computed(() => {
           <button class="px-3 py-1.5" :class="view === 'published' ? 'bg-accent text-accent-contrast font-semibold' : 'text-text-muted'" :aria-pressed="view === 'published'" @click="setView('published')">Published</button>
         </div>
         <p class="text-sm text-text-muted">
-          <template v-if="view === 'draft'">Draft generated {{ timestamp(run.createdAt) }}. Only System Admins can see it.</template>
-          <template v-else>Published {{ timestamp(run.publishedAt) }}. Edits here go live immediately and are logged.</template>
+          <template v-if="view === 'draft'">Draft generated {{ timestamp(run.createdAt) }}. {{ review?.shared ? 'Shared with Program Directors (each sees only their own program’s games).' : 'Only System Admins can see it.' }}</template>
+          <template v-else>Published {{ timestamp(run.publishedAt) }}. Edits here go live immediately and are logged.<template v-if="run.publishOverride"> Published after the {{ run.publishOverride.deadline }} review deadline without sign-off from {{ run.publishOverride.pending.map((p) => p.programName).join(', ') }}{{ run.publishOverride.note ? ` (“${run.publishOverride.note}”)` : '' }}.</template></template>
           <RouterLink v-if="overview.openRequests" to="/requests" class="underline ml-1">{{ overview.openRequests }} open change request{{ overview.openRequests === 1 ? '' : 's' }}</RouterLink>
         </p>
         <div v-if="view === 'draft'" class="flex gap-2 ml-auto">
           <button class="btn btn-secondary" @click="confirmDiscard = true">Discard draft</button>
-          <button class="btn btn-primary" :disabled="!stats.placed" @click="confirmPublish = true">Publish schedule</button>
+          <button class="btn btn-primary" :disabled="!stats.placed || publishGate === 'share' || publishGate === 'wait'" :title="publishHint" @click="overrideNote = ''; confirmPublish = true">
+            {{ publishGate === 'override' ? 'Publish anyway…' : 'Publish schedule' }}
+          </button>
         </div>
+        <p v-if="view === 'draft' && publishHint" class="w-full text-xs text-right text-text-muted -mt-1">{{ publishHint }}</p>
       </div>
+
+      <DraftReviewPanel v-if="view === 'draft' && overview.draft" :key="overview.draft.id" :run-id="overview.draft.id" :review="review" @updated="review = $event" />
 
       <EmptyState v-if="!run" title="No schedule yet"
         body="Check the rules above, then generate a draft. Nothing is visible to coaches or directors until you publish it." />
@@ -519,10 +553,19 @@ const publishMessage = computed(() => {
 
     <CancelGameModal v-if="cancelling" :game="cancelling" @close="cancelling = null" @cancelled="onCancelled" />
     <ConfirmDialog v-if="confirmRegenerate" title="Regenerate the draft?" confirm-label="Regenerate" tone="primary" :busy="generating"
-      message="This builds a fresh draft from the current rules, gym slots, and blackouts. Any edits you made to the current draft, including games you added or removed, are lost. The published schedule isn’t affected."
+      message="This builds a fresh draft from the current rules, gym slots, and blackouts. Any edits you made to the current draft, including games you added or removed, are lost, and so are directors’ sign-offs: the new draft has to be shared and signed off again. The published schedule isn’t affected."
       @confirm="generate" @close="confirmRegenerate = false" />
-    <ConfirmDialog v-if="confirmPublish" title="Publish this schedule?" confirm-label="Publish schedule" tone="primary" :busy="busy" :message="publishMessage"
+    <ConfirmDialog v-if="confirmPublish && publishGate !== 'override'" title="Publish this schedule?" confirm-label="Publish schedule" tone="primary" :busy="busy" :message="publishMessage"
       @confirm="publish" @close="confirmPublish = false" />
+    <Modal v-if="confirmPublish && publishGate === 'override'" title="Publish without every sign-off?" @close="confirmPublish = false">
+      <p class="text-sm mb-3">{{ publishMessage }}</p>
+      <label class="label" for="override-note">Why publish now? (kept with the schedule)</label>
+      <textarea id="override-note" v-model="overrideNote" rows="2" class="input" maxlength="300" placeholder="e.g. Deadline passed; two directors didn’t respond after reminders." />
+      <template #footer>
+        <button class="btn btn-secondary" @click="confirmPublish = false">Cancel</button>
+        <button class="btn btn-primary" :disabled="busy" @click="publish">{{ busy ? 'Publishing…' : 'Publish anyway' }}</button>
+      </template>
+    </Modal>
     <ConfirmDialog v-if="confirmDiscard" title="Discard the draft?" confirm-label="Discard draft" :busy="busy"
       message="The draft and any edits to it are deleted. The published schedule isn’t affected." @confirm="discard" @close="confirmDiscard = false" />
     <ConfirmDialog v-if="removing" title="Remove this game from the draft?" confirm-label="Remove game" :busy="saving"
