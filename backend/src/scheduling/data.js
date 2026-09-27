@@ -1,7 +1,7 @@
 import { one, all, db, newId } from '../db/client.js';
 import { addDays, formatTime12 } from '../utils/validate.js';
 import { leagueToday } from '../utils/leagueTime.js';
-import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes } from './core.js';
+import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride } from './core.js';
 import { buildSchedule } from './matchmaker.js';
 
 export const GAME_CATEGORIES = ['WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK'];
@@ -16,6 +16,13 @@ export async function divisionNameMap() {
   return Object.fromEntries(rows.map((d) => [d.id, d.name]));
 }
 
+// { programId: name } for every league (non-guest) program — used to check
+// program overrides. Guests have no home gyms, so no travel cap.
+export async function programNameMap() {
+  const rows = await all('SELECT id, name FROM programs WHERE is_guest = 0');
+  return Object.fromEntries(rows.map((p) => [p.id, p.name]));
+}
+
 // League rules as saved. Overrides for divisions that have since been
 // deleted are dropped so they can't block saving the rules again.
 export async function getRules() {
@@ -27,6 +34,11 @@ export async function getRules() {
   if (ids.length) {
     const names = await divisionNameMap();
     for (const id of ids) if (!names[id]) delete rules.divisionOverrides[id];
+  }
+  const pids = Object.keys(rules.programOverrides);
+  if (pids.length) {
+    const names = await programNameMap();
+    for (const id of pids) if (!names[id]) delete rules.programOverrides[id];
   }
   return rules;
 }
@@ -213,7 +225,11 @@ export async function checkPlacement(game, target, { excludeIds = [], rules, tod
 
   const homes = await programHomeMap();
   const travelMiles = milesBetween({ lat: court.latitude, lng: court.longitude }, homes[away.programId]);
-  if (travelMiles != null && travelMiles > rules.maxTravelMiles) warnings.push(`${away.name} would travel ${travelMiles} miles (cap ${rules.maxTravelMiles}).`);
+  // The traveling (away) program's cap: its own lower cap if it has one.
+  const cap = travelCapFor(rules, away.programId);
+  if (travelMiles != null && travelMiles > cap) {
+    warnings.push(`${away.name} would travel ${travelMiles} miles (${hasTravelOverride(rules, away.programId) ? `its program’s own cap is ${cap}` : `cap ${cap}`}).`);
+  }
 
   return { errors, warnings, flip, slotId: slot?.id || null, travelMiles, court };
 }
@@ -258,7 +274,8 @@ export async function placementOptions(game, { today = null, limit = 150 } = {})
     const flip = w.programId !== game.homeProgramId;
     const awayProgram = flip ? game.homeProgramId : game.awayProgramId;
     const travelMiles = milesBetween(w, homes[awayProgram]);
-    options.push({ ...w, flip, travelMiles, overTravelCap: travelMiles != null && travelMiles > rules.maxTravelMiles });
+    const cap = travelCapFor(rules, awayProgram);
+    options.push({ ...w, flip, travelMiles, travelCap: cap, overTravelCap: travelMiles != null && travelMiles > cap });
     if (options.length >= limit) break;
   }
   return { options, rules };

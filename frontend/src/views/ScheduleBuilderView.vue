@@ -30,7 +30,7 @@ const RULE_FIELDS = [
 async function loadOverview() {
   const { data } = await api.get('/schedule/overview');
   overview.value = data;
-  if (!rules.value) rules.value = { ...data.rules, divisionOverrides: cloneOverrides(data.rules.divisionOverrides) };
+  if (!rules.value) rules.value = { ...data.rules, divisionOverrides: cloneOverrides(data.rules.divisionOverrides), programOverrides: cloneOverrides(data.rules.programOverrides) };
   if (!view.value || (view.value === 'draft' && !data.draft) || (view.value === 'published' && !data.published)) {
     view.value = data.draft ? 'draft' : data.published ? 'published' : null;
   }
@@ -101,17 +101,43 @@ function removeOverride(id) {
   delete next[id];
   rules.value.divisionOverrides = next;
 }
+// ---- program overrides (a program's own, lower, travel cap) ----
+const programName = (id) => overview.value?.programs?.find((p) => p.id === id)?.name || 'Unknown program';
+const programOverrideRows = computed(() => Object.keys(rules.value?.programOverrides || {})
+  .map((id) => ({ id, name: programName(id), isActive: overview.value?.programs?.find((p) => p.id === id)?.isActive !== false }))
+  .sort((a, b) => a.name.localeCompare(b.name)));
+const programsWithoutOverride = computed(() => (overview.value?.programs || [])
+  .filter((p) => p.isActive && !rules.value?.programOverrides?.[p.id]));
+const newOverrideProgram = ref('');
+function addProgramOverride() {
+  const id = newOverrideProgram.value;
+  if (!id) return;
+  // Start a little under the league cap; a program's cap can only be lower.
+  const league = Number(rules.value.maxTravelMiles) || 30;
+  rules.value.programOverrides = { ...rules.value.programOverrides, [id]: { maxTravelMiles: Math.max(1, league - 10) } };
+  newOverrideProgram.value = '';
+}
+function removeProgramOverride(id) {
+  const next = { ...rules.value.programOverrides };
+  delete next[id];
+  rules.value.programOverrides = next;
+}
+const programOverridesKey = (o) => JSON.stringify(Object.keys(o || {}).sort().map((id) => [id, Number(o[id].maxTravelMiles)]));
+
 const overridesKey = (o) => JSON.stringify(Object.keys(o || {}).sort().map((id) => [id, o[id].maxVsSameOpponent ?? null]));
 
 const rulesDirty = computed(() => overview.value && (
   RULE_FIELDS.some((f) => Number(rules.value?.[f.key]) !== overview.value.rules[f.key])
   || (rules.value?.maxVsSameOpponent ?? null) !== (overview.value.rules.maxVsSameOpponent ?? null)
   || !!rules.value?.allowSameProgram !== !!overview.value.rules.allowSameProgram
-  || overridesKey(rules.value?.divisionOverrides) !== overridesKey(overview.value.rules.divisionOverrides)));
+  || overridesKey(rules.value?.divisionOverrides) !== overridesKey(overview.value.rules.divisionOverrides)
+  || programOverridesKey(rules.value?.programOverrides) !== programOverridesKey(overview.value.rules.programOverrides)));
 
 // Overrides the draft/published schedule on screen was built with.
 const runOverrides = computed(() => Object.entries(run.value?.rules?.divisionOverrides || {})
   .map(([id, o]) => ({ id, name: divisionName(id), value: o.maxVsSameOpponent ?? null })));
+const runProgramOverrides = computed(() => Object.entries(run.value?.rules?.programOverrides || {})
+  .map(([id, o]) => ({ id, name: programName(id), miles: o.maxTravelMiles })));
 
 // ---- live summary (recomputed from the games, so it reflects edits) ----
 const stats = computed(() => {
@@ -329,6 +355,28 @@ const publishMessage = computed(() => {
           </div>
           <p v-else-if="!overrideRows.length" class="text-sm text-text-muted">Add divisions under League setup first.</p>
         </div>
+        <!-- Program overrides -->
+        <div class="mt-4 pt-4 border-t border-border">
+          <h3 class="font-semibold text-sm">Program overrides</h3>
+          <p class="text-sm text-text-muted mb-3">Give one program its own, lower travel cap. It applies whenever that program’s teams travel. Other programs can still travel to it within their own caps, so games against programs beyond its cap are played at its gyms. Every other program keeps the league cap above ({{ rules.maxTravelMiles }} miles).</p>
+          <ul v-if="programOverrideRows.length" class="card card-blocky divide-y divide-border mb-3">
+            <li v-for="row in programOverrideRows" :key="row.id" class="px-4 py-2.5 flex flex-wrap items-center gap-3">
+              <span class="font-medium text-sm min-w-40 flex-1">{{ row.name }}<span v-if="!row.isActive" class="text-xs text-text-muted"> (inactive)</span></span>
+              <label class="text-sm text-text-muted" :for="`poverride-${row.id}`">Travel cap (miles)</label>
+              <input :id="`poverride-${row.id}`" v-model.number="rules.programOverrides[row.id].maxTravelMiles" type="number" min="1" :max="rules.maxTravelMiles" class="input !w-24" />
+              <span v-if="Number(rules.programOverrides[row.id].maxTravelMiles) > Number(rules.maxTravelMiles)" class="text-xs font-medium text-danger">Must be lower than the league cap</span>
+              <span v-else-if="Number(rules.programOverrides[row.id].maxTravelMiles) === Number(rules.maxTravelMiles)" class="text-xs text-text-muted">Same as the league cap</span>
+              <button type="button" class="btn btn-ghost text-xs hover:!text-danger ml-auto" :aria-label="`Remove the override for ${row.name}`" @click="removeProgramOverride(row.id)">Remove</button>
+            </li>
+          </ul>
+          <div v-if="programsWithoutOverride.length" class="flex flex-wrap items-center gap-2">
+            <select v-model="newOverrideProgram" class="input !w-auto" aria-label="Program to override">
+              <option value="">Choose a program…</option>
+              <option v-for="p in programsWithoutOverride" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+            <button type="button" class="btn btn-secondary" :disabled="!newOverrideProgram" @click="addProgramOverride">Add override</button>
+          </div>
+        </div>
         <p v-if="rulesDirty" class="text-xs mt-3 font-medium">Changed rules are saved when you generate.</p>
       </section>
 
@@ -362,6 +410,10 @@ const publishMessage = computed(() => {
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Needs attention</p><p class="text-2xl font-bold">{{ stats.conflicts + stats.unplaced }}</p><p class="text-xs text-text-muted">{{ stats.conflicts }} blackout conflict{{ stats.conflicts === 1 ? '' : 's' }} · {{ stats.unplaced }} unplaced</p></div>
         </div>
 
+        <p v-if="runProgramOverrides.length" class="text-sm text-text-muted" :class="runOverrides.length ? 'mb-1' : 'mb-4'">
+          Built with program override{{ runProgramOverrides.length === 1 ? '' : 's' }}:
+          <span v-for="(o, i) in runProgramOverrides" :key="o.id"><strong class="text-text">{{ o.name }}</strong> — {{ o.miles }}-mile travel cap{{ i < runProgramOverrides.length - 1 ? '; ' : '.' }}</span>
+        </p>
         <p v-if="runOverrides.length" class="text-sm text-text-muted mb-4">
           Built with division override{{ runOverrides.length === 1 ? '' : 's' }}:
           <span v-for="(o, i) in runOverrides" :key="o.id"><strong class="text-text">{{ o.name }}</strong> — {{ o.value == null ? 'no limit' : `at most ${o.value} game${o.value === 1 ? '' : 's'}` }} against the same opponent{{ i < runOverrides.length - 1 ? '; ' : '.' }}</span>

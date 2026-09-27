@@ -73,7 +73,7 @@ const selectedKey = computed(() => (props.modelValue ? key(props.modelValue) : '
               <span class="text-text-muted"> · {{ o.venueName }} – {{ o.courtName }}</span>
               <span v-if="addMode" class="block text-xs text-text-muted">{{ o.flip ? game.awayTeamName : game.homeTeamName }} hosts</span>
               <span v-else-if="o.flip" class="flex items-center gap-1.5 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-warning" aria-hidden="true" />{{ game.awayTeamName }} would become the home team</span>
-              <span v-if="o.overTravelCap" class="flex items-center gap-1.5 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-danger" aria-hidden="true" />{{ o.travelMiles }} miles: over the travel cap</span>
+              <span v-if="o.overTravelCap" class="flex items-center gap-1.5 text-xs font-medium"><span class="w-1.5 h-1.5 rounded-full bg-danger" aria-hidden="true" />{{ o.travelMiles }} miles: over the {{ o.travelCap ? `${o.travelCap}-mile ` : '' }}travel cap</span>
             </span>
           </label>
         </div>

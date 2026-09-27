@@ -65,6 +65,8 @@ If you add a blackout after the schedule is published and it covers games alread
 
 Each game shows the referees assigned to it, or **Referees: not assigned yet** if the assignor hasn't filled them.
 
+**Travel.** The league has one travel cap (30 miles by default) for how far a team travels to an away game. If your program needs a shorter one, ask the league to set a **program travel cap** for you. Your teams then never travel further than that, and opponents beyond it come to your gyms instead. That means more home games for your teams, so make sure you have enough game slots, and possibly fewer games if there isn't enough gym time.
+
 ## Referee payouts for your program
 
 **Menu → My program → Referee payouts** shows the referees who worked **your program's games**, and what each is owed for them. Other programs' games aren't included.

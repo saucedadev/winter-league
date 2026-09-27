@@ -66,7 +66,7 @@ Once programs have entered their gym slots, blackouts, and teams, the Schedule b
 |---|---|---|
 | Games per team | The target for every team | 8 |
 | Game length | Each game slot is split into back-to-back games this long | 60 minutes |
-| Travel cap | Furthest the away team should travel | 30 miles |
+| Travel cap | Furthest the away team should travel (a program can have its own, lower cap, see below) | 30 miles |
 | Days between games | 2 means at least one day off between a team's games | 2 |
 | Games per week | Most games one team plays Monday–Sunday | 2 |
 | Most games against the same opponent | How often the same two teams can meet | 2 |
@@ -84,6 +84,22 @@ Every other division keeps the league value. To go back to the league value, cli
 **When to use one:** the matchmaker's notes say a team "got 4 of 8 games: it has 2 possible opponents in 7th Grade Boys and a limit of 2 games against each". Rather than raising the limit for the whole league, give just that division an override of 4.
 
 After you generate, a line above the notes shows the overrides the draft was built with (for example, *Built with division override: 7th Grade Boys — at most 4 games against the same opponent*). Each draft keeps its own copy of the rules, so changing an override later doesn't change a draft or published schedule already built. If an override is what leaves teams short, the note says so and tells you to raise the division override. The Activity log records override changes with the rules.
+
+#### Program overrides (travel cap)
+A program can have its own **travel cap**, lower than the league's, for example if a club doesn't want its teams driving more than 15 miles. It applies whenever that program's teams travel.
+
+1. Under **Program overrides**, choose the program and click **Add override**.
+2. Enter its **Travel cap (miles)**. It must be lower than the league's **Travel cap** above; a higher one would push longer trips onto opponents who didn't agree to them. The row warns you if it isn't.
+3. Click **Generate draft** (or **Regenerate draft**). The override is saved with the rules.
+
+How the matchmaker uses it:
+- **Placing a game:** the away team's program cap applies. When the program with the override is the away team, its own cap applies; when it hosts, the visiting program's cap applies.
+- **Pairing:** two teams are paired if at least one of them can travel to the other. So if Northfield has a 15-mile cap and Riverbend is 25 miles away, Riverbend (league cap 30) can still come to Northfield. Every Northfield–Riverbend game is then at Northfield's gyms, and Riverbend never hosts Northfield.
+- If neither can travel to the other (both have caps shorter than the distance between them), their teams aren't paired, and the notes say so with both caps.
+
+**What it costs:** the program hosts more of its own games, so home/away balance shifts (it has more home games, its opponents more away games), and its gyms need enough game slots. If its teams end up short, the notes name the override, for example: *"Northfield 5th Boys got 6 of 8 games: Northfield's own 15-mile travel cap means its teams can't travel to Riverbend, so those games have to be at Northfield's gyms. More Northfield game slots, or a higher cap, would help."*
+
+Directors can't set a cap themselves; they ask the league, and you add it here. After you generate, a line above the notes shows it (*Built with program override: Northfield Hawks — 15-mile travel cap*). When you move a game by hand, times where a team would travel past its program's cap are flagged with that cap.
 
 ### 2. Generate a draft
 Click **Generate draft** (or **Regenerate draft** to start over). It takes a few seconds. Changed rules are saved when you generate.

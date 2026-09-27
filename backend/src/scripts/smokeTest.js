@@ -224,6 +224,54 @@ check('the activity log names division overrides', JSON.stringify(log).includes(
 await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
 check('overrides cleared when the rules are reset', Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.divisionOverrides).length === 0);
 
+console.log('\nProgram travel overrides');
+check('no program overrides by default', Object.keys(defaultRules.programOverrides || {}).length === 0);
+const poHigh = await call('PUT', '/schedule/rules', { token: admin, body: { programOverrides: { [nfh.id]: { maxTravelMiles: 45 } } } });
+check('a program can’t set a higher cap than the league’s', poHigh.status === 400 && poHigh.data.error.includes(nfh.name), poHigh.data.error);
+check('an override for an unknown program is rejected', (await call('PUT', '/schedule/rules', { token: admin, body: { programOverrides: { nope: { maxTravelMiles: 10 } } } })).status === 400);
+check('only the travel cap can be set per program', (await call('PUT', '/schedule/rules', { token: admin, body: { programOverrides: { [nfh.id]: { gamesPerTeam: 4 } } } })).status === 400);
+check('lowering the league cap below a program’s cap is caught', (await call('PUT', '/schedule/rules', { token: admin, body: { maxTravelMiles: 5, programOverrides: { [nfh.id]: { maxTravelMiles: 10 } } } })).status === 400);
+check('builder overview lists league programs for overrides', (await call('GET', '/schedule/overview', { token: admin })).data.programs?.some((p) => p.id === nfh.id));
+// Northfield's teams may travel at most 1 mile, so they never travel.
+const dTravel = await draftWith({ programOverrides: { [nfh.id]: { maxTravelMiles: 1 } } });
+check('draft with a program travel cap generates', dTravel.status === 201, dTravel.error);
+const nfhPlaced = dTravel.games.filter((g) => g.status === 'scheduled' && [teamProgAll[g.homeTeamId], teamProgAll[g.awayTeamId]].includes(nfh.id));
+check('the program’s teams never travel beyond their own cap', nfhPlaced.length > 0 && nfhPlaced.every((g) => teamProgAll[g.awayTeamId] !== nfh.id || g.travelMiles == null || g.travelMiles <= 1));
+check('other programs still travel to it (at least one side can travel)', nfhPlaced.some((g) => teamProgAll[g.homeTeamId] === nfh.id && g.travelMiles > 1));
+check('the draft records the program override', dTravel.draft.rules.programOverrides?.[nfh.id]?.maxTravelMiles === 1);
+const nfhCounts = {};
+for (const g of nfhPlaced) for (const t of [g.homeTeamId, g.awayTeamId]) if (teamProgAll[t] === nfh.id) nfhCounts[t] = (nfhCounts[t] || 0) + 1;
+// Northfield has enough gym time to host every game, so its cap costs nothing here...
+check('every short team is explained in the notes', Object.entries(nfhCounts).filter(([, n]) => n < 8).every(([id]) => dTravel.draft.warnings.some((w) => w.includes(dTravel.games.find((g) => g.homeTeamId === id)?.homeTeamName || dTravel.games.find((g) => g.awayTeamId === id)?.awayTeamName))));
+// ...so check the "leaves teams short" note with a small made-up league: Pine
+// won't travel more than 5 miles and has one game slot, so its team can't get
+// its games; the others are ~14–17 miles away.
+{
+  const { buildSchedule } = await import('../scheduling/matchmaker.js');
+  const { normalizeRules } = await import('../scheduling/core.js');
+  const mk = (id, programId) => ({ id, name: `${id} 5th Boys`, programId, divisionId: 'd5', divisionName: '5th Grade Boys' });
+  const homes = { P: { lat: 45.0, lng: -122.9 }, Q: { lat: 45.2, lng: -122.9 }, R: { lat: 45.25, lng: -122.95 } };
+  const win = (programId, date, i) => ({ slotId: `${programId}${date}${i}`, courtId: `${programId}-c`, courtName: 'Main', venueId: programId, venueName: `${programId} Gym`,
+    programId, date, startTime: `${String(17 + i).padStart(2, '0')}:00`, endTime: `${String(18 + i).padStart(2, '0')}:00`, lat: homes[programId].lat, lng: homes[programId].lng });
+  const dates = ['2026-11-02', '2026-11-09', '2026-11-16', '2026-11-23', '2026-11-30', '2026-12-07'];
+  const windows = [win('P', dates[0], 0), ...['Q', 'R'].flatMap((q) => dates.flatMap((d) => [win(q, d, 0), win(q, d, 1)]))];
+  const rules = normalizeRules({ gamesPerTeam: 4, programOverrides: { P: { maxTravelMiles: 5 } } });
+  const out = buildSchedule({ teams: [mk('Pine', 'P'), mk('Quail', 'Q'), mk('Rose', 'R')], windows, homes, programBlackouts: new Set(), rules, programNames: { P: 'Pine', Q: 'Quail', R: 'Rose' } });
+  const pineAway = out.games.filter((g) => g.window && g.awayTeamId === 'Pine');
+  check('a capped program never travels past its own cap (made-up league)', pineAway.length === 0);
+  check('a note names the program’s cap when it leaves teams short', out.warnings.some((w) => w.startsWith('Pine 5th Boys got') && w.includes('Pine’s own 5-mile travel cap') && w.includes('Quail')), out.warnings.join(' | '));
+}
+const travelGame = dTravel.games.find((g) => g.status === 'scheduled' && teamProgAll[g.homeTeamId] === nfh.id);
+const travelGameOpts = (await call('GET', `/schedule/games/${travelGame.id}/options`, { token: admin })).data.options;
+check('moving a game flags times where the program would travel past its own cap', travelGameOpts.filter((o) => o.programId !== nfh.id && o.travelMiles > 1).every((o) => o.overTravelCap && o.travelCap === 1));
+// Both Northfield and Riverbend refuse to travel: they can't be paired at all.
+const dBoth = await draftWith({ programOverrides: { [nfh.id]: { maxTravelMiles: 1 }, [ryb.id]: { maxTravelMiles: 1 } } });
+check('two programs that both can’t travel are never paired', !dBoth.games.some((g) => [teamProgAll[g.homeTeamId], teamProgAll[g.awayTeamId]].sort().join() === [nfh.id, ryb.id].sort().join()));
+check('the notes say why, naming both caps', dBoth.draft.warnings.some((w) => w.includes('weren’t paired') && w.includes('travel caps') && w.includes(`${nfh.name} 1`)), dBoth.draft.warnings.join(' | ').slice(0, 300));
+check('the activity log names program overrides', (await call('GET', '/activity?category=schedule', { token: admin })).data.entries.some((e) => e.details.includes('program overrides')));
+await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
+check('program overrides cleared when the rules are reset', Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.programOverrides).length === 0);
+
 console.log('\nMatchmaker draft');
 const gen = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2 } } });
 check('draft generated', gen.status === 201 && gen.data.draft.status === 'draft' && gen.data.draft.summary.scheduledGames > 0, JSON.stringify(gen.data).slice(0, 200));
@@ -640,7 +688,10 @@ check('referee checks in with location', ci.status === 200 && ci.data.distanceMi
 check('referee cannot decline on game day', (await call('POST', `/referees/me/assignments/${myToday.id}/decline`, { token: refA, body: { reason: 'Late' } })).status === 409);
 const ns = await call('PUT', `/referees/assignments/${tg.assignments[1].id}/status`, { token: assignor, body: { status: 'no_show' } });
 check('assignor marks a no-show', ns.data.game?.assignments[1].status === 'no_show');
-check('attendance cannot be confirmed for future games', (await call('PUT', `/referees/assignments/${after.find((g) => g.date > todayLocal && g.assignments[0].refereeId).assignments[0].id}/status`, { token: assignor, body: { status: 'checked_in' } })).status === 400);
+// A fresh list: an earlier step moves one game to today, and it may be one that was in the future.
+const futureA = (await call('GET', '/referees/games', { token: assignor })).data.games.find((g) => g.date > todayLocal && g.assignments[0].refereeId);
+const futureR = await call('PUT', `/referees/assignments/${futureA.assignments[0].id}/status`, { token: assignor, body: { status: 'checked_in' } });
+check('attendance cannot be confirmed for future games', futureR.status === 400, `${futureR.status} ${JSON.stringify(futureR.data).slice(0, 160)} game ${futureA.date} ${futureA.status}`);
 const pay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: assignor })).data;
 const rateA = roster.referees.find((r) => r.id === meA.id).payRateCents ?? roster.settings.defaultPayCents;
 check('payout counts the checked-in game only', pay.totals.games === 1 && pay.summary[0].refereeId === meA.id && pay.totals.totalCents === rateA);

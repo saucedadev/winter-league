@@ -14,9 +14,23 @@ export const DEFAULT_RULES = Object.freeze({
   // A division without an entry uses the league value. Only the rules listed in
   // DIVISION_OVERRIDE_KEYS can be overridden (more can be added later).
   divisionOverrides: Object.freeze({}),
+  // Per-program exceptions: { [programId]: { maxTravelMiles } }. A program's
+  // own travel cap applies whenever ITS teams travel (they're the away team),
+  // and may only be LOWER than the league cap: a higher one would push longer
+  // trips onto opponents who didn't agree to them.
+  programOverrides: Object.freeze({}),
 });
 export const MAX_VS_SAME_OPPONENT_LIMIT = 6;
 export const DIVISION_OVERRIDE_KEYS = ['maxVsSameOpponent'];
+export const PROGRAM_OVERRIDE_KEYS = ['maxTravelMiles'];
+
+// How far a program's teams may travel: its own cap if it has one, else the
+// league's (never more than the league's).
+export function travelCapFor(rules, programId) {
+  const own = rules?.programOverrides?.[programId]?.maxTravelMiles;
+  return own != null ? Math.min(own, rules.maxTravelMiles) : rules.maxTravelMiles;
+}
+export const hasTravelOverride = (rules, programId) => rules?.programOverrides?.[programId]?.maxTravelMiles != null;
 
 // The rematch limit: 1–6, or "no limit" (null, '', or 'none'). Returns
 // { value } or { error }.
@@ -53,8 +67,8 @@ const RULE_LIMITS = {
 // divisionNames (optional): { id: name } of the divisions that exist. When
 // given, an override for a division not in it is an error, and messages use
 // division names.
-export function normalizeRules(input = {}, { divisionNames } = {}) {
-  const out = { ...DEFAULT_RULES, divisionOverrides: {} };
+export function normalizeRules(input = {}, { divisionNames, programNames } = {}) {
+  const out = { ...DEFAULT_RULES, divisionOverrides: {}, programOverrides: {} };
   const errors = [];
   for (const [key, [min, max, label]] of Object.entries(RULE_LIMITS)) {
     if (input[key] === undefined || input[key] === null || input[key] === '') continue;
@@ -89,6 +103,24 @@ export function normalizeRules(input = {}, { divisionNames } = {}) {
           if (r.error) errors.push(r.error); else clean.maxVsSameOpponent = r.value;
         }
         if (Object.keys(clean).length) out.divisionOverrides[divisionId] = clean;
+      }
+    }
+  }
+  // Program overrides (travel cap, lower than the league's only).
+  const po = input.programOverrides;
+  if (po !== undefined && po !== null) {
+    if (typeof po !== 'object' || Array.isArray(po)) errors.push('Program overrides must be a list of programs and their values.');
+    else {
+      for (const [programId, values] of Object.entries(po)) {
+        const name = programNames?.[programId];
+        if (programNames && !name) { errors.push('A program override is for a program that isn’t in the league (guest programs can’t have one). Remove it and try again.'); continue; }
+        if (!values || typeof values !== 'object' || Array.isArray(values)) { errors.push(`The override for ${name || 'a program'} is not valid.`); continue; }
+        if (Object.keys(values).some((k) => !PROGRAM_OVERRIDE_KEYS.includes(k))) { errors.push(`${name || 'A program'}: only the travel cap can be set per program.`); continue; }
+        if (values.maxTravelMiles === undefined || values.maxTravelMiles === null || values.maxTravelMiles === '') continue;
+        const n = Number(values.maxTravelMiles);
+        if (!Number.isInteger(n) || n < 1 || n > out.maxTravelMiles) {
+          errors.push(`${name || 'A program'}’s travel cap must be a whole number from 1 to ${out.maxTravelMiles} miles. A program can only set a lower cap than the league’s.`);
+        } else out.programOverrides[programId] = { maxTravelMiles: n };
       }
     }
   }

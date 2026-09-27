@@ -11,7 +11,10 @@
 //   • no court/time is used twice; no program-wide blackout days
 //   • a team's games are at least rules.minDaysBetween days apart and
 //     at most rules.maxGamesPerWeek per week
-//   • the away team's travel is within rules.maxTravelMiles (when venues
+//   • the away team's travel is within its program's travel cap: the
+//     league's rules.maxTravelMiles, or the program's own lower cap
+//     (rules.programOverrides); two teams are only paired if at least one
+//     of them can travel to the other (when venues
 //     have coordinates)
 //   • teams from the same program never play each other (unless
 //     rules.allowSameProgram is on)
@@ -20,7 +23,7 @@
 //     value for that division
 // Soft goals: every team reaches rules.gamesPerTeam, home/away near 50/50,
 // games spread evenly across the season.
-import { milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride } from './core.js';
+import { milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride } from './core.js';
 
 export function buildSchedule({ teams, windows, homes, programBlackouts, rules, programNames = {} }) {
   const warnings = [];
@@ -54,6 +57,9 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   // ---- 1. pairings per division ----
   const matches = [];
   const tooFar = [];
+  const capOf = (programId) => travelCapFor(rules, programId);
+  const progName = (pid) => programNames[pid] || 'A program';
+  const outOfReach = new Map(); // team id -> opponents lost to a program's own (lower) travel cap
   const pairingShort = []; // teams the opponent rules left short, with a plain-English reason
   for (const [divisionId, divTeams] of byDivision) {
     if (divTeams.length < 2) {
@@ -77,8 +83,14 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
         const a = divTeams[i];
         const b = divTeams[j];
         if (sameProgramBlocked(a, b)) continue;
+        // Paired if at least one of the two can travel to the other; the
+        // placement step then makes sure the one that can't travel hosts.
         const d = milesBetween(homes[a.programId], homes[b.programId]);
-        if (d != null && d > rules.maxTravelMiles) { tooFar.push({ a, b, d }); continue; }
+        if (d != null && d > Math.max(capOf(a.programId), capOf(b.programId))) {
+          tooFar.push({ a, b, d });
+          if (d <= rules.maxTravelMiles) for (const t of [a, b]) outOfReach.set(t.id, (outOfReach.get(t.id) || 0) + 1);
+          continue;
+        }
         opponents.get(a.id).push(b);
         opponents.get(b.id).push(a);
       }
@@ -195,7 +207,9 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       const others = divTeams.filter((o) => o.id !== t.id);
       const sister = others.filter((o) => o.programId === t.programId).length;
       const eligible = opponents.get(t.id).length;
-      const excluded = sister && !rules.allowSameProgram ? ` (not counting ${sister} other team${sister > 1 ? 's' : ''} from its own program)` : '';
+      const lost = outOfReach.get(t.id) || 0;
+      const excluded = (sister && !rules.allowSameProgram ? ` (not counting ${sister} other team${sister > 1 ? 's' : ''} from its own program)` : '')
+        + (lost ? ` (${lost} more ${lost > 1 ? 'are' : 'is'} out of reach under the programs’ own travel caps)` : '');
       if (!eligible) {
         pairingShort.push({ team: t, text: `${t.name} has no possible opponents in ${t.divisionName}${excluded}, so it has no games. Turn on “Teams from the same program can play each other” or move it to another division.` });
       } else if (maxVs != null && eligible * maxVs < rules.gamesPerTeam) {
@@ -224,7 +238,11 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     warnings.push(`${pairingShort.length} teams can’t reach ${rules.gamesPerTeam} games under the opponent rules: ${parts.join(', ')}. For example, ${pairingShort[0].text} Check the Team balance tab for the full list.`);
   }
   for (const { a, b, d } of tooFar) {
-    warnings.push(`${a.name} and ${b.name} weren’t paired: their programs are ${d} miles apart (cap ${rules.maxTravelMiles}).`);
+    const own = [a, b].filter((t) => hasTravelOverride(rules, t.programId));
+    const caps = own.length
+      ? `travel caps: ${[a, b].map((t) => `${progName(t.programId)} ${capOf(t.programId)}`).join(', ')}`
+      : `cap ${rules.maxTravelMiles}`;
+    warnings.push(`${a.name} and ${b.name} weren’t paired: their programs are ${d} miles apart (${caps}).`);
   }
 
   // ---- 2. place each match in a window ----
@@ -254,7 +272,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
         if (teamProblems(home.name, teamGames.get(home.id), w.date, rules).length) continue;
         if (teamProblems(away.name, teamGames.get(away.id), w.date, rules).length) continue;
         const miles = milesBetween(w, homes[away.programId]);
-        if (miles != null && miles > rules.maxTravelMiles) continue;
+        if (miles != null && miles > capOf(away.programId)) continue; // the traveling program's cap
         return { w, miles };
       }
     }
@@ -328,6 +346,22 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   // Teams short for other reasons (not enough open gym time, travel), so the
   // ones already explained above aren't listed twice.
   const explained = new Set(pairingShort.map((p) => p.team.id));
+  // A program's own travel cap can leave its teams short: games against
+  // programs it can't travel to must all be at its own gyms. Say so by name.
+  const statById = new Map(teamStats.map((x) => [x.teamId, x]));
+  for (const [pid] of Object.entries(rules.programOverrides || {})) {
+    const own = teams.filter((t) => t.programId === pid);
+    if (!own.length || !homes[pid]) continue;
+    const cap = capOf(pid);
+    const cantReach = [...new Set(teams.map((t) => t.programId))]
+      .filter((q) => q !== pid && homes[q] && milesBetween(homes[pid], homes[q]) > cap);
+    const shortHere = own.map((t) => statById.get(t.id)).filter((x) => x.games < rules.gamesPerTeam && byDivision.get(x.divisionId).length > 1 && !explained.has(x.teamId));
+    if (!cantReach.length || !shortHere.length) continue;
+    const names = cantReach.map(progName);
+    const who = shortHere.slice(0, 3).map((x) => `${x.name} got ${x.games} of ${rules.gamesPerTeam} games`).join('; ');
+    warnings.push(`${who}${shortHere.length > 3 ? `; ${shortHere.length - 3} more ${progName(pid)} team${shortHere.length - 3 > 1 ? 's' : ''} too` : ''}: ${progName(pid)}’s own ${cap}-mile travel cap means its teams can’t travel to ${names.length > 3 ? `${names.length} programs` : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]}, so those games have to be at ${progName(pid)}’s gyms. More ${progName(pid)} game slots, or a higher cap, would help.`);
+    for (const x of shortHere) explained.add(x.teamId);
+  }
   const short = teamStats.filter((s) => s.games < rules.gamesPerTeam && byDivision.get(s.divisionId).length > 1 && !explained.has(s.teamId));
   if (short.length) {
     warnings.push(`${short.length} team${short.length > 1 ? 's' : ''} ended up with fewer than ${rules.gamesPerTeam} games: ${short.slice(0, 6).map((s) => `${s.name} (${s.games})`).join(', ')}${short.length > 6 ? ', …' : ''}.`);
