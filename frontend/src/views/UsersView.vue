@@ -1,5 +1,6 @@
 <script setup>
 import PhoneInput from '../components/PhoneInput.vue';
+import TempPasswordField from '../components/TempPasswordField.vue';
 import { useBrandingStore } from '../stores/branding';
 const branding = useBrandingStore();
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
@@ -111,8 +112,12 @@ function open(u) {
   formError.value = '';
   editor.value = u
     ? { id: u.id, self: u.id === auth.user.id, form: { firstName: u.firstName, lastName: u.lastName, email: u.email, phone: u.phone || '', role: u.role, programId: u.programId || '', isActive: u.isActive } }
-    : { id: null, form: { firstName: '', lastName: '', email: '', phone: '', role: 'program_director', programId: ctx.programId || '' } };
+    : { id: null, form: { firstName: '', lastName: '', email: '', phone: '', role: 'program_director', programId: ctx.programId || '' }, temp: blankTemp() };
 }
+// Temporary password: generated, or set by the System Admin.
+const blankTemp = () => ({ mode: 'generate', password: '' });
+const tempValid = (t) => t.mode !== 'set' || (t.password.length >= 10 && /[A-Za-z]/.test(t.password) && /\d/.test(t.password) && t.password === t.password.trim());
+const tempBody = (t) => (t.mode === 'set' ? { temporaryPassword: t.password } : {});
 async function save() {
   formError.value = '';
   saving.value = true;
@@ -123,22 +128,32 @@ async function save() {
       await api.put(`/users/${editor.value.id}`, f);
       toast.success('Account saved.');
     } else {
-      const { data } = await api.post('/users', f);
-      credentials.value = { name: `${data.user.firstName} ${data.user.lastName}`, username: data.user.username, password: data.temporaryPassword, isNew: true };
+      const { data } = await api.post('/users', { ...f, ...tempBody(editor.value.temp) });
+      credentials.value = { name: `${data.user.firstName} ${data.user.lastName}`, username: data.user.username, password: data.temporaryPassword, isNew: true, chosen: editor.value.temp.mode === 'set' };
     }
     editor.value = null;
     await load();
   } catch (err) { formError.value = errorMessage(err); }
   finally { saving.value = false; }
 }
-async function resetPassword() {
+// Issue temporary password (from Edit account): choose generate or set, then confirm.
+const issuing = ref(null); // { user, temp, error }
+function openIssue() {
   const u = users.value.find((x) => x.id === editor.value.id);
-  try {
-    const { data } = await api.post(`/users/${u.id}/reset-password`);
-    editor.value = null;
-    credentials.value = { name: `${u.firstName} ${u.lastName}`, username: u.username, password: data.temporaryPassword, isNew: false };
-  } catch (err) { formError.value = errorMessage(err); }
+  issuing.value = { user: u, temp: blankTemp(), error: '' };
+  editor.value = null;
 }
+async function resetPassword() {
+  const { user: u, temp } = issuing.value;
+  saving.value = true;
+  try {
+    const { data } = await api.post(`/users/${u.id}/reset-password`, tempBody(temp));
+    issuing.value = null;
+    credentials.value = { name: `${u.firstName} ${u.lastName}`, username: u.username, password: data.temporaryPassword, isNew: false, chosen: temp.mode === 'set' };
+  } catch (err) { issuing.value.error = errorMessage(err); }
+  finally { saving.value = false; }
+}
+const credShown = ref(false);
 async function copyCredentials() {
   const c = credentials.value;
   try {
@@ -220,25 +235,42 @@ async function copyCredentials() {
           </select>
         </div>
         <label v-if="editor.id && !editor.self" class="col-span-2 flex items-center gap-2 text-sm"><input v-model="editor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Active (inactive accounts can’t sign in)</label>
-        <p v-if="!editor.id" class="col-span-2 text-xs text-text-muted">A username and temporary password are created for you to share. They’ll pick their own password at first sign-in.</p>
+        <div v-if="!editor.id" class="col-span-2 rounded-lg border border-border p-3">
+          <TempPasswordField v-model="editor.temp" id-prefix="uf-temp" />
+          <p class="text-xs text-text-muted mt-1">A username is created for them. You’ll see both on the next screen, ready to share.</p>
+        </div>
         <p v-if="formError" class="col-span-2 text-sm text-danger" role="alert">{{ formError }}</p>
       </form>
       <template #footer>
-        <button v-if="editor.id" class="btn btn-ghost mr-auto" @click="resetPassword">Issue temporary password</button>
+        <button v-if="editor.id" class="btn btn-ghost mr-auto" @click="openIssue">Issue temporary password…</button>
         <button class="btn btn-secondary" @click="editor = null">Cancel</button>
-        <button class="btn btn-primary" type="submit" form="user-form" :disabled="saving">{{ saving ? 'Saving…' : editor.id ? 'Save account' : 'Create account' }}</button>
+        <button class="btn btn-primary" type="submit" form="user-form" :disabled="saving || (!editor.id && !tempValid(editor.temp))">{{ saving ? 'Saving…' : editor.id ? 'Save account' : 'Create account' }}</button>
       </template>
     </Modal>
 
-    <Modal v-if="credentials" :title="credentials.isNew ? 'Account created' : 'Temporary password issued'" @close="credentials = null">
-      <p class="text-sm mb-3">Share these with {{ credentials.name }}. The password is shown only once.</p>
-      <dl class="card card-blocky p-4 grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
+    <Modal v-if="issuing" title="Issue a temporary password" @close="issuing = null">
+      <p class="text-sm mb-3">For <strong>{{ issuing.user.firstName }} {{ issuing.user.lastName }}</strong> ({{ issuing.user.username }}). Their current password stops working straight away.</p>
+      <TempPasswordField v-model="issuing.temp" id-prefix="ip-temp" />
+      <p v-if="issuing.error" class="text-sm text-danger mt-2" role="alert">{{ issuing.error }}</p>
+      <template #footer>
+        <button class="btn btn-secondary" @click="issuing = null">Cancel</button>
+        <button class="btn btn-primary" :disabled="saving || !tempValid(issuing.temp)" @click="resetPassword">{{ saving ? 'Issuing…' : 'Issue password' }}</button>
+      </template>
+    </Modal>
+
+    <Modal v-if="credentials" :title="credentials.isNew ? 'Account created' : 'Temporary password issued'" @close="credentials = null; credShown = false">
+      <p class="text-sm mb-3">Share these with {{ credentials.name }}. The password {{ credentials.chosen ? 'you set' : '' }} is shown only here, once.</p>
+      <dl class="card card-blocky p-4 grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm items-center">
         <dt class="text-text-muted">Username</dt><dd class="font-semibold select-all">{{ credentials.username }}</dd>
-        <dt class="text-text-muted">Temporary password</dt><dd class="font-semibold select-all">{{ credentials.password }}</dd>
+        <dt class="text-text-muted">Temporary password</dt>
+        <dd class="flex items-center gap-2">
+          <span class="font-semibold select-all font-mono">{{ credShown ? credentials.password : '•'.repeat(credentials.password.length) }}</span>
+          <button type="button" class="btn btn-ghost text-xs !py-0.5" :aria-pressed="credShown" :aria-label="credShown ? 'Hide password' : 'Show password'" @click="credShown = !credShown">{{ credShown ? 'Hide' : 'Show' }}</button>
+        </dd>
       </dl>
       <template #footer>
         <button class="btn btn-secondary" @click="copyCredentials">Copy sign-in details</button>
-        <button class="btn btn-primary" @click="credentials = null">Done</button>
+        <button class="btn btn-primary" @click="credentials = null; credShown = false">Done</button>
       </template>
     </Modal>
   </div>

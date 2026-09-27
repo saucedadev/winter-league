@@ -4,6 +4,17 @@ import { one, all, run, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, ROLES } from '../middleware/auth.js';
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
 import { hashPassword, tempPassword } from '../utils/security.js';
+import { assertStrongPassword } from '../utils/validate.js';
+
+// The temporary password: the one the System Admin typed (it must meet the
+// same rule as any password), or a generated one when left blank.
+function chooseTempPassword(body) {
+  const typed = typeof body?.temporaryPassword === 'string' ? body.temporaryPassword : '';
+  if (!typed.trim()) return { password: tempPassword(), chosen: false };
+  if (typed !== typed.trim()) throw badRequest('The temporary password can’t start or end with a space.');
+  assertStrongPassword(typed);
+  return { password: typed, chosen: true };
+}
 import { requireFields, assertEmail, trimOrNull, normalizePhone } from '../utils/validate.js';
 import { generateUsername } from '../utils/username.js';
 import { logActivity } from '../utils/activityLog.js';
@@ -45,6 +56,7 @@ router.get('/', ah(async (req, res) => {
 
 // ---- POST /api/users ----
 // Returns the generated username + temporary password exactly once.
+// Optional temporaryPassword: the System Admin sets it instead of generating one.
 router.post('/', ah(async (req, res) => {
   requireFields(req.body, ['firstName', 'lastName', 'email', 'role']);
   const { firstName, lastName, email, role } = req.body;
@@ -52,15 +64,15 @@ router.post('/', ah(async (req, res) => {
   assertEmail(email);
   await validateRoleProgram(role, programId);
 
+  const { password, chosen } = chooseTempPassword(req.body);
   const id = newId();
   const username = await generateUsername(firstName, lastName);
-  const password = tempPassword();
   await run(
     `INSERT INTO users (id, first_name, last_name, username, email, phone, password_hash, role, program_id, must_change_password)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
     [id, firstName.trim(), lastName.trim(), username, email.trim(), normalizePhone(req.body.phone), await hashPassword(password), role, programId]
   );
-  await logActivity({ category: 'user', action: 'created', actor: req.user, programId, details: `Created ${ROLE_LABELS[role]} account ${username}` });
+  await logActivity({ category: 'user', action: 'created', actor: req.user, programId, details: `Created ${ROLE_LABELS[role]} account ${username}${chosen ? ' with a temporary password set by the admin' : ''}` });
   const user = await one(`${SELECT_USERS} WHERE u.id = ?`, [id]);
   res.status(201).json({ user: publicUser(user), temporaryPassword: password });
 }));
@@ -95,13 +107,13 @@ router.put('/:id', ah(async (req, res) => {
   res.json({ user: publicUser(await one(`${SELECT_USERS} WHERE u.id = ?`, [existing.id])) });
 }));
 
-// ---- POST /api/users/:id/reset-password ----
+// ---- POST /api/users/:id/reset-password  { temporaryPassword? } ----
 router.post('/:id/reset-password', ah(async (req, res) => {
   const existing = await one('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!existing) throw notFound('User');
-  const password = tempPassword();
+  const { password, chosen } = chooseTempPassword(req.body);
   await run("UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = datetime('now') WHERE id = ?", [await hashPassword(password), existing.id]);
-  await logActivity({ category: 'user', action: 'password_reset', actor: req.user, programId: existing.programId, details: `Issued a temporary password for ${existing.username}` });
+  await logActivity({ category: 'user', action: 'password_reset', actor: req.user, programId: existing.programId, details: `Issued a temporary password for ${existing.username}${chosen ? ' (set by the admin)' : ''}` });
   res.json({ temporaryPassword: password });
 }));
 

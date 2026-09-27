@@ -145,6 +145,21 @@ const nu = await call('POST', '/users', { token: admin, body: { firstName: 'Test
 check('director requires a program', nu.status === 400);
 const nu2 = await call('POST', '/users', { token: admin, body: { firstName: 'Test', lastName: 'Director', email: 't@example.com', role: 'program_director', programId: nfh.id } });
 check('user created with temp password', nu2.status === 201 && !!nu2.data.temporaryPassword);
+// The System Admin can set the temporary password instead of generating one.
+check('a weak temporary password is refused', (await call('POST', '/users', { token: admin, body: { firstName: 'Set', lastName: 'Password', email: 'setpw@example.com', role: 'league_coach', programId: nfh.id, temporaryPassword: 'short1' } })).status === 400);
+const setPw = await call('POST', '/users', { token: admin, body: { firstName: 'Set', lastName: 'Password', email: 'setpw@example.com', role: 'league_coach', programId: nfh.id, temporaryPassword: 'Hoops-2026-Tipoff' } });
+check('an account can be created with a temporary password the admin sets', setPw.status === 201 && setPw.data.temporaryPassword === 'Hoops-2026-Tipoff');
+const setLogin = await call('POST', '/auth/login', { body: { username: setPw.data.user.username, password: 'Hoops-2026-Tipoff' } });
+check('they sign in with it and must choose their own password', setLogin.status === 200 && setLogin.data.user.mustChangePassword === true);
+check('a weak password is refused when issuing one too', (await call('POST', `/users/${setPw.data.user.id}/reset-password`, { token: admin, body: { temporaryPassword: 'abcdefghij' } })).status === 400);
+const reissue = await call('POST', `/users/${setPw.data.user.id}/reset-password`, { token: admin, body: { temporaryPassword: 'Rebound-7788-Court' } });
+check('the admin can issue a temporary password they set', reissue.status === 200 && reissue.data.temporaryPassword === 'Rebound-7788-Court'
+  && (await call('POST', '/auth/login', { body: { username: setPw.data.user.username, password: 'Rebound-7788-Court' } })).status === 200
+  && (await call('POST', '/auth/login', { body: { username: setPw.data.user.username, password: 'Hoops-2026-Tipoff' } })).status === 401);
+const regenPw = await call('POST', `/users/${setPw.data.user.id}/reset-password`, { token: admin, body: {} });
+check('leaving it blank still generates one', regenPw.status === 200 && /^[A-Z][a-z]+-\d{4}-[A-Z][a-z]+$/.test(regenPw.data.temporaryPassword));
+check('the password itself is never written to Activity', !JSON.stringify((await call('GET', '/activity?category=user', { token: admin })).data).includes('Rebound-7788-Court')
+  && (await call('GET', '/activity?category=user', { token: admin })).data.entries.some((e) => e.details.includes('(set by the admin)')));
 const me = (await call('GET', '/auth/me', { token: admin })).data.user;
 check('admin cannot demote self', (await call('PUT', `/users/${me.id}`, { token: admin, body: { role: 'referee' } })).status === 400);
 check('16-program cap is enforced setting', (await call('GET', '/programs', { token: admin })).data.maxPrograms === 16);

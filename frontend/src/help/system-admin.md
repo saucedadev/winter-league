@@ -31,12 +31,18 @@ Do these in order before programs start entering gym time.
 Outside clubs the league plays now and then are **guest programs**, set up further down the same page. See [Guest (non-conference) teams](#guest-non-conference-teams).
 
 ### 3. Accounts
-**Menu → League admin → Users → Add user.** Choose the person's role and, for Program Directors and Coaches, their program. The app creates a username and a **temporary password, shown once**. Use **Copy sign-in details** to send them. They choose their own password the first time they sign in.
+**Menu → League admin → Users → Add user.** Choose the person's role and, for Program Directors and Coaches, their program. The app creates their username. Under **Temporary password**, choose:
+- **Generate one for me** (the default): the app makes a readable one, e.g. *Cedar-4821-Pivot*.
+- **Set it myself**: type the password you want to give them, or click **Suggest one** and adjust it. It must be at least 10 characters with a letter and a number, and the box tells you what's missing. Click **Show** to check what you typed and note it down (**Hide** masks it again).
+
+The next screen shows the username and temporary password **once**. The password is masked; click **Show** to see it, or **Copy sign-in details** to send both. They choose their own password the first time they sign in.
+
+![Adding a user with a temporary password you set](/help/img/sa-add-user.png)
 
 ![Users](/help/img/sa-users.png)
 
 - **Sorting and searching:** click **Name**, **Role**, **Program**, or **Last sign-in** to sort; search by name, username, or email; filter by role.
-- **Someone locked out?** Open their account and choose **Issue temporary password**.
+- **Someone locked out?** Open their account and choose **Issue temporary password…**. Pick **Generate one for me** or **Set it myself** (with **Show** and **Suggest one**, as above), then **Issue password**. Their old password stops working straight away, and the new one is shown once for you to share. Activity records that a temporary password was issued, and whether you set it, but never the password itself.
 - **Someone leaving?** Untick **Active** in their account. They can no longer sign in, but their history stays.
 - Referees can also be added by the Referee Assignor on the **Referees** page.
 
