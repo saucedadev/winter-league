@@ -1,7 +1,7 @@
 import { one, all, db, newId } from '../db/client.js';
 import { addDays, formatTime12 } from '../utils/validate.js';
 import { leagueToday } from '../utils/leagueTime.js';
-import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride } from './core.js';
+import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride, reservationFit, reservationLabel, reservationText } from './core.js';
 import { buildSchedule } from './matchmaker.js';
 
 export const GAME_CATEGORIES = ['WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK'];
@@ -54,7 +54,7 @@ export async function saveRules(rules) {
 // Game rows as the API returns them
 // ---------------------------------------------------------------------
 export const GAME_SELECT = `SELECT g.*,
-  d.name AS division_name, d.sort_order AS division_sort,
+  d.name AS division_name, d.sort_order AS division_sort, d.gender AS division_gender,
   ht.name AS home_team_name, ht.program_id AS home_program_id, hp.name AS home_program_name, hp.short_code AS home_program_code,
   ht.head_coach_user_id AS home_coach_id, hp.is_guest AS home_is_guest,
   at.name AS away_team_name, at.program_id AS away_program_id, ap.name AS away_program_name, ap.short_code AS away_program_code,
@@ -97,7 +97,7 @@ export async function getGame(id) {
 // Inputs for the matchmaker
 // ---------------------------------------------------------------------
 async function loadInputs(season, rules) {
-  const teams = await all(`SELECT t.id, t.name, t.program_id, t.division_id, d.name AS division_name, p.name AS program_name
+  const teams = await all(`SELECT t.id, t.name, t.program_id, t.division_id, d.name AS division_name, d.gender AS division_gender, p.name AS program_name
     FROM teams t JOIN divisions d ON d.id = t.division_id JOIN programs p ON p.id = t.program_id
     WHERE t.is_active = 1 AND d.is_active = 1 AND p.is_active = 1 AND p.is_guest = 0
     ORDER BY d.sort_order, p.name COLLATE NOCASE, t.name COLLATE NOCASE`);
@@ -106,8 +106,10 @@ async function loadInputs(season, rules) {
   // Open game slots: game categories, inside the season, active venue, not
   // covered by any blackout for the venue or the whole program.
   const slots = await all(`SELECT g.id, g.program_id, g.court_id, g.date, g.start_time, g.end_time, g.category,
+      g.reserved_for, g.reserved_division_id, g.reserved_mode, rd.name AS reserved_division_name,
       c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.latitude, v.longitude
     FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id JOIN programs p ON p.id = g.program_id
+    LEFT JOIN divisions rd ON rd.id = g.reserved_division_id
     WHERE g.season_id = ? AND g.category IN ${CAT_SQL} AND v.is_active = 1 AND p.is_active = 1
       AND g.date BETWEEN ? AND ?
       AND NOT EXISTS (SELECT 1 FROM blackout_dates b WHERE b.program_id = g.program_id
@@ -200,9 +202,17 @@ export async function checkPlacement(game, target, { excludeIds = [], rules, tod
   if (today && target.date < today) errors.push('That date has already passed.');
   if (toMinutes(target.endTime) - toMinutes(target.startTime) < rules.gameMinutes) warnings.push(`That’s shorter than the ${rules.gameMinutes}-minute game length.`);
 
-  const slot = await one(`SELECT id FROM gym_slots WHERE court_id = ? AND date = ? AND category IN ${CAT_SQL}
-    AND start_time <= ? AND end_time >= ? LIMIT 1`, [court.id, target.date, target.startTime, target.endTime]);
+  const slot = await one(`SELECT s.id, s.reserved_for, s.reserved_division_id, s.reserved_mode, rd.name AS reserved_division_name
+    FROM gym_slots s LEFT JOIN divisions rd ON rd.id = s.reserved_division_id
+    WHERE s.court_id = ? AND s.date = ? AND s.category IN ${CAT_SQL}
+    AND s.start_time <= ? AND s.end_time >= ? LIMIT 1`, [court.id, target.date, target.startTime, target.endTime]);
   if (!slot) errors.push(`${court.venueName} – ${court.name} has no open game slot covering that time.`);
+  else {
+    // Day preferences: a slot tagged for other games.
+    const fit = reservationFit(slot, game.divisionId, game.divisionGender);
+    if (fit === 'only-other') errors.push(`That slot is kept for ${reservationLabel(slot)} games only.`);
+    else if (fit === 'prefer-other') warnings.push(`That slot is a ${reservationLabel(slot)} priority slot.`);
+  }
 
   const venueBlackout = await one(`SELECT reason FROM blackout_dates WHERE program_id = ? AND (venue_id IS NULL OR venue_id = ?)
     AND ? BETWEEN start_date AND end_date LIMIT 1`, [court.programId, court.venueId, target.date]);
@@ -245,8 +255,10 @@ export async function placementOptions(game, { today = null, limit = 150 } = {})
   const pph = programIds.map(() => '?').join(',');
 
   const slots = await all(`SELECT g.id, g.program_id, g.court_id, g.date, g.start_time, g.end_time, g.category,
+      g.reserved_for, g.reserved_division_id, g.reserved_mode, rd.name AS reserved_division_name,
       c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.latitude, v.longitude
     FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id
+    LEFT JOIN divisions rd ON rd.id = g.reserved_division_id
     WHERE g.program_id IN (${pph}) AND g.season_id = ? AND g.category IN ${CAT_SQL} AND v.is_active = 1 AND g.date BETWEEN ? AND ?
       AND NOT EXISTS (SELECT 1 FROM blackout_dates b WHERE b.program_id = g.program_id
         AND (b.venue_id IS NULL OR b.venue_id = v.id) AND g.date BETWEEN b.start_date AND b.end_date)
@@ -269,13 +281,15 @@ export async function placementOptions(game, { today = null, limit = 150 } = {})
   for (const w of windows) {
     if (w.date === game.date && w.startTime === game.startTime && w.courtId === game.courtId) continue; // where it already is
     if (blockedDay(w.date) || courtBusy(w)) continue;
+    const fit = reservationFit(w, game.divisionId, game.divisionGender);
+    if (fit === 'only-other') continue; // kept for other games
     if (teamProblems(game.homeTeamName, homeGames, w.date, rules).length) continue;
     if (teamProblems(game.awayTeamName, awayGames, w.date, rules).length) continue;
     const flip = w.programId !== game.homeProgramId;
     const awayProgram = flip ? game.homeProgramId : game.awayProgramId;
     const travelMiles = milesBetween(w, homes[awayProgram]);
     const cap = travelCapFor(rules, awayProgram);
-    options.push({ ...w, flip, travelMiles, travelCap: cap, overTravelCap: travelMiles != null && travelMiles > cap });
+    options.push({ ...w, flip, travelMiles, travelCap: cap, overTravelCap: travelMiles != null && travelMiles > cap, reserved: reservationText(w), reservedFit: fit });
     if (options.length >= limit) break;
   }
   return { options, rules };

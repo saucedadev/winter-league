@@ -272,6 +272,56 @@ check('the activity log names program overrides', (await call('GET', '/activity?
 await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
 check('program overrides cleared when the rules are reset', Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.programOverrides).length === 0);
 
+console.log('\nDay preferences (tagged slots)');
+{
+  const seasonNow = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
+  const nfhSlots = (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.filter((x) => x.category !== 'PRACTICE');
+  const dow = (d) => new Date(`${d}T12:00:00Z`).getUTCDay();
+  const byDay = {};
+  for (const x of nfhSlots) byDay[dow(x.date)] = (byDay[dow(x.date)] || 0) + 1;
+  const tagDay = Number(Object.entries(byDay).sort((a, b) => b[1] - a[1])[0][0]);
+  const divs = (await call('GET', '/league/divisions', { token: admin })).data.divisions;
+  const girlsDiv = new Set(divs.filter((d) => d.gender === 'girls').map((d) => d.id));
+  const practice = (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.find((x) => x.category === 'PRACTICE');
+  if (practice) check('practice slots can’t be tagged', (await call('PUT', `/slots/${practice.id}`, { token: pd, body: { reservedFor: 'girls' } })).status === 400);
+  check('a division tag needs the division', (await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: 'division' } })).status === 400);
+  check('the mode must be priority or only', (await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: 'girls', reservedMode: 'always' } })).status === 400);
+  const tagRes = await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: 'girls' } });
+  check('a director tags every game slot on one weekday as Girls priority', tagRes.status === 200 && tagRes.data.updated === byDay[tagDay], JSON.stringify(tagRes.data));
+  const tagged = (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.find((x) => x.category !== 'PRACTICE' && dow(x.date) === tagDay);
+  check('the slot shows its tag', tagged.reservedText === 'Girls priority' && tagged.reservedMode === 'prefer');
+  const onTagDay = (d) => d.games.filter((g) => g.status === 'scheduled' && g.venueProgramId === nfh.id && dow(g.date) === tagDay);
+  const girlsShare = (list) => list.filter((g) => girlsDiv.has(g.divisionId)).length;
+  const base = await draftWith({});
+  // Priority: girls' games take those slots first.
+  const dPref = await draftWith({});
+  check('with a priority tag, girls’ games take more of those slots', girlsShare(onTagDay(dPref)) > girlsShare(onTagDay(base)) || girlsShare(onTagDay(base)) === onTagDay(base).length,
+    `before ${girlsShare(onTagDay(base))}/${onTagDay(base).length}, after ${girlsShare(onTagDay(dPref))}/${onTagDay(dPref).length}`);
+  check('the notes report how the tagged slots were used', dPref.draft.warnings.some((w) => w.startsWith('Girls priority slots:')), dPref.draft.warnings.join(' | ').slice(0, 300));
+  check('a priority tag never costs games', dPref.games.filter((g) => g.status === 'scheduled').length >= base.games.filter((g) => g.status === 'scheduled').length - 1);
+  // Only: no other games there at all.
+  await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: 'girls', reservedMode: 'only' } });
+  const dOnly = await draftWith({});
+  check('with “only”, no other games use those slots', onTagDay(dOnly).every((g) => girlsDiv.has(g.divisionId)) && onTagDay(dOnly).length > 0, JSON.stringify(onTagDay(dOnly).map((g) => g.divisionName)));
+  check('the notes report the Girls-only slots', dOnly.draft.warnings.some((w) => w.startsWith('Girls-only slots:')));
+  const boysGame = dOnly.games.find((g) => g.status === 'scheduled' && !girlsDiv.has(g.divisionId) && [g.homeProgramId, g.awayProgramId].includes(nfh.id));
+  const boysOpts = (await call('GET', `/schedule/games/${boysGame.id}/options`, { token: admin })).data.options;
+  check('moving a boys’ game never offers a Girls-only slot', !boysOpts.some((o) => o.programId === nfh.id && dow(o.date) === tagDay));
+  const girlsOnlySlot = (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.find((x) => x.category !== 'PRACTICE' && dow(x.date) === tagDay && !x.isBlackedOut);
+  const forced = await call('PUT', `/schedule/games/${boysGame.id}`, { token: admin, body: { courtId: girlsOnlySlot.courtId, date: girlsOnlySlot.date, startTime: girlsOnlySlot.startTime,
+    endTime: `${String(Number(girlsOnlySlot.startTime.slice(0, 2)) + 1).padStart(2, '0')}${girlsOnlySlot.startTime.slice(2)}` } });
+  check('placing a boys’ game in a Girls-only slot is refused', forced.status === 409 && /Girls games only|already on that court|already|days|week/.test(forced.data.error), forced.data.error);
+  // One division, and clearing tags.
+  const g6div = divs.find((d) => d.name === '6th Grade Girls');
+  const divTag = await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: 'division', reservedDivisionId: g6div.id, reservedMode: 'only' } });
+  check('a slot can be kept for one division', divTag.status === 200 && (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.find((x) => x.id === tagged.id).reservedText === '6th Grade Girls only');
+  const dDiv = await draftWith({});
+  check('only that division plays there', onTagDay(dDiv).every((g) => g.divisionId === g6div.id));
+  check('tags can be cleared', (await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: '' } })).data.updated === byDay[tagDay]
+    && !(await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.some((x) => x.reservedFor));
+  check('the Activity log records tagging', (await call('GET', '/activity?category=slot', { token: pd })).data.entries.some((e) => e.details.includes('as Girls priority')));
+}
+
 console.log('\nMatchmaker draft');
 const gen = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2 } } });
 check('draft generated', gen.status === 201 && gen.data.draft.status === 'draft' && gen.data.draft.summary.scheduledGames > 0, JSON.stringify(gen.data).slice(0, 200));

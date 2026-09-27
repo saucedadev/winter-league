@@ -49,6 +49,21 @@ Use the arrows, **This week**, or **Go to** to move between weeks, and the categ
 
 > A slot that already has published games in it can't be changed or deleted, and its card says how many games are scheduled. Ask the league admin to move those games first.
 
+### Day preferences: keeping game slots for girls, boys, or one division
+If, for example, your girls' teams play on Mondays, tag your Monday game slots **Girls**. The league's matchmaker then gives those slots to girls' games first.
+
+**Tag many slots at once:** choose **Tag game slots**, pick the **Day** (e.g. *Mondays*), optionally one **Venue** and a date range, then choose who the slots are for:
+- **Keep for:** *Girls' games*, *Boys' games*, or one division (e.g. *6th Grade Girls*).
+- **How strictly?**
+  - **Priority** (the default): those games get the slot first. Other games use it only if nothing else fits, so a priority tag never costs anyone games.
+  - **Only**: no other games are ever placed there. If there aren't enough of those games, the slot stays empty, and other teams may end up short of gym time.
+
+![Tagging game slots](/help/img/pd-tag-slots.png)
+
+It changes your existing weeknight and weekend game slots; practice slots aren't affected. To tag a single slot, open it and use **Keep for**. New slots can be tagged when you add them. Tagged slots show a ★ line on the week board, e.g. *★ Girls priority*. To remove tags, use **Tag game slots** with **Keep for: Any game**.
+
+**What it can and can't do:** a tag decides which games are played **in your gyms**, so it covers your home games. Away games are at the other program's gyms, on their slots. A team also can't play two games too close together, so a team with two games in a week may still play one on another day. After the league generates a draft, its notes report how your tagged slots were used, e.g. *"Girls priority slots: 7 of 14 game times used by Girls games."*
+
 ## Blackout dates
 
 **Menu → My program → Blackouts.** Add dates your program, or one of its venues, can't be used: holidays, school events, building closures. Gym slots on those dates are shown hatched and aren't used for games. Removing a blackout makes them available again.

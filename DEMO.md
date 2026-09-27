@@ -115,6 +115,7 @@ Show that nobody has games yet, which makes the moment of publishing land:
 - **Dashboard → Get your program ready:** the checklist of what the league needs from each program.
 - **Gym slots:** the week board. *Talking point:* weeknight and weekend game slots are the only time the matchmaker uses for games; practice slots are left alone.
 - **Blackouts:** Thanksgiving and winter break are already in.
+- **Day preferences** (optional): **Gym slots → Tag game slots**, *Thursdays* (Glencoe's game night in the demo data), *Girls' games*, **Priority**. The week board shows *★ Girls priority* on those slots. *Talking point:* priority never costs games; **Only** keeps the slot empty rather than give it to another game. After generating, the draft notes say how the tagged slots were used.
 
 ### 3. Building the schedule (Grace, `gkim`) — 5 min
 - **Schedule builder** shows "No schedule yet". Walk through the rules: games per team, game length, travel cap, days between games, games per week, **most games against the same opponent** (default 2), and **teams from the same program can play each other** (default Off).

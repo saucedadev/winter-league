@@ -21,9 +21,13 @@
 //   • two teams meet at most rules.maxVsSameOpponent times (null = no limit);
 //     a division override (rules.divisionOverrides) replaces the league
 //     value for that division
+// Day preferences (tagged slots, e.g. "Girls priority" on Mondays): a game
+// takes a slot tagged for it before an untagged one in the same week; a
+// slot tagged "priority" for other games is used only if nothing else fits
+// anywhere; a slot tagged "only" for other games is never used.
 // Soft goals: every team reaches rules.gamesPerTeam, home/away near 50/50,
 // games spread evenly across the season.
-import { milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride } from './core.js';
+import { milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride, reservationFit, isReserved, reservationLabel } from './core.js';
 
 export function buildSchedule({ teams, windows, homes, programBlackouts, rules, programNames = {} }) {
   const warnings = [];
@@ -262,18 +266,38 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     return order;
   };
 
-  const tryPlace = (home, away, targetWeek) => {
+  // allowOthers: also consider slots tagged "priority" for other games
+  // (only after nothing else fit, for either team hosting).
+  const tryPlace = (home, away, targetWeek, allowOthers = false) => {
     const perWeek = byProgramWeek.get(home.programId);
     if (!perWeek) return null;
+    const fit = (w) => reservationFit(w, home.divisionId, home.divisionGender);
+    const usable = (w) => {
+      if (used.has(windowKey(w))) return null;
+      if (programBlackouts.has(`${home.programId}|${w.date}`) || programBlackouts.has(`${away.programId}|${w.date}`)) return null;
+      if (teamProblems(home.name, teamGames.get(home.id), w.date, rules).length) return null;
+      if (teamProblems(away.name, teamGames.get(away.id), w.date, rules).length) return null;
+      const miles = milesBetween(w, homes[away.programId]);
+      if (miles != null && miles > capOf(away.programId)) return null; // the traveling program's cap
+      return { w, miles };
+    };
     for (const wi of weekOrder(targetWeek)) {
-      for (const w of perWeek[wi]) {
-        if (used.has(windowKey(w))) continue;
-        if (programBlackouts.has(`${home.programId}|${w.date}`) || programBlackouts.has(`${away.programId}|${w.date}`)) continue;
-        if (teamProblems(home.name, teamGames.get(home.id), w.date, rules).length) continue;
-        if (teamProblems(away.name, teamGames.get(away.id), w.date, rules).length) continue;
-        const miles = milesBetween(w, homes[away.programId]);
-        if (miles != null && miles > capOf(away.programId)) continue; // the traveling program's cap
-        return { w, miles };
+      // Within a week: slots tagged for this game first, then untagged ones.
+      for (const pass of ['match', 'open']) {
+        for (const w of perWeek[wi]) {
+          if (fit(w) !== pass) continue;
+          const r = usable(w);
+          if (r) return r;
+        }
+      }
+    }
+    if (allowOthers) {
+      for (const wi of weekOrder(targetWeek)) {
+        for (const w of perWeek[wi]) {
+          if (fit(w) !== 'prefer-other') continue;
+          const r = usable(w);
+          if (r) return r;
+        }
       }
     }
     return null;
@@ -285,8 +309,11 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     let placed = null;
     let home;
     let away;
-    for ([home, away] of hosts) {
-      placed = tryPlace(home, away, m.targetWeek);
+    for (const allowOthers of [false, true]) {
+      for ([home, away] of hosts) {
+        placed = tryPlace(home, away, m.targetWeek, allowOthers);
+        if (placed) break;
+      }
       if (placed) break;
     }
     if (!placed) {
@@ -365,6 +392,32 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   const short = teamStats.filter((s) => s.games < rules.gamesPerTeam && byDivision.get(s.divisionId).length > 1 && !explained.has(s.teamId));
   if (short.length) {
     warnings.push(`${short.length} team${short.length > 1 ? 's' : ''} ended up with fewer than ${rules.gamesPerTeam} games: ${short.slice(0, 6).map((s) => `${s.name} (${s.games})`).join(', ')}${short.length > 6 ? ', …' : ''}.`);
+  }
+  // Day preferences: how the tagged slots were used.
+  const tagged = new Map(); // "Girls|prefer" -> { label, mode, total, mine, others }
+  for (const w of windows) {
+    if (!isReserved(w)) continue;
+    const key = `${reservationLabel(w)}|${w.reservedMode}`;
+    if (!tagged.has(key)) tagged.set(key, { label: reservationLabel(w), mode: w.reservedMode, total: 0, mine: 0, others: 0 });
+    tagged.get(key).total++;
+  }
+  if (tagged.size) {
+    const teamOf = new Map(teams.map((t) => [t.id, t]));
+    for (const g of scheduled) {
+      if (!isReserved(g.window)) continue;
+      const home = teamOf.get(g.homeTeamId);
+      const fit = reservationFit(g.window, home.divisionId, home.divisionGender);
+      const tg = tagged.get(`${reservationLabel(g.window)}|${g.window.reservedMode}`);
+      if (fit === 'match') tg.mine++; else tg.others++;
+    }
+    for (const t of tagged.values()) {
+      const times = `${t.total} game time${t.total === 1 ? '' : 's'}`;
+      if (t.mode === 'only') {
+        warnings.push(`${t.label}-only slots: ${t.mine} of ${times} used by ${t.label} games${t.total - t.mine ? `; ${t.total - t.mine} left open (other games can’t use them)` : ''}.`);
+      } else {
+        warnings.push(`${t.label} priority slots: ${t.mine} of ${times} used by ${t.label} games${t.others ? `; ${t.others} went to other games because nothing else fit` : ''}.`);
+      }
+    }
   }
   const unplaced = games.length - scheduled.length;
   if (unplaced) warnings.push(`${unplaced} pairing${unplaced > 1 ? 's' : ''} couldn’t be placed. They’re listed under Unplaced so you can place them by hand.`);

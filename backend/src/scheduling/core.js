@@ -181,6 +181,8 @@ export function carveWindows(slots, gameMinutes) {
         slotId: s.id, courtId: s.courtId, courtName: s.courtName, venueId: s.venueId, venueName: s.venueName,
         programId: s.programId, date: s.date, startTime: fromMinutes(t), endTime: fromMinutes(t + gameMinutes),
         lat: s.latitude, lng: s.longitude, category: s.category,
+        reservedFor: s.reservedFor || null, reservedDivisionId: s.reservedDivisionId || null, reservedMode: s.reservedMode || null,
+        reservedDivisionName: s.reservedDivisionName || null,
       });
     }
   }
@@ -225,3 +227,30 @@ export function roundRobin(teams) {
   }
   return rounds;
 }
+
+// ---- day preferences: tagged game slots (migration 011) ----
+// A slot (or a window carved from it) may be tagged for Girls, Boys, or one
+// division, as a preference ('prefer') or a requirement ('only').
+export const RESERVATION_MODES = ['prefer', 'only'];
+export function isReserved(w) {
+  return !!w?.reservedFor && (w.reservedFor !== 'division' || !!w.reservedDivisionId);
+}
+// Does a game in this division (with this gender) belong in the slot?
+export function reservationMatches(w, divisionId, gender) {
+  if (!isReserved(w)) return true;
+  if (w.reservedFor === 'division') return w.reservedDivisionId === divisionId;
+  return w.reservedFor === gender; // 'girls' / 'boys'; coed divisions match neither
+}
+// 'open' (untagged) | 'match' | 'prefer-other' (usable if nothing else fits) | 'only-other' (never)
+export function reservationFit(w, divisionId, gender) {
+  if (!isReserved(w)) return 'open';
+  if (reservationMatches(w, divisionId, gender)) return 'match';
+  return w.reservedMode === 'only' ? 'only-other' : 'prefer-other';
+}
+// "Girls", "Boys", or the division's name.
+export function reservationLabel(w) {
+  if (!isReserved(w)) return '';
+  return w.reservedFor === 'girls' ? 'Girls' : w.reservedFor === 'boys' ? 'Boys' : (w.reservedDivisionName || 'One division');
+}
+// "Girls priority" / "Girls only"
+export const reservationText = (w) => (isReserved(w) ? `${reservationLabel(w)} ${w.reservedMode === 'only' ? 'only' : 'priority'}` : '');

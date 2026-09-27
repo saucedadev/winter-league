@@ -5,6 +5,7 @@ import { requireAuth, requirePasswordCurrent, requireRole, readScope, assertCanM
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
 import { requireFields, assertDate, assertTime, addDays, formatTime12, trimOrNull, isValidDate } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
+import { reservationText } from '../scheduling/core.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent, requireRole('super_admin', 'program_director'));
@@ -24,11 +25,12 @@ const BLACKOUT_REASON = `(SELECT b.reason FROM blackout_dates b
      AND g.date BETWEEN b.start_date AND b.end_date
    ORDER BY b.venue_id IS NULL LIMIT 1)`;
 
-const SELECT = `SELECT g.*, c.name AS court_name, v.id AS venue_id, v.name AS venue_name,
+const SELECT = `SELECT g.*, c.name AS court_name, v.id AS venue_id, v.name AS venue_name, rd.name AS reserved_division_name,
   p.name AS program_name, p.short_code, ${BLACKOUT_REASON} AS blackout_reason,
   (SELECT COUNT(*) FROM games gm JOIN schedule_runs sr ON sr.id = gm.run_id
      WHERE gm.gym_slot_id = g.id AND gm.status = 'scheduled' AND sr.status = 'published') AS game_count
-  FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id JOIN programs p ON p.id = g.program_id`;
+  FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id JOIN programs p ON p.id = g.program_id
+  LEFT JOIN divisions rd ON rd.id = g.reserved_division_id`;
 
 function assertSlotBody(b) {
   assertDate(b.date);
@@ -77,7 +79,27 @@ async function assertNoPublishedGames(slotIds, what) {
 const overlapMsg = (o) => `overlaps ${formatTime12(o.startTime)}–${formatTime12(o.endTime)} (${CATEGORIES[o.category]})`;
 
 function shape(s) {
-  return { ...s, categoryLabel: CATEGORIES[s.category], isBlackedOut: !!s.blackoutReason };
+  return { ...s, categoryLabel: CATEGORIES[s.category], isBlackedOut: !!s.blackoutReason, reservedText: reservationText(s) };
+}
+
+// Day preferences: a game slot can be tagged for Girls, Boys, or one division,
+// as a preference ('prefer', the default) or a requirement ('only').
+// Returns the columns to store, or `current` when the body doesn't mention it.
+const NO_RESERVATION = { reservedFor: null, reservedDivisionId: null, reservedMode: null };
+async function readReservation(b, category, current = NO_RESERVATION) {
+  if (b.reservedFor === undefined) return category === 'PRACTICE' ? NO_RESERVATION : current;
+  const f = b.reservedFor || null;
+  if (!f) return NO_RESERVATION;
+  if (!['girls', 'boys', 'division'].includes(f)) throw badRequest('A slot can be kept for Girls, Boys, or one division.');
+  if (category === 'PRACTICE') throw badRequest('Only game slots (weeknight games and weekend blocks) can be kept for Girls, Boys, or a division.');
+  let div = null;
+  if (f === 'division') {
+    div = b.reservedDivisionId || null;
+    if (!div || !(await one('SELECT 1 FROM divisions WHERE id = ?', [div]))) throw badRequest('Choose the division this slot is for.');
+  }
+  const mode = b.reservedMode || 'prefer';
+  if (!['prefer', 'only'].includes(mode)) throw badRequest('Choose “Priority” or “Only”.');
+  return { reservedFor: f, reservedDivisionId: div, reservedMode: mode };
 }
 
 // ---- GET /api/slots?from=&to=&programId=&venueId=&category= ----
@@ -110,6 +132,7 @@ router.post('/', ah(async (req, res) => {
   const court = await courtForProgram(b.courtId, programId);
   const season = await activeSeason();
   const skipBlackouts = b.skipBlackouts !== false;
+  const resv = await readReservation(b, b.category);
 
   const dates = [b.date];
   if (b.repeatWeeklyUntil) {
@@ -144,14 +167,16 @@ router.post('/', ah(async (req, res) => {
   const seriesId = created.length > 1 ? newId() : null;
   const ids = created.map(() => newId());
   await db.batch(created.map((date, i) => ({
-    sql: `INSERT INTO gym_slots (id, program_id, season_id, court_id, date, start_time, end_time, category, notes, series_id, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [ids[i], programId, season.id, court.id, date, b.startTime, b.endTime, b.category, trimOrNull(b.notes), seriesId, req.user.id],
+    sql: `INSERT INTO gym_slots (id, program_id, season_id, court_id, date, start_time, end_time, category, notes, series_id, created_by,
+            reserved_for, reserved_division_id, reserved_mode)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [ids[i], programId, season.id, court.id, date, b.startTime, b.endTime, b.category, trimOrNull(b.notes), seriesId, req.user.id,
+      resv.reservedFor, resv.reservedDivisionId, resv.reservedMode],
   })), 'write');
 
   await logActivity({
     category: 'slot', action: 'created', actor: req.user, programId,
-    details: `Added ${created.length} ${CATEGORIES[b.category].toLowerCase()} slot${created.length > 1 ? 's' : ''} at ${court.venueName} – ${court.name}, ${formatTime12(b.startTime)}–${formatTime12(b.endTime)}${created.length > 1 ? ` (weekly, ${created[0]} to ${created.at(-1)})` : ` on ${created[0]}`}`,
+    details: `Added ${created.length} ${CATEGORIES[b.category].toLowerCase()} slot${created.length > 1 ? 's' : ''} at ${court.venueName} – ${court.name}, ${formatTime12(b.startTime)}–${formatTime12(b.endTime)}${created.length > 1 ? ` (weekly, ${created[0]} to ${created.at(-1)})` : ` on ${created[0]}`}${resv.reservedFor ? ` (${await resvText(resv)})` : ''}`,
   });
   const slots = await all(`${SELECT} WHERE g.id IN (${ids.map(() => '?').join(',')}) ORDER BY g.date`, ids);
   res.status(201).json({ slots: slots.map(shape), skipped });
@@ -171,6 +196,7 @@ router.put('/:id', ah(async (req, res) => {
   };
   assertSlotBody(next);
   await courtForProgram(next.courtId, s.programId);
+  const resv = await readReservation(req.body, next.category, { reservedFor: s.reservedFor, reservedDivisionId: s.reservedDivisionId, reservedMode: s.reservedMode });
   const moved = next.courtId !== s.courtId || next.date !== s.date || next.startTime !== s.startTime || next.endTime !== s.endTime || next.category !== s.category;
   if (moved) await assertNoPublishedGames([s.id], 'change this slot');
   const season = await one('SELECT * FROM seasons WHERE id = ?', [s.seasonId]);
@@ -178,11 +204,46 @@ router.put('/:id', ah(async (req, res) => {
   const o = await findOverlap(next.courtId, next.date, next.startTime, next.endTime, s.id);
   if (o) throw conflict(`Can’t save — this slot ${overlapMsg(o)} on the same court.`);
 
-  await run(`UPDATE gym_slots SET court_id = ?, date = ?, start_time = ?, end_time = ?, category = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`,
-    [next.courtId, next.date, next.startTime, next.endTime, next.category, req.body.notes !== undefined ? trimOrNull(req.body.notes) : s.notes, s.id]);
+  await run(`UPDATE gym_slots SET court_id = ?, date = ?, start_time = ?, end_time = ?, category = ?, notes = ?,
+      reserved_for = ?, reserved_division_id = ?, reserved_mode = ?, updated_at = datetime('now') WHERE id = ?`,
+    [next.courtId, next.date, next.startTime, next.endTime, next.category, req.body.notes !== undefined ? trimOrNull(req.body.notes) : s.notes,
+      resv.reservedFor, resv.reservedDivisionId, resv.reservedMode, s.id]);
   await logActivity({ category: 'slot', action: 'edited', actor: req.user, programId: s.programId,
     details: `Edited a ${CATEGORIES[next.category].toLowerCase()} slot on ${next.date}, ${formatTime12(next.startTime)}–${formatTime12(next.endTime)}` });
   res.json({ slot: shape(await one(`${SELECT} WHERE g.id = ?`, [s.id])) });
+}));
+
+// "Girls priority" etc. for log lines (with the division's name when tagged for one).
+async function resvText(r) {
+  const name = r.reservedDivisionId ? (await one('SELECT name FROM divisions WHERE id = ?', [r.reservedDivisionId]))?.name : null;
+  return reservationText({ ...r, reservedDivisionName: name });
+}
+
+// ---- POST /api/slots/tag ----
+// Tag (or clear) many game slots at once, e.g. every Monday game slot at a
+// venue for the rest of the season:
+//   { programId, weekday: 0–6 (0 = Sunday), venueId?, from?, to?,
+//     reservedFor: 'girls'|'boys'|'division'|'' , reservedDivisionId?, reservedMode? }
+router.post('/tag', ah(async (req, res) => {
+  const b = req.body || {};
+  const programId = resolveWriteProgram(req, b.programId);
+  const season = await activeSeason();
+  const weekday = Number(b.weekday);
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw badRequest('Choose a day of the week.');
+  const from = b.from || season.startDate;
+  const to = b.to || season.endDate;
+  assertDate(from, 'From'); assertDate(to, 'To');
+  const resv = await readReservation(b, 'WEEKNIGHT_GAME');
+  const where = [`g.program_id = ?`, `g.season_id = ?`, `g.category IN ('WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK')`, `g.date BETWEEN ? AND ?`, `CAST(strftime('%w', g.date) AS INTEGER) = ?`];
+  const args = [programId, season.id, from, to, weekday];
+  if (b.venueId) { where.push('g.court_id IN (SELECT id FROM courts WHERE venue_id = ?)'); args.push(b.venueId); }
+  const r = await run(`UPDATE gym_slots SET reserved_for = ?, reserved_division_id = ?, reserved_mode = ?, updated_at = datetime('now')
+    WHERE id IN (SELECT g.id FROM gym_slots g WHERE ${where.join(' AND ')})`, [resv.reservedFor, resv.reservedDivisionId, resv.reservedMode, ...args]);
+  const n = r.rowsAffected;
+  const day = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday];
+  await logActivity({ category: 'slot', action: 'tagged', actor: req.user, programId,
+    details: resv.reservedFor ? `Marked ${n} ${day} game slot${n === 1 ? '' : 's'} as ${await resvText(resv)}` : `Cleared the tag on ${n} ${day} game slot${n === 1 ? '' : 's'}` });
+  res.json({ updated: n });
 }));
 
 // ---- DELETE /api/slots/:id?scope=one|following ----

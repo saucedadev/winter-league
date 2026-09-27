@@ -19,7 +19,7 @@ import { runRules, checkPlacement, placementOptions } from './data.js';
 export const NEW_GAME_ID = '__new_game__';
 
 const TEAM_SELECT = `SELECT t.id, t.name, t.program_id, t.division_id, t.head_coach_user_id AS coach_id, t.is_active,
-    d.name AS division_name, d.sort_order AS division_sort, d.is_active AS division_active,
+    d.name AS division_name, d.sort_order AS division_sort, d.is_active AS division_active, d.gender AS division_gender,
     p.name AS program_name, p.short_code AS program_code, p.is_active AS program_active, p.is_guest
   FROM teams t JOIN divisions d ON d.id = t.division_id JOIN programs p ON p.id = t.program_id`;
 
@@ -44,7 +44,7 @@ export async function teamsForRun(runId) {
 export function virtualGame(run, home, away, placement = {}) {
   return {
     id: NEW_GAME_ID, runId: run.id, seasonId: run.seasonId, status: 'scheduled',
-    divisionId: home.divisionId, divisionName: home.divisionId === away.divisionId ? home.divisionName : `${home.divisionName} / ${away.divisionName}`,
+    divisionId: home.divisionId, divisionGender: home.divisionGender, divisionName: home.divisionId === away.divisionId ? home.divisionName : `${home.divisionName} / ${away.divisionName}`,
     homeTeamId: home.id, homeTeamName: home.name, homeProgramId: home.programId, homeProgramName: home.programName, homeCoachId: home.coachId,
     awayTeamId: away.id, awayTeamName: away.name, awayProgramId: away.programId, awayProgramName: away.programName, awayCoachId: away.coachId,
     date: null, startTime: null, endTime: null, courtId: null,

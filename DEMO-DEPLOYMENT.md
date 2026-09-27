@@ -165,7 +165,7 @@ Leave `LEAGUE_TIMEZONE` out (it defaults to Pacific) and don't set `PORT` (Rende
 
 **Settings → Health Check Path:** `/api/health`. Then create the service.
 
-When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect something like `{"ok":true,"app":"winter-league","database":"turso","schema":10,"latestUpdate":"010_draft_review.sql"}`. `schema` is how many database updates have been applied, so you can confirm a deploy landed. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
+When it's live, open `https://winter-league-demo-api.onrender.com/api/health`. Expect something like `{"ok":true,"app":"winter-league","database":"turso","schema":11,"latestUpdate":"011_slot_reservations.sql"}`. `schema` is how many database updates have been applied, so you can confirm a deploy landed. Save **`https://winter-league-demo-api.onrender.com/api`** as the demo API address.
 
 ## 2.4 Vercel: the demo site
 

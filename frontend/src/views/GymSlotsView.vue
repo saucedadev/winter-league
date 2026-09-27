@@ -7,6 +7,7 @@ import { useToast } from '../stores/toast';
 import { CATEGORY, addDays, startOfWeek, todayISO, weekday, monthDay, dateRange, timeRange, hoursBetween, longDate } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import Modal from '../components/Modal.vue';
+import SlotTagFields from '../components/SlotTagFields.vue';
 import ProgramPicker from '../components/ProgramPicker.vue';
 
 const auth = useAuthStore();
@@ -106,7 +107,41 @@ const blankForm = (date) => ({
   repeatUntil: '',
   skipBlackouts: true,
   notes: '',
+  tag: { reservedFor: '', reservedDivisionId: null, reservedMode: 'prefer' },
 });
+
+// ---- day preferences (tagged game slots) ----
+const divisions = ref([]);
+api.get('/league/divisions').then(({ data }) => { divisions.value = data.divisions.filter((d) => d.isActive); }).catch(() => {});
+const isGameCategory = (c) => c === 'WEEKNIGHT_GAME' || c === 'WEEKEND_GAME_BLOCK';
+const tagBody = (t, category) => (isGameCategory(category) && t.reservedFor
+  ? { reservedFor: t.reservedFor, reservedDivisionId: t.reservedDivisionId, reservedMode: t.reservedMode || 'prefer' }
+  : { reservedFor: '' });
+
+// Bulk: tag every game slot on one weekday (optionally one venue, a date range).
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const tagging = ref(null);
+const tagError = ref('');
+function openTagging() {
+  tagError.value = '';
+  tagging.value = { programId: ctx.programId || '', weekday: 1, venueId: '', from: season.value?.startDate || '', to: season.value?.endDate || '',
+    tag: { reservedFor: 'girls', reservedDivisionId: null, reservedMode: 'prefer' } };
+}
+const taggingVenues = ref([]);
+watch(() => tagging.value?.programId, async (pid) => { taggingVenues.value = pid ? (pid === ctx.programId ? venues.value : await loadVenues(pid)) : []; });
+async function applyTags() {
+  const t = tagging.value;
+  tagError.value = '';
+  saving.value = true;
+  try {
+    const { data } = await api.post('/slots/tag', { programId: t.programId, weekday: t.weekday, venueId: t.venueId || undefined, from: t.from, to: t.to,
+      reservedFor: t.tag.reservedFor || '', reservedDivisionId: t.tag.reservedDivisionId, reservedMode: t.tag.reservedMode });
+    toast.success(data.updated ? `${t.tag.reservedFor ? 'Tagged' : 'Cleared the tag on'} ${data.updated} ${WEEKDAYS[t.weekday]} game slot${data.updated === 1 ? '' : 's'}.` : `No ${WEEKDAYS[t.weekday]} game slots matched.`);
+    tagging.value = null;
+    await load();
+  } catch (err) { tagError.value = errorMessage(err); }
+  finally { saving.value = false; }
+}
 
 async function openCreate(date) {
   formError.value = '';
@@ -126,7 +161,8 @@ async function openEdit(slot) {
     mode: 'edit',
     slot,
     form: { programId: slot.programId, venueId: slot.venueId, courtId: slot.courtId, category: slot.category, date: slot.date,
-      startTime: slot.startTime, endTime: slot.endTime, notes: slot.notes || '' },
+      startTime: slot.startTime, endTime: slot.endTime, notes: slot.notes || '',
+      tag: { reservedFor: slot.reservedFor || '', reservedDivisionId: slot.reservedDivisionId || null, reservedMode: slot.reservedMode || 'prefer' } },
   };
 }
 
@@ -166,7 +202,7 @@ async function save() {
   try {
     if (editor.value.mode === 'create') {
       const body = { programId: f.programId, courtId: f.courtId, category: f.category, date: f.date, startTime: f.startTime,
-        endTime: f.endTime, notes: f.notes, skipBlackouts: f.skipBlackouts, ...(f.repeat ? { repeatWeeklyUntil: f.repeatUntil } : {}) };
+        endTime: f.endTime, notes: f.notes, skipBlackouts: f.skipBlackouts, ...(f.repeat ? { repeatWeeklyUntil: f.repeatUntil } : {}), ...tagBody(f.tag, f.category) };
       const { data } = await api.post('/slots', body);
       const n = data.slots.length;
       toast.success(`Added ${n} gym slot${n === 1 ? '' : 's'}.`);
@@ -174,7 +210,7 @@ async function save() {
       else editor.value = null;
       weekStart.value = startOfWeek(f.date);
     } else {
-      await api.put(`/slots/${editor.value.slot.id}`, { courtId: f.courtId, category: f.category, date: f.date, startTime: f.startTime, endTime: f.endTime, notes: f.notes });
+      await api.put(`/slots/${editor.value.slot.id}`, { courtId: f.courtId, category: f.category, date: f.date, startTime: f.startTime, endTime: f.endTime, notes: f.notes, ...tagBody(f.tag, f.category) });
       toast.success('Gym slot saved.');
       editor.value = null;
     }
@@ -210,6 +246,7 @@ watch(editor, () => { confirmDelete.value = false; });
   <div>
     <PageHeader title="Gym slots"
       :subtitle="`Gym time available for league play${ctx.current ? ` at ${ctx.current.name}` : auth.isSuperAdmin ? ' across all programs' : ''}.`">
+      <button class="btn btn-secondary" :disabled="!season" title="Keep game slots on one day of the week for girls’, boys’, or one division’s games" @click="openTagging()">Tag game slots</button>
       <button class="btn btn-primary" :disabled="!season" :title="season ? '' : 'A season must be active first'" @click="openCreate()">Add gym slots</button>
     </PageHeader>
 
@@ -266,7 +303,7 @@ watch(editor, () => { confirmDelete.value = false; });
         <ol class="p-2 flex flex-col gap-1.5 flex-1">
           <li v-for="s in byDay[d]" :key="s.id">
             <button class="relative w-full text-left rounded-md border border-[var(--color-slot-border)] text-white px-2.5 py-2 text-xs leading-snug hover:brightness-110 overflow-hidden"
-              :class="CATEGORY[s.category].cls" :aria-label="`${s.categoryLabel}, ${timeRange(s.startTime, s.endTime)}, ${s.venueName} ${s.courtName}${s.isBlackedOut ? ', blacked out' : ''}. Edit.`"
+              :class="CATEGORY[s.category].cls" :aria-label="`${s.categoryLabel}, ${timeRange(s.startTime, s.endTime)}, ${s.venueName} ${s.courtName}${s.reservedText ? `, ${s.reservedText}` : ''}${s.isBlackedOut ? ', blacked out' : ''}. Edit.`"
               @click="openEdit(s)">
               <span v-if="s.isBlackedOut" class="absolute inset-0 hatch-blackout" aria-hidden="true" />
               <span class="relative block">
@@ -274,6 +311,7 @@ watch(editor, () => { confirmDelete.value = false; });
                 <span class="block opacity-90">{{ CATEGORY[s.category].short }}<template v-if="showProgramCode"> · {{ s.shortCode }}</template></span>
                 <span class="block opacity-90 truncate" :title="s.venueName">{{ s.venueName }}</span>
                 <span class="block opacity-90 truncate">{{ s.courtName }}</span>
+                <span v-if="s.reservedText" class="block mt-1 font-semibold">★ {{ s.reservedText }}</span>
                 <span v-if="s.gameCount" class="block mt-1 font-semibold">{{ s.gameCount }} game{{ s.gameCount === 1 ? '' : 's' }} scheduled</span>
                 <span v-if="s.isBlackedOut" class="block mt-1 font-semibold">Blacked out: {{ s.blackoutReason }}</span>
                 <span v-else-if="s.notes" class="block mt-1 italic opacity-90 truncate">{{ s.notes }}</span>
@@ -357,6 +395,11 @@ watch(editor, () => { confirmDelete.value = false; });
           </template>
         </div>
 
+        <div v-if="isGameCategory(editor.form.category)" class="sm:col-span-2 rounded-lg border border-border p-3">
+          <SlotTagFields v-model="editor.form.tag" :divisions="divisions" id-prefix="sf-tag" />
+          <p class="text-xs text-text-muted mt-2">For example, keep Monday slots for girls’ games. To tag many slots at once, use <strong>Tag game slots</strong>.</p>
+        </div>
+
         <div class="sm:col-span-2">
           <label class="label" for="sf-notes">Notes <span class="font-normal text-text-muted">(optional)</span></label>
           <input id="sf-notes" v-model="editor.form.notes" class="input" maxlength="200" placeholder="e.g. Use the north entrance after 6pm" />
@@ -387,6 +430,35 @@ watch(editor, () => { confirmDelete.value = false; });
             {{ saving ? 'Saving…' : editor.mode === 'create' ? (editor.form.repeat ? 'Add weekly slots' : 'Add slot') : 'Save changes' }}
           </button>
         </template>
+      </template>
+    </Modal>
+
+    <!-- Tag many game slots at once -->
+    <Modal v-if="tagging" title="Tag game slots" wide @close="tagging = null">
+      <form id="tag-form" class="grid gap-4 sm:grid-cols-2" @submit.prevent="applyTags">
+        <p class="sm:col-span-2 text-sm text-text-muted">Keep every game slot on one day of the week for girls’, boys’, or one division’s games, e.g. <em>girls on Mondays</em>. It changes existing weeknight and weekend game slots; practice slots aren’t affected. Choose <strong>Any game</strong> to clear tags.</p>
+        <ProgramPicker v-model="tagging.programId" class="sm:col-span-2" />
+        <div>
+          <label class="label" for="tg-day">Day</label>
+          <select id="tg-day" v-model.number="tagging.weekday" class="input">
+            <option v-for="(d, i) in WEEKDAYS" :key="d" :value="i">{{ d }}s</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tg-venue">Venue</label>
+          <select id="tg-venue" v-model="tagging.venueId" class="input">
+            <option value="">All venues</option>
+            <option v-for="v in taggingVenues" :key="v.id" :value="v.id">{{ v.name }}</option>
+          </select>
+        </div>
+        <div><label class="label" for="tg-from">From</label><input id="tg-from" v-model="tagging.from" type="date" class="input" :min="season?.startDate" :max="season?.endDate" /></div>
+        <div><label class="label" for="tg-to">To</label><input id="tg-to" v-model="tagging.to" type="date" class="input" :min="tagging.from" :max="season?.endDate" /></div>
+        <div class="sm:col-span-2"><SlotTagFields v-model="tagging.tag" :divisions="divisions" id-prefix="tg-tag" /></div>
+        <p v-if="tagError" class="sm:col-span-2 text-sm text-danger" role="alert">{{ tagError }}</p>
+      </form>
+      <template #footer>
+        <button class="btn btn-secondary" @click="tagging = null">Cancel</button>
+        <button class="btn btn-primary" type="submit" form="tag-form" :disabled="saving || (auth.isSuperAdmin && !tagging.programId)">{{ saving ? 'Saving…' : tagging.tag.reservedFor ? 'Tag slots' : 'Clear tags' }}</button>
       </template>
     </Modal>
   </div>
