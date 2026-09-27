@@ -107,7 +107,7 @@ async function doDelete() {
           <li v-for="t in g.teams" :key="t.id" class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1" :class="!t.isActive && 'opacity-60'">
             <div class="flex-1 min-w-[10rem]">
               <p class="font-medium text-sm">{{ t.name }} <span v-if="!t.isActive" class="text-xs text-text-muted">(inactive)</span></p>
-              <p v-if="showProgram" class="text-xs text-text-muted">{{ t.programName }}</p>
+              <p v-if="showProgram" class="text-xs text-text-muted">{{ t.programName }}{{ t.programIsGuest ? ' (guest)' : '' }}</p>
             </div>
             <p class="text-sm" :class="t.headCoachName ? '' : 'text-text-muted'">{{ t.headCoachName ? `Coach ${t.headCoachName}` : 'No head coach assigned' }}</p>
             <div v-if="canEdit" class="flex">

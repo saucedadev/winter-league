@@ -52,7 +52,7 @@ A cancelled game stays on the schedule, struck through and marked **Cancelled** 
 
 If your team needs another game, for example because one was cancelled, choose **Request a game** at the top of the **Schedule** page.
 
-1. Choose your **Team** (if you coach more than one) and the **Opponent**. Only opponents within the league rules are listed. If there are none, your team already plays everyone it can as often as the league allows, so ask your director or the league.
+1. Choose your **Team** (if you coach more than one) and the **Opponent**. Only opponents within the league rules are listed, including any **guest teams** (outside clubs, marked *guest*) in your division. If there are none, your team already plays everyone it can as often as the league allows, so ask your director or the league.
 2. Pick a time from the list. Each one is an open game slot at one of the two teams' gyms that fits both teams' schedules. It says which team hosts.
 3. Give a short **reason**, e.g. *"Replaces our game that was cancelled for snow."*
 4. Choose **Send request**.
@@ -60,6 +60,10 @@ If your team needs another game, for example because one was cancelled, choose *
 ![Asking for an extra game](/help/img/coach-request-game.png)
 
 It goes through the same approvals as a move. Once the league signs off, the game appears on your schedule marked **Added**.
+
+A game against a guest team is always at your own gym, and there's no guest director to agree, so it goes from your director straight to the league. On the schedule the guest team has *(guest)* after its name and the game has a **Guest game** badge. Enter its final score as usual.
+
+![A guest game on the schedule](/help/img/common-guest-game.png)
 
 ## Following your request
 

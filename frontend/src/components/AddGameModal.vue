@@ -36,9 +36,14 @@ onMounted(async () => {
   } catch (err) { error.value = errorMessage(err); }
   finally { loading.value = false; }
 });
+// League teams by division; guest teams (admin only) in their own group at the end.
 const byDivision = computed(() => {
   const m = new Map();
-  for (const t of teams.value) { if (!m.has(t.divisionName)) m.set(t.divisionName, []); m.get(t.divisionName).push(t); }
+  for (const t of teams.value) {
+    const g = t.isGuest ? 'Guest teams' : t.divisionName;
+    if (!m.has(g)) m.set(g, []);
+    m.get(g).push(t);
+  }
   return [...m.entries()];
 });
 
@@ -56,7 +61,8 @@ watch(teamId, async (id) => {
 const withinRules = computed(() => (opponents.value || []).filter((o) => !o.exceptions.length));
 const exceptionsList = computed(() => (opponents.value || []).filter((o) => o.exceptions.length));
 const opponent = computed(() => (opponents.value || []).find((o) => o.id === opponentId.value));
-const optionLabel = (o) => `${o.name}${o.sameDivision ? '' : ` (${o.divisionName})`} · ${o.meetings ? `plays them ${o.meetings}×` : 'hasn’t played them'} · ${o.games} game${o.games === 1 ? '' : 's'}`;
+const optionLabel = (o) => `${o.name}${o.isGuest ? ' · guest' : ''}${o.sameDivision ? '' : ` (${o.divisionName})`} · ${o.meetings ? `plays them ${o.meetings}×` : 'hasn’t played them'}${o.isGuest ? '' : ` · ${o.games} game${o.games === 1 ? '' : 's'}`}`;
+const isGuestGame = computed(() => !!(team.value?.isGuest || opponent.value?.isGuest));
 
 // ---- when ----
 const placement = ref(null);
@@ -70,7 +76,8 @@ const exception = ref(false);
 const reason = ref('');
 const needsException = computed(() => !!opponent.value?.exceptions.length);
 const reasonRequired = computed(() => !isAdmin.value || needsException.value);
-const overTarget = computed(() => (opponent.value ? [team.value, opponent.value] : []).filter((t) => t && gamesPerTeam.value && t.games >= gamesPerTeam.value));
+// Guest games don't count toward the target, so there's nothing to warn about.
+const overTarget = computed(() => (opponent.value && !isGuestGame.value ? [team.value, opponent.value] : []).filter((t) => t && gamesPerTeam.value && t.games >= gamesPerTeam.value));
 
 const canSubmit = computed(() => team.value && opponent.value
   && (unplaced.value || placement.value)
@@ -94,9 +101,13 @@ async function submit() {
   } catch (err) { error.value = errorMessage(err); }
   finally { saving.value = false; }
 }
-const nextStep = computed(() => (auth.user.role === 'league_coach'
-  ? 'Your program director reviews it first, then the other program, then the league. The game is added when the league signs off.'
-  : 'The other program reviews it, then the league signs off. The game is added when the league signs off.'));
+const nextStep = computed(() => {
+  // Guest programs have no director, so there's no "other program" step.
+  const other = isGuestGame.value ? '' : 'the other program, ';
+  return auth.user.role === 'league_coach'
+    ? `Your program director reviews it first, then ${other}then the league. The game is added when the league signs off.`
+    : `${isGuestGame.value ? 'It' : 'The other program reviews it, then it'} goes to the league for sign-off. The game is added when the league signs off.`;
+});
 </script>
 
 <template>
@@ -111,7 +122,7 @@ const nextStep = computed(() => (auth.user.role === 'league_coach'
           <select id="add-team" v-model="teamId" class="input">
             <option value="">Choose a team…</option>
             <optgroup v-for="[div, list] in byDivision" :key="div" :label="div">
-              <option v-for="t in list" :key="t.id" :value="t.id">{{ t.name }} · {{ t.games }} game{{ t.games === 1 ? '' : 's' }}</option>
+              <option v-for="t in list" :key="t.id" :value="t.id">{{ t.name }}{{ t.isGuest ? ` (${t.divisionName})` : ` · ${t.games} game${t.games === 1 ? '' : 's'}` }}</option>
             </optgroup>
           </select>
         </div>
@@ -141,6 +152,7 @@ const nextStep = computed(() => (auth.user.role === 'league_coach'
           <input v-model="exception" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Add it anyway, as an exception
         </label>
       </div>
+      <p v-if="isGuestGame" class="text-xs text-text-muted">A guest game: it’s played at the league team’s gym and doesn’t count toward games per team or home/away balance.</p>
       <p v-for="t in overTarget" :key="t.id" class="text-xs font-medium">{{ t.name }} already has {{ t.games }} games; this makes {{ t.games + 1 }} (target {{ gamesPerTeam }}).</p>
 
       <div v-if="opponent">
@@ -158,7 +170,7 @@ const nextStep = computed(() => (auth.user.role === 'league_coach'
         <label class="label" for="add-reason">{{ needsException ? 'Why is this an exception?' : isAdmin ? 'Reason (optional)' : 'Reason' }}</label>
         <textarea id="add-reason" v-model="reason" rows="2" class="input" maxlength="300"
           :placeholder="needsException ? 'e.g. Both clubs agreed to a crossover scrimmage.' : 'e.g. Replaces the game against Riverbend that was cancelled for snow.'" />
-        <p class="text-xs text-text-muted mt-1">{{ isAdmin ? (runStatus === 'published' ? 'The game goes live straight away. Both programs are told and see it in Activity, and it gets referee slots.' : 'The reason is kept with the game.') : nextStep }}</p>
+        <p class="text-xs text-text-muted mt-1">{{ isAdmin ? (runStatus === 'published' ? `The game goes live straight away. ${isGuestGame ? 'The league team’s director and coach are told' : 'Both programs are told'} and see it in Activity, and it gets referee slots.` : 'The reason is kept with the game.') : nextStep }}</p>
       </div>
       <p v-if="error" class="text-sm text-danger" role="alert">{{ error }}</p>
     </div>

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertLeagueProgram } from '../utils/guests.js';
 import { one, all, run, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, readScope, assertCanManageProgram, resolveWriteProgram } from '../middleware/auth.js';
 import { ah, badRequest, notFound } from '../utils/http.js';
@@ -50,6 +51,7 @@ async function affectedGames(programId, venueId, startDate, endDate) {
 router.post('/', ah(async (req, res) => {
   requireFields(req.body, ['startDate', 'endDate', 'reason']);
   const programId = resolveWriteProgram(req, req.body.programId);
+  await assertLeagueProgram(programId, 'blackout dates');
   const venueId = trimOrNull(req.body.venueId);
   await validate(programId, { ...req.body, venueId });
   const id = newId();

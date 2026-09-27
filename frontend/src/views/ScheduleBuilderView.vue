@@ -117,9 +117,18 @@ const runOverrides = computed(() => Object.entries(run.value?.rules?.divisionOve
 const stats = computed(() => {
   const placed = games.value.filter((g) => g.status === 'scheduled');
   const teams = new Map();
-  const t = (id, name, division) => { if (!teams.has(id)) teams.set(id, { id, name, division, home: 0, away: 0 }); return teams.get(id); };
-  for (const g of placed) { t(g.homeTeamId, g.homeTeamName, g.divisionName).home++; t(g.awayTeamId, g.awayTeamName, g.divisionName).away++; }
-  for (const g of games.value) { t(g.homeTeamId, g.homeTeamName, g.divisionName); t(g.awayTeamId, g.awayTeamName, g.divisionName); }
+  const t = (id, name, division) => { if (!teams.has(id)) teams.set(id, { id, name, division, home: 0, away: 0, guest: 0 }); return teams.get(id); };
+  // Guest games don't count toward games per team or home/away balance: they're
+  // counted separately, and guest teams themselves aren't listed.
+  for (const g of placed) {
+    if (g.isGuestGame) {
+      if (!g.homeIsGuest) t(g.homeTeamId, g.homeTeamName, g.divisionName).guest++;
+      if (!g.awayIsGuest) t(g.awayTeamId, g.awayTeamName, g.divisionName).guest++;
+      continue;
+    }
+    t(g.homeTeamId, g.homeTeamName, g.divisionName).home++; t(g.awayTeamId, g.awayTeamName, g.divisionName).away++;
+  }
+  for (const g of games.value) { if (!g.homeIsGuest) t(g.homeTeamId, g.homeTeamName, g.divisionName); if (!g.awayIsGuest) t(g.awayTeamId, g.awayTeamName, g.divisionName); }
   const list = [...teams.values()].map((x) => ({ ...x, games: x.home + x.away, gap: x.home - x.away }));
   const miles = placed.map((g) => g.travelMiles).filter((m) => m != null);
   const dates = placed.map((g) => g.date).sort();
@@ -423,6 +432,7 @@ const publishMessage = computed(() => {
             <thead><tr class="text-left text-text-muted border-b border-border">
               <th class="px-4 py-2 font-medium">Team</th><th class="px-4 py-2 font-medium">Division</th>
               <th class="px-4 py-2 font-medium text-right">Games</th><th class="px-4 py-2 font-medium text-right">Home</th><th class="px-4 py-2 font-medium text-right">Away</th>
+              <th v-if="stats.teams.some((x) => x.guest)" class="px-4 py-2 font-medium text-right">Guest games</th>
             </tr></thead>
             <tbody>
               <tr v-for="t in balanceRows" :key="t.id" class="border-b border-border last:border-0">
@@ -431,10 +441,11 @@ const publishMessage = computed(() => {
                 <td class="px-4 py-2 text-right tabular-nums" :class="t.games < target && 'font-bold'">{{ t.games }}<span v-if="t.games < target" class="text-xs font-medium text-text-muted"> of {{ target }}</span></td>
                 <td class="px-4 py-2 text-right tabular-nums" :class="Math.abs(t.gap) > 1 && 'font-bold'">{{ t.home }}</td>
                 <td class="px-4 py-2 text-right tabular-nums" :class="Math.abs(t.gap) > 1 && 'font-bold'">{{ t.away }}</td>
+                <td v-if="stats.teams.some((x) => x.guest)" class="px-4 py-2 text-right tabular-nums text-text-muted">{{ t.guest || '' }}</td>
               </tr>
             </tbody>
           </table>
-          <p class="px-4 py-2 text-xs text-text-muted border-t border-border">Bold rows are more than one game off 50/50 or short of the target. Use Flip or Move on their games to even them out.</p>
+          <p class="px-4 py-2 text-xs text-text-muted border-t border-border">Bold rows are more than one game off 50/50 or short of the target. Use Flip or Move on their games to even them out. Games against guest teams are counted separately and don’t affect either.</p>
         </div>
       </template>
     </template>

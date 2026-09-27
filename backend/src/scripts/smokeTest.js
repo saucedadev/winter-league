@@ -469,6 +469,48 @@ const pendingOpts = (await call('GET', `/schedule/add-game/options?teamId=${myTe
 const pendingAdd = await call('POST', '/requests', { token: pd, body: { type: 'add', teamId: myTeam.id, opponentId: pendingOpp.id, courtId: pendingOpts[0].courtId, date: pendingOpts[0].date, startTime: pendingOpts[0].startTime, endTime: pendingOpts[0].endTime, reason: 'Extra practice game before the playoffs.' } });
 check('a director asks to add a game (skips the director step)', pendingAdd.status === 201 && pendingAdd.data.request.status !== 'pending_director', JSON.stringify(pendingAdd.data).slice(0, 200));
 
+console.log('\nGuest teams');
+const progCountBefore = (await call('GET', '/programs', { token: admin })).data.programs.filter((p) => p.isActive && !p.isGuest).length;
+const gp = await call('POST', '/programs', { token: admin, body: { name: 'Sherwood Youth Basketball', shortCode: 'SHW', city: 'Sherwood', isGuest: true } });
+check('the league adds a guest program', gp.status === 201 && gp.data.program.isGuest === 1);
+check('directors can’t add programs, guest or not', (await call('POST', '/programs', { token: pd, body: { name: 'Tigard Guests', shortCode: 'TGD', isGuest: true } })).status === 403);
+const progList = (await call('GET', '/programs', { token: admin })).data.programs;
+check('guest programs are flagged and don’t take a league spot', progList.find((p) => p.id === gp.data.program.id)?.isGuest === true
+  && progList.filter((p) => p.isActive && !p.isGuest).length === progCountBefore);
+const guestId = gp.data.program.id;
+check('guest programs have no venues', (await call('POST', '/venues', { token: admin, body: { programId: guestId, name: 'Sherwood HS', address: '1 Main St', city: 'Sherwood' } })).status === 400);
+check('guest programs have no gym slots', (await call('POST', '/slots', { token: admin, body: { programId: guestId, courtId: 'x', date: '2026-12-01', startTime: '18:00', endTime: '19:00', category: 'WEEKNIGHT_GAME' } })).status === 400);
+check('guest programs have no blackouts', (await call('POST', '/blackouts', { token: admin, body: { programId: guestId, startDate: '2026-12-01', endDate: '2026-12-01', reason: 'Closed' } })).status === 400);
+check('guest programs have no director or coach accounts', (await call('POST', '/users', { token: admin, body: { firstName: 'Guest', lastName: 'Director', username: 'guestdir', email: 'guestdir@example.com', password: 'Temp-Pass-123!', role: 'program_director', programId: guestId } })).status === 400);
+const gt = await call('POST', '/teams', { token: admin, body: { programId: guestId, name: 'Sherwood 5th Boys', divisionId: myTeam.divisionId } });
+check('the league adds a guest team in a division', gt.status === 201 && gt.data.team.programIsGuest === 1);
+const gt2 = await call('POST', '/teams', { token: admin, body: { programId: guestId, name: 'Sherwood 5th Boys B', divisionId: myTeam.divisionId } });
+const dash = (await call('GET', '/dashboard', { token: admin })).data;
+check('guests aren’t in the setup checklist', !(dash.programReadiness || []).some((p) => p.id === guestId));
+const guestOpp = (await call('GET', `/schedule/add-game/opponents?teamId=${myTeam.id}`, { token: coach })).data.opponents.find((o) => o.id === gt.data.team.id);
+check('a coach can pick a guest team in the same division', !!guestOpp && guestOpp.isGuest && !guestOpp.exceptions.length);
+const gOpts = (await call('GET', `/schedule/add-game/options?teamId=${myTeam.id}&opponentId=${gt.data.team.id}`, { token: coach })).data;
+check('guest games are offered only at the league team’s gyms', gOpts.options.length > 0 && gOpts.options.every((o) => !o.flip && o.programId === nfh.id));
+check('a guest game isn’t counted against the games-per-team target', !gOpts.warnings.some((w) => w.includes('target')));
+const myGamesBefore = (await call('GET', '/schedule/add-game/teams', { token: coach })).data.teams.find((t) => t.id === myTeam.id);
+const go = gOpts.options[0];
+const gReq = await call('POST', '/requests', { token: coach, body: { type: 'add', teamId: myTeam.id, opponentId: gt.data.team.id, courtId: go.courtId, date: go.date, startTime: go.startTime, endTime: go.endTime, reason: 'Non-conference game against Sherwood.' } });
+check('a coach asks for a guest game', gReq.status === 201 && gReq.data.request.status === 'pending_director', JSON.stringify(gReq.data).slice(0, 200));
+check('no “other program” step for a guest', !gReq.data.request.steps.some((x) => x.stage === 'counterpart'));
+const gEnd = await call('POST', `/requests/${gReq.data.request.id}/act`, { token: pd, body: { action: 'approve' } });
+check('after the director endorses, it goes straight to the league', gEnd.data.request?.status === 'pending_admin');
+const gOk = await call('POST', `/requests/${gReq.data.request.id}/act`, { token: admin, body: { action: 'approve' } });
+const guestGame = gOk.data.request?.game;
+check('the league signs off and the guest game is added', gOk.data.request?.status === 'approved' && guestGame?.isGuestGame && !guestGame.homeIsGuest && guestGame.awayIsGuest, JSON.stringify(gOk.data).slice(0, 200));
+check('the league team hosts', guestGame.venueProgramId === nfh.id);
+check('the guest game gets referee slots', (await call('GET', `/schedule/games/${guestGame.id}`, { token: admin })).data.game.refereeSlots > 0);
+const myGamesAfter = (await call('GET', '/schedule/add-game/teams', { token: coach })).data.teams.find((t) => t.id === myTeam.id);
+check('guest games are counted separately from league games', myGamesAfter.games === myGamesBefore.games && myGamesAfter.guestGames === myGamesBefore.guestGames + 1);
+const gCancel = await call('POST', '/requests', { token: coach, body: { gameId: guestGame.id, type: 'cancel', reason: 'Sherwood can’t make it after all.' } });
+check('requests on guest games skip the other-program step', gCancel.status === 201 && !gCancel.data.request.steps.some((x) => x.stage === 'counterpart'));
+await call('POST', `/requests/${gCancel.data.request.id}/cancel`, { token: coach });
+check('two guest teams can’t play each other', (await call('POST', `/schedule/runs/${pubr.data.published.id}/games`, { token: admin, body: { teamId: gt.data.team.id, opponentId: gt2.data.team.id, courtId: go.courtId, date: go.date, startTime: go.startTime, endTime: go.endTime } })).status === 400);
+
 console.log('\nData integrity with a live schedule');
 const liveNfh = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.venueProgramId === nfh.id && g.status === 'scheduled');
 check('gym slot holding a published game cannot be deleted', (await call('DELETE', `/slots/${liveNfh.gymSlotId}`, { token: pd })).status === 409);
@@ -668,6 +710,7 @@ const regen = await call('POST', '/schedule/generate', { token: admin, body: {} 
 // A score on a game that's unchanged in the new draft must follow it when republishing.
 const gameKey = (g) => `${[g.homeTeamId, g.awayTeamId].sort().join()}|${g.date}|${g.startTime}|${g.courtId}`;
 const draftKeys = new Set((await call('GET', `/schedule/runs/${regen.data.draft.id}/games`, { token: admin })).data.games.map(gameKey));
+check('the matchmaker never schedules guest teams', !(await call('GET', `/schedule/runs/${regen.data.draft.id}/games`, { token: admin })).data.games.some((g) => g.isGuestGame));
 const keep = (await call('GET', `/schedule/games?programId=${nfh.id}`, { token: admin })).data.games.find((g) => g.status === 'scheduled' && draftKeys.has(gameKey(g)));
 await (await import('../db/client.js')).run('UPDATE games SET home_score = 51, away_score = 49 WHERE id = ?', [keep.id]);
 const needs = await call('POST', `/schedule/runs/${regen.data.draft.id}/publish`, { token: admin, body: {} });

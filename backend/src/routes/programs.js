@@ -6,11 +6,14 @@ import { ah, badRequest, conflict, notFound } from '../utils/http.js';
 import { requireFields, trimOrNull, normalizePhone } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
 
+// Guest programs (is_guest) are outside clubs the league plays now and then.
+// They don't take one of the league's program spots.
+
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
 
 async function activeProgramCount(excludingId = '') {
-  return Number((await one('SELECT COUNT(*) AS n FROM programs WHERE is_active = 1 AND id != ?', [excludingId])).n);
+  return Number((await one('SELECT COUNT(*) AS n FROM programs WHERE is_active = 1 AND is_guest = 0 AND id != ?', [excludingId])).n);
 }
 
 function normalizeCode(code) {
@@ -27,13 +30,14 @@ router.get('/', ah(async (req, res) => {
       (SELECT COUNT(*) FROM teams t WHERE t.program_id = p.id AND t.is_active = 1) AS team_count,
       (SELECT COUNT(*) FROM users u WHERE u.program_id = p.id AND u.role = 'program_director' AND u.is_active = 1) AS director_count
     FROM programs p ORDER BY p.name COLLATE NOCASE`);
-  res.json({ programs: programs.map((p) => ({ ...p, isActive: !!p.isActive })), maxPrograms: config.maxPrograms });
+  res.json({ programs: programs.map((p) => ({ ...p, isActive: !!p.isActive, isGuest: !!p.isGuest })), maxPrograms: config.maxPrograms });
 }));
 
 // ---- POST /api/programs ----
 router.post('/', requireRole('super_admin'), ah(async (req, res) => {
   requireFields(req.body, ['name', 'shortCode']);
-  if ((await activeProgramCount()) >= config.maxPrograms) {
+  const isGuest = req.body.isGuest === true;
+  if (!isGuest && (await activeProgramCount()) >= config.maxPrograms) {
     throw conflict(`The league is capped at ${config.maxPrograms} active programs. Deactivate one before adding another.`);
   }
   const code = normalizeCode(req.body.shortCode);
@@ -42,10 +46,10 @@ router.post('/', requireRole('super_admin'), ah(async (req, res) => {
   }
   const id = newId();
   await run(
-    'INSERT INTO programs (id, name, short_code, city, contact_email, contact_phone) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, req.body.name.trim(), code, trimOrNull(req.body.city), trimOrNull(req.body.contactEmail), normalizePhone(req.body.contactPhone, 'Contact phone')]
+    'INSERT INTO programs (id, name, short_code, city, contact_email, contact_phone, is_guest) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, req.body.name.trim(), code, trimOrNull(req.body.city), trimOrNull(req.body.contactEmail), normalizePhone(req.body.contactPhone, 'Contact phone'), isGuest ? 1 : 0]
   );
-  await logActivity({ category: 'program', action: 'created', actor: req.user, programId: id, details: `Added program ${req.body.name.trim()} (${code})` });
+  await logActivity({ category: 'program', action: 'created', actor: req.user, programId: id, details: `Added ${isGuest ? 'guest ' : ''}program ${req.body.name.trim()} (${code})` });
   res.status(201).json({ program: await one('SELECT * FROM programs WHERE id = ?', [id]) });
 }));
 
@@ -57,7 +61,7 @@ router.put('/:id', requireRole('super_admin'), ah(async (req, res) => {
   const code = req.body.shortCode ? normalizeCode(req.body.shortCode) : p.shortCode;
   const isActive = req.body.isActive !== undefined ? (req.body.isActive ? 1 : 0) : p.isActive;
 
-  if (isActive && !p.isActive && (await activeProgramCount(p.id)) >= config.maxPrograms) {
+  if (isActive && !p.isActive && !p.isGuest && (await activeProgramCount(p.id)) >= config.maxPrograms) {
     throw conflict(`The league already has ${config.maxPrograms} active programs.`);
   }
   if (await one('SELECT 1 FROM programs WHERE (name = ? OR short_code = ?) AND id != ?', [name, code, p.id])) {

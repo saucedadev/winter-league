@@ -28,6 +28,8 @@ Do these in order before programs start entering gym time.
 
 ![Programs](/help/img/sa-programs.png)
 
+Outside clubs the league plays now and then are **guest programs**, set up further down the same page. See [Guest (non-conference) teams](#guest-non-conference-teams).
+
 ### 3. Accounts
 **Menu → League admin → Users → Add user.** Choose the person's role and, for Program Directors and Coaches, their program. The app creates a username and a **temporary password, shown once**. Use **Copy sign-in details** to send them. They choose their own password the first time they sign in.
 
@@ -126,6 +128,34 @@ Click **Publish schedule**. Coaches, directors, and referees see it immediately.
 ### Changes after publishing
 In the Schedule builder, switch to **Published** to move, flip, **Cancel**, or **Restore** a live game, or use **+ Add game** to add one. An added game goes live straight away: both teams' directors and coaches are emailed, both programs see it in Activity, and it gets referee slots for the assignor to fill. Cancelling asks for a reason, which shows on everyone's schedule next to the game; **Restore** puts it back and clears the reason. Coaches and directors can also ask for a cancellation through a change request, which comes to you for sign-off like any other. Every change is logged and both teams' directors see it. Referees on a moved game stay on it if they're still free; otherwise they're removed and emailed. Cancelling a game releases its referees.
 
+## Guest (non-conference) teams
+
+A guest team is a team from outside the league, such as *Sherwood 6th Boys*, that a league team plays now and then. Guest games are played at the league team's gym and otherwise work like any other game: court checks, referees, check-in, scores, payouts, and Activity.
+
+### Setting up a guest program
+**Menu → League admin → Programs**, then **Guest programs** below the league's programs.
+
+1. Click **Add guest program** and enter its name, short code, and city. A guest program doesn't take one of the league's program spots.
+2. On its card, add a team for each division it plays in: type the team name, choose the division, and click **Add team**. The teams can be reused all season.
+
+![Guest programs](/help/img/sa-guest-programs.png)
+
+Guest programs are kept out of the rest of the app on purpose. They have no venues, gym slots, blackouts, directors, or coaches, and they don't appear in program pickers or the setup checklist. **Deactivate** a guest team (or make the whole program inactive) to stop it being offered for new games. A team with games can't be removed, only deactivated.
+
+### Adding a guest game
+The matchmaker never schedules guests. Add guest games by hand with **+ Add game** in the Schedule builder, choosing the league team first and then the guest team (marked *guest* in the opponent list). You can also choose a guest team first, under **Guest teams** in the team list.
+
+![Adding a guest game](/help/img/sa-guest-add.png)
+
+- **Where:** only open game slots at the league team's gyms are offered, so the league team always hosts. Two guest teams can't play each other.
+- **Rules:** the usual opponent rules apply. A guest team in another division, or over the rematch limit, is an exception that needs a reason.
+- **Counting:** guest games don't count toward **Games per team** or home/away balance. The **Team balance** tab shows them in a separate **Guest games** column, and adding one never triggers the "over the target" note.
+- **Marked everywhere:** guest teams show *(guest)* after their name and the game has a **Guest game** badge, on every schedule, the assignor's board, and the payout export.
+
+![A guest game on the schedule](/help/img/common-guest-game.png)
+
+Coaches and directors can also ask for a guest game with **Request a game**. There's no guest director to agree, so their request comes straight to you after their own director's endorsement. The same goes for moving or cancelling a guest game.
+
 ## Final scores
 
 Coaches and directors of the two teams enter final scores after each game, and you can enter or correct any game's score the same way: **Schedule → Enter score** or **Edit score**. When you enter or correct one, both teams' coaches and directors are emailed. See the [Coach guide](/help/coach#entering-the-final-score) for the steps.
@@ -141,7 +171,7 @@ Coaches and directors ask for changes from the Schedule page: moving, swapping, 
 **Menu → League → Requests.** Requests waiting on you say **Needs your decision**.
 - **Approve & apply** checks the change against the schedule as it is right now, then applies it. If something has taken that time in the meantime, it tells you, and you can deny with a note so the requester can pick another time.
 - **Deny** needs a short note for the requester. You can deny at any stage.
-- A request to **add a game** (marked **Add game**) creates the game when you approve it, after checking again that the time is still free and the two teams are still within the league rules. Requests can't be exceptions. If a team needs a game outside the rules, add it yourself with **+ Add game**.
+- A request to **add a game** (marked **Add game**) creates the game when you approve it, after checking again that the time is still free and the two teams are still within the league rules. Requests can't be exceptions. If a team needs a game outside the rules, add it yourself with **+ Add game**. A request involving a guest team skips the "other program" step, since guests have no director.
 
 ![A request waiting for league sign-off](/help/img/sa-requests-signoff.png)
 

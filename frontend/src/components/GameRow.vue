@@ -22,7 +22,7 @@ defineProps({
     </div>
     <div class="flex-1 min-w-[13rem]">
       <p class="text-sm leading-snug" :class="game.status === 'cancelled' && 'line-through'">
-        <span :class="highlightTeamIds.includes(game.homeTeamId) ? 'font-bold' : 'font-medium'">{{ game.homeTeamName }}</span>
+        <span :class="highlightTeamIds.includes(game.homeTeamId) ? 'font-bold' : 'font-medium'">{{ game.homeTeamName }}</span><span v-if="game.homeIsGuest" class="text-xs text-text-muted"> (guest)</span>
         <!-- A final score takes the place of "vs"; the winning score is bold. -->
         <span v-if="game.hasScore" class="mx-1.5 tabular-nums whitespace-nowrap" :aria-label="`final score ${game.homeScore} to ${game.awayScore}`">
           <span :class="game.homeScore > game.awayScore ? 'font-bold' : 'text-text-muted'">{{ game.homeScore }}</span>
@@ -30,7 +30,7 @@ defineProps({
           <span :class="game.awayScore > game.homeScore ? 'font-bold' : 'text-text-muted'">{{ game.awayScore }}</span>
         </span>
         <span v-else class="text-text-muted text-xs font-semibold mx-1.5">vs</span>
-        <span :class="highlightTeamIds.includes(game.awayTeamId) ? 'font-bold' : 'font-medium'">{{ game.awayTeamName }}</span>
+        <span :class="highlightTeamIds.includes(game.awayTeamId) ? 'font-bold' : 'font-medium'">{{ game.awayTeamName }}</span><span v-if="game.awayIsGuest" class="text-xs text-text-muted"> (guest)</span>
       </p>
       <p v-if="game.status === 'cancelled' && game.cancelReason" class="text-xs truncate" :title="game.cancelReason">
         <span class="font-medium">Cancelled:</span> {{ game.cancelReason }}
@@ -49,6 +49,7 @@ defineProps({
     <div v-if="!compact" class="flex flex-wrap items-center gap-1.5">
       <span v-if="game.hasScore" class="badge badge-outline" :title="game.scoreEnteredByName ? `Entered by ${game.scoreEnteredByName}` : undefined">Final{{ game.scoreNote ? ` · ${game.scoreNote}` : '' }}</span>
       <span v-if="game.status === 'cancelled'" class="badge badge-outline">Cancelled</span>
+      <span v-if="game.isGuestGame" class="badge badge-outline" title="Non-conference game against a guest team. It doesn’t count toward games per team or home/away balance.">Guest game</span>
       <span v-if="game.isException" class="badge badge-outline" :title="`Exception to the league rules: ${game.exceptionNote}${game.addedReason ? ` Reason: ${game.addedReason}` : ''}`">Exception</span>
       <span v-else-if="game.isAdded" class="badge badge-outline" :title="`Added by hand${game.addedByName ? ` by ${game.addedByName}` : ''}${game.addedReason ? `: ${game.addedReason}` : ''}`">Added</span>
       <span v-if="game.hasBlackoutConflict" class="badge bg-unavailable text-white" :title="game.blackoutReason">Blackout conflict</span>

@@ -46,6 +46,7 @@ Referees get an email for each new game.
 - **A referee declines** (*Can't make it*): you get an email and the slot opens again.
 - **A game moves:** referees who are still free stay on it and are told the new time. Anyone with a clash is taken off, and you get an email to refill the slot.
 - **A game is cancelled:** its referees are released.
+- **Games added by hand**, including **guest games** against outside clubs, get referee slots like any other game. Guest teams show *(guest)* after their name.
 
 ## Confirming who worked
 
@@ -60,7 +61,7 @@ Referees check in from their phones at the gym. If someone couldn't check in, op
 1. Choose **From** and **To** dates and **Update**.
 2. Check the totals, and expand a referee to see each game. If some assigned referees never checked in, a warning tells you, so you can confirm attendance first.
 3. **Download summary (CSV)** gives one row per referee: name, email, username, games worked, and total.
-4. **Download game detail (CSV)** gives one row per game worked, each detail in its own column so you can sort or filter: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (in Pacific Time, where the games are played), **Confirmed by** (their own check-in or your confirmation), and **Amount**.
+4. **Download game detail (CSV)** gives one row per game worked, each detail in its own column so you can sort or filter: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (in Pacific Time, where the games are played), **Confirmed by** (their own check-in or your confirmation), and **Amount**. Guest teams have *(guest)* after their name, so non-conference games are easy to pick out.
 
 Both open in Excel or Google Sheets. **Program Directors can export the same detail for their own program's games**, so they can check who officiated without asking you.
 

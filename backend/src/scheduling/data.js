@@ -44,9 +44,9 @@ export async function saveRules(rules) {
 export const GAME_SELECT = `SELECT g.*,
   d.name AS division_name, d.sort_order AS division_sort,
   ht.name AS home_team_name, ht.program_id AS home_program_id, hp.name AS home_program_name, hp.short_code AS home_program_code,
-  ht.head_coach_user_id AS home_coach_id,
+  ht.head_coach_user_id AS home_coach_id, hp.is_guest AS home_is_guest,
   at.name AS away_team_name, at.program_id AS away_program_id, ap.name AS away_program_name, ap.short_code AS away_program_code,
-  at.head_coach_user_id AS away_coach_id,
+  at.head_coach_user_id AS away_coach_id, ap.is_guest AS away_is_guest,
   su.first_name || ' ' || su.last_name AS score_entered_by_name,
   cu.first_name || ' ' || cu.last_name AS cancelled_by_name,
   adu.first_name || ' ' || adu.last_name AS added_by_name,
@@ -72,7 +72,8 @@ export const GAME_ORDER = `ORDER BY g.date IS NULL, g.date, g.start_time, d.sort
 
 export function shapeGame(g) {
   return { ...g, hasBlackoutConflict: !!g.blackoutReason, hasOpenRequest: !!g.openRequestId, hasScore: g.homeScore != null && g.awayScore != null,
-    isAdded: !!g.addedAt, isException: !!g.exceptionNote };
+    isAdded: !!g.addedAt, isException: !!g.exceptionNote,
+    homeIsGuest: !!g.homeIsGuest, awayIsGuest: !!g.awayIsGuest, isGuestGame: !!(g.homeIsGuest || g.awayIsGuest) };
 }
 
 export async function getGame(id) {
@@ -86,7 +87,7 @@ export async function getGame(id) {
 async function loadInputs(season, rules) {
   const teams = await all(`SELECT t.id, t.name, t.program_id, t.division_id, d.name AS division_name, p.name AS program_name
     FROM teams t JOIN divisions d ON d.id = t.division_id JOIN programs p ON p.id = t.program_id
-    WHERE t.is_active = 1 AND d.is_active = 1 AND p.is_active = 1
+    WHERE t.is_active = 1 AND d.is_active = 1 AND p.is_active = 1 AND p.is_guest = 0
     ORDER BY d.sort_order, p.name COLLATE NOCASE, t.name COLLATE NOCASE`);
   const venues = await all('SELECT v.program_id, v.latitude, v.longitude FROM venues v JOIN programs p ON p.id = v.program_id WHERE v.is_active = 1 AND p.is_active = 1');
 

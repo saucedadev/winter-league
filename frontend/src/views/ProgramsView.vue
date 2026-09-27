@@ -9,6 +9,7 @@ import PageHeader from '../components/PageHeader.vue';
 import Modal from '../components/Modal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
+import GuestProgramsSection from '../components/GuestProgramsSection.vue';
 
 const ctx = useProgramContext();
 const toast = useToast();
@@ -117,6 +118,8 @@ async function doDelete() {
         <button class="btn btn-primary" type="submit" form="prog-form" :disabled="saving">{{ saving ? 'Saving…' : editor.id ? 'Save program' : 'Add program' }}</button>
       </template>
     </Modal>
+
+    <GuestProgramsSection />
 
     <ConfirmDialog v-if="deleting" title="Delete program?" confirm-label="Delete program" :busy="busy"
       :message="`Delete ${deleting.name}? Programs that already have venues, teams, or users can’t be deleted — deactivate them instead.`"

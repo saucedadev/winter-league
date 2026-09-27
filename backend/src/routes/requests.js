@@ -19,6 +19,7 @@ import { config } from '../config.js';
 import { getGame, checkPlacement, placementUpdate, todayStr, describeGame, activeSeason, publishedRun } from '../scheduling/data.js';
 import { getTeam, virtualGame, pairingCheck, checkAddPlacement, insertGame } from '../scheduling/addGame.js';
 import { canRequestFor, canAddFor, hasBeenPlayed } from './schedule.js';
+import { guestProgramIds } from '../utils/guests.js';
 import { onGamesChanged } from '../referees/data.js';
 
 const router = Router();
@@ -229,7 +230,8 @@ async function createAddRequest(req, res, reason) {
 
   const { home, away } = check;
   const programs = [...new Set([home.programId, away.programId])];
-  const counterparts = programs.filter((p) => p !== u.programId);
+  const guests = await guestProgramIds(); // guests have no director to agree
+  const counterparts = programs.filter((p) => p !== u.programId && !guests.has(p));
   const status = u.role === 'league_coach' ? 'pending_director' : counterparts.length ? 'pending_counterpart' : 'pending_admin';
   const id = newId();
   const stmts = [{
@@ -331,7 +333,9 @@ router.post('/', ah(async (req, res) => {
   const ev = await evaluate({ ...draft, reason }, game, swapGame, { today: todayStr() });
   if (ev.errors.length) throw conflict(ev.errors[0], { errors: ev.errors });
 
-  const counterparts = involvedPrograms([game, swapGame].filter(Boolean)).filter((p) => p !== u.programId);
+  // Guest programs have no director, so they're never asked to agree.
+  const guests = await guestProgramIds();
+  const counterparts = involvedPrograms([game, swapGame].filter(Boolean)).filter((p) => p !== u.programId && !guests.has(p));
   const status = u.role === 'league_coach' ? 'pending_director' : counterparts.length ? 'pending_counterpart' : 'pending_admin';
   const id = newId();
   const stmts = [{

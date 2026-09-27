@@ -62,7 +62,7 @@ const divisions = computed(() => {
   return [...m.entries()].sort((a, b) => a[1].sort - b[1].sort).map(([id, v]) => [id, v.name]);
 });
 const programs = computed(() => uniq(games.value.flatMap((g) => [
-  { id: g.homeProgramId, name: g.homeProgramName }, { id: g.awayProgramId, name: g.awayProgramName }]), 'id', 'name'));
+  { id: g.homeProgramId, name: `${g.homeProgramName}${g.homeIsGuest ? ' (guest)' : ''}` }, { id: g.awayProgramId, name: `${g.awayProgramName}${g.awayIsGuest ? ' (guest)' : ''}` }]), 'id', 'name'));
 const teams = computed(() => uniq(games.value
   .filter((g) => !divisionId.value || g.divisionId === divisionId.value)
   .flatMap((g) => [{ id: g.homeTeamId, name: g.homeTeamName }, { id: g.awayTeamId, name: g.awayTeamName }]), 'id', 'name'));

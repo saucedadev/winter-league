@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertLeagueProgram } from '../utils/guests.js';
 import { one, all, run, db, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, readScope, assertCanManageProgram, resolveWriteProgram } from '../middleware/auth.js';
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
@@ -105,6 +106,7 @@ router.post('/', ah(async (req, res) => {
   const b = req.body;
   assertSlotBody(b);
   const programId = resolveWriteProgram(req, b.programId);
+  await assertLeagueProgram(programId, 'gym slots');
   const court = await courtForProgram(b.courtId, programId);
   const season = await activeSeason();
   const skipBlackouts = b.skipBlackouts !== false;

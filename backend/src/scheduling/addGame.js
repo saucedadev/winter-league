@@ -20,22 +20,23 @@ export const NEW_GAME_ID = '__new_game__';
 
 const TEAM_SELECT = `SELECT t.id, t.name, t.program_id, t.division_id, t.head_coach_user_id AS coach_id, t.is_active,
     d.name AS division_name, d.sort_order AS division_sort, d.is_active AS division_active,
-    p.name AS program_name, p.short_code AS program_code, p.is_active AS program_active
+    p.name AS program_name, p.short_code AS program_code, p.is_active AS program_active, p.is_guest
   FROM teams t JOIN divisions d ON d.id = t.division_id JOIN programs p ON p.id = t.program_id`;
 
 export async function getTeam(id) {
   return id ? one(`${TEAM_SELECT} WHERE t.id = ?`, [id]) : null;
 }
 
-// Every active team, with how many games it has in this schedule.
+// Every active team, with how many league games it has in this schedule
+// (games against guests are counted separately: they don't count toward the
+// games-per-team target).
 export async function teamsForRun(runId) {
-  const [teams, counts] = await Promise.all([
-    all(`${TEAM_SELECT} WHERE t.is_active = 1 AND d.is_active = 1 AND p.is_active = 1 ORDER BY d.sort_order, d.name, t.name COLLATE NOCASE`),
-    all(`SELECT team_id, COUNT(*) AS n FROM (SELECT home_team_id AS team_id FROM games WHERE run_id = ? AND status != 'cancelled'
-      UNION ALL SELECT away_team_id FROM games WHERE run_id = ? AND status != 'cancelled') GROUP BY team_id`, [runId, runId]),
+  const [teams, ctx] = await Promise.all([
+    all(`${TEAM_SELECT} WHERE t.is_active = 1 AND d.is_active = 1 AND p.is_active = 1
+      ORDER BY p.is_guest, d.sort_order, d.name, t.name COLLATE NOCASE`),
+    pairingContext(runId),
   ]);
-  const n = new Map(counts.map((c) => [c.teamId, Number(c.n)]));
-  return teams.map((t) => ({ ...t, games: n.get(t.id) || 0 }));
+  return teams.map((t) => ({ ...t, isGuest: !!t.isGuest, games: ctx.games(t.id), guestGames: ctx.guestGames(t.id) }));
 }
 
 // A game-shaped object for a game that doesn't exist yet, so the placement
@@ -48,22 +49,29 @@ export function virtualGame(run, home, away, placement = {}) {
     awayTeamId: away.id, awayTeamName: away.name, awayProgramId: away.programId, awayProgramName: away.programName, awayCoachId: away.coachId,
     date: null, startTime: null, endTime: null, courtId: null,
     hasScore: false, hasOpenRequest: false, isAdded: true,
+    homeIsGuest: !!home.isGuest, awayIsGuest: !!away.isGuest, isGuestGame: !!(home.isGuest || away.isGuest),
     ...placement,
   };
 }
 
 // Games per team and meetings per pair in a run, from one query, so checking
 // every possible opponent doesn't cost a query each (it matters on Turso).
+// games(id) counts league games only; guestGames(id) counts games against guests.
 export async function pairingContext(runId) {
-  const rows = await all(`SELECT home_team_id, away_team_id FROM games WHERE run_id = ? AND status != 'cancelled'`, [runId]);
+  const rows = await all(`SELECT g.home_team_id, g.away_team_id, (hp.is_guest OR ap.is_guest) AS guest
+    FROM games g JOIN teams ht ON ht.id = g.home_team_id JOIN programs hp ON hp.id = ht.program_id
+    JOIN teams at ON at.id = g.away_team_id JOIN programs ap ON ap.id = at.program_id
+    WHERE g.run_id = ? AND g.status != 'cancelled'`, [runId]);
   const counts = new Map();
+  const guestCounts = new Map();
   const pairs = new Map();
   const key = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
   for (const g of rows) {
-    for (const t of [g.homeTeamId, g.awayTeamId]) counts.set(t, (counts.get(t) || 0) + 1);
+    const bucket = g.guest ? guestCounts : counts;
+    for (const t of [g.homeTeamId, g.awayTeamId]) bucket.set(t, (bucket.get(t) || 0) + 1);
     pairs.set(key(g.homeTeamId, g.awayTeamId), (pairs.get(key(g.homeTeamId, g.awayTeamId)) || 0) + 1);
   }
-  return { games: (id) => counts.get(id) || 0, meetings: (a, b) => pairs.get(key(a, b)) || 0 };
+  return { games: (id) => counts.get(id) || 0, guestGames: (id) => guestCounts.get(id) || 0, meetings: (a, b) => pairs.get(key(a, b)) || 0 };
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -84,6 +92,7 @@ export async function pairingCheck(run, team, opponent, { rules = null, ctx = nu
   for (const t of [team, opponent]) {
     if (!t.isActive || !t.divisionActive || !t.programActive) errors.push(`${t.name} isn’t active.`);
   }
+  if (team.isGuest && opponent.isGuest) errors.push('Two guest teams can’t play each other. A guest game needs a league team.');
   if (team.divisionId !== opponent.divisionId) {
     exceptions.push(`Different divisions (${team.divisionName} and ${opponent.divisionName}).`);
   }
@@ -95,9 +104,12 @@ export async function pairingCheck(run, team, opponent, { rules = null, ctx = nu
   if (limit != null && meetings >= limit) {
     exceptions.push(`They already play ${plural(meetings, 'time')}; the limit is ${plural(limit, 'game')} against the same opponent.`);
   }
-  for (const t of [team, opponent]) {
-    const n = ctx.games(t.id);
-    if (n >= rules.gamesPerTeam) warnings.push(`${t.name} will have ${n + 1} games (target ${rules.gamesPerTeam}).`);
+  // Games against guests don't count toward the target, so only warn for league games.
+  if (!team.isGuest && !opponent.isGuest) {
+    for (const t of [team, opponent]) {
+      const n = ctx.games(t.id);
+      if (n >= rules.gamesPerTeam) warnings.push(`${t.name} will have ${n + 1} games (target ${rules.gamesPerTeam}).`);
+    }
   }
   return { errors, exceptions, warnings, meetings };
 }

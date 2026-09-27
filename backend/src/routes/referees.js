@@ -343,6 +343,7 @@ async function payoutRows(from, to, programId = null) {
       u.first_name, u.last_name, u.email, u.username, rp.pay_rate_cents,
       g.date, g.start_time, g.end_time, g.home_score, g.away_score, d.name AS division_name,
       ht.name AS home_team_name, at.name AS away_team_name, hp.name AS home_program_name, ap.name AS away_program_name,
+      hp.is_guest AS home_is_guest, ap.is_guest AS away_is_guest,
       v.name AS venue_name, c.name AS court_name
     FROM referee_assignments a
     JOIN users u ON u.id = a.referee_id LEFT JOIN referee_profiles rp ON rp.user_id = u.id
@@ -355,7 +356,12 @@ async function payoutRows(from, to, programId = null) {
       ${programId ? 'AND ? IN (ht.program_id, at.program_id)' : ''}
     ORDER BY u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, g.date, g.start_time`,
   programId ? [from, to, programId] : [from, to]);
-  const detail = rows.map((r) => ({ ...r, amountCents: r.payCents ?? payRate(r.payRateCents, settings), matchup: `${r.homeTeamName} vs ${r.awayTeamName}` }));
+  // Guest teams are marked in names so exports never mix them up with league teams.
+  const detail = rows.map((r) => {
+    const home = `${r.homeTeamName}${r.homeIsGuest ? ' (guest)' : ''}`;
+    const away = `${r.awayTeamName}${r.awayIsGuest ? ' (guest)' : ''}`;
+    return { ...r, homeTeamName: home, awayTeamName: away, isGuestGame: !!(r.homeIsGuest || r.awayIsGuest), amountCents: r.payCents ?? payRate(r.payRateCents, settings), matchup: `${home} vs ${away}` };
+  });
   const byRef = new Map();
   for (const d of detail) {
     if (!byRef.has(d.refereeId)) byRef.set(d.refereeId, { refereeId: d.refereeId, name: `${d.firstName} ${d.lastName}`, email: d.email, username: d.username, games: 0, totalCents: 0 });

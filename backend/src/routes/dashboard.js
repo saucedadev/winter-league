@@ -20,9 +20,9 @@ router.get('/', ah(async (req, res) => {
   const today = leagueNow().date; // league time zone, not UTC
 
   const counts = await one(`SELECT
-      (SELECT COUNT(*) FROM programs WHERE is_active = 1 ${programId ? 'AND id = ?' : ''}) AS programs,
+      (SELECT COUNT(*) FROM programs WHERE is_active = 1 AND is_guest = 0 ${programId ? 'AND id = ?' : ''}) AS programs,
       (SELECT COUNT(*) FROM venues WHERE is_active = 1 ${scoped('program_id')}) AS venues,
-      (SELECT COUNT(*) FROM teams WHERE is_active = 1 ${scoped('program_id')}) AS teams,
+      (SELECT COUNT(*) FROM teams WHERE is_active = 1 AND program_id NOT IN (SELECT id FROM programs WHERE is_guest = 1) ${scoped('program_id')}) AS teams,
       (SELECT COUNT(*) FROM divisions WHERE is_active = 1) AS divisions,
       (SELECT COUNT(*) FROM users WHERE is_active = 1 ${scoped('program_id')}) AS users`,
     [...args, ...args, ...args, ...args]);
@@ -46,7 +46,7 @@ router.get('/', ah(async (req, res) => {
         (SELECT COUNT(*) FROM venues v WHERE v.program_id = p.id AND v.is_active = 1) AS venues,
         (SELECT COUNT(*) FROM teams t WHERE t.program_id = p.id AND t.is_active = 1) AS teams,
         (SELECT COUNT(*) FROM gym_slots g WHERE g.program_id = p.id AND g.season_id = ?) AS slots
-      FROM programs p WHERE p.is_active = 1 ORDER BY p.name COLLATE NOCASE`, [season.id]);
+      FROM programs p WHERE p.is_active = 1 AND p.is_guest = 0 ORDER BY p.name COLLATE NOCASE`, [season.id]);
   }
 
   // Phase 2: schedule status + the next few games that matter to this user.

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertLeagueProgram } from '../utils/guests.js';
 import { one, all, run, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, ROLES } from '../middleware/auth.js';
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
@@ -26,6 +27,7 @@ async function validateRoleProgram(role, programId) {
   if (PROGRAM_REQUIRED.includes(role) && !programId) throw badRequest(`A ${ROLE_LABELS[role]} must belong to a program.`);
   if (PROGRAM_FORBIDDEN.includes(role) && programId) throw badRequest('System Admins are league-wide and can’t belong to a program.');
   if (programId && !(await one('SELECT 1 FROM programs WHERE id = ?', [programId]))) throw badRequest('That program doesn’t exist.');
+  await assertLeagueProgram(programId, 'directors or coaches', 'The league team’s coach and director handle guest games.');
 }
 
 async function activeAdminCount(excludingId) {

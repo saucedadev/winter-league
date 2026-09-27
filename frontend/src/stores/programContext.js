@@ -8,8 +8,10 @@ const KEY = 'winterleague:program';
 //   System Admin: picks one program or "All programs" from the header.
 //   Everyone else: locked to their own program (the server enforces this
 //   too — this store only drives what the UI asks for).
+// Guest programs are kept apart (guestPrograms): they have no gyms, slots,
+// blackouts or accounts, so they never appear in program pickers.
 export const useProgramContext = defineStore('programContext', {
-  state: () => ({ programs: [], selectedId: sessionStorage.getItem(KEY) || '', maxPrograms: 16, loaded: false }),
+  state: () => ({ programs: [], guestPrograms: [], selectedId: sessionStorage.getItem(KEY) || '', maxPrograms: 16, loaded: false }),
   getters: {
     programId() {
       const auth = useAuthStore();
@@ -23,7 +25,8 @@ export const useProgramContext = defineStore('programContext', {
     async load(force = false) {
       if (this.loaded && !force) return;
       const { data } = await api.get('/programs');
-      this.programs = data.programs;
+      this.programs = data.programs.filter((p) => !p.isGuest);
+      this.guestPrograms = data.programs.filter((p) => p.isGuest);
       this.maxPrograms = data.maxPrograms;
       this.loaded = true;
       if (this.selectedId && !this.programs.some((p) => p.id === this.selectedId)) this.select('');

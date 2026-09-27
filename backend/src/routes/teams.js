@@ -9,7 +9,7 @@ const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
 const managers = requireRole('super_admin', 'program_director');
 
-const SELECT = `SELECT t.*, p.name AS program_name, p.short_code, d.name AS division_name, d.sort_order AS division_order,
+const SELECT = `SELECT t.*, p.name AS program_name, p.short_code, p.is_guest AS program_is_guest, d.name AS division_name, d.sort_order AS division_order,
   u.first_name || ' ' || u.last_name AS head_coach_name
   FROM teams t JOIN programs p ON p.id = t.program_id JOIN divisions d ON d.id = t.division_id
   LEFT JOIN users u ON u.id = t.head_coach_user_id`;
@@ -33,7 +33,7 @@ router.get('/', requireRole('super_admin', 'program_director', 'league_coach'), 
   if (req.query.divisionId) { where.push('t.division_id = ?'); args.push(req.query.divisionId); }
   const teams = await all(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY d.sort_order, d.name COLLATE NOCASE, p.name COLLATE NOCASE, t.name COLLATE NOCASE`, args);
-  res.json({ teams: teams.map((t) => ({ ...t, isActive: !!t.isActive })) });
+  res.json({ teams: teams.map((t) => ({ ...t, isActive: !!t.isActive, programIsGuest: !!t.programIsGuest })) });
 }));
 
 // ---- GET /api/teams/coaches ---- (active Coach accounts a PD can assign as head coach)

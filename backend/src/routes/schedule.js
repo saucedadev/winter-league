@@ -255,7 +255,8 @@ router.get('/add-game/teams', ah(async (req, res) => {
   const rules = await runRules(r.id);
   const teams = await teamsForRun(r.id);
   res.json({ run: { id: r.id, status: r.status }, gamesPerTeam: rules.gamesPerTeam,
-    teams: teams.map((t) => ({ id: t.id, name: t.name, divisionId: t.divisionId, divisionName: t.divisionName, programId: t.programId, programName: t.programName, games: t.games, mine: canAddFor(req.user, t) })) });
+    teams: teams.map((t) => ({ id: t.id, name: t.name, divisionId: t.divisionId, divisionName: t.divisionName, programId: t.programId, programName: t.programName,
+      isGuest: t.isGuest, games: t.games, guestGames: t.guestGames, mine: canAddFor(req.user, t) })) });
 }));
 
 // GET /api/schedule/add-game/opponents?runId=&teamId= — possible opponents.
@@ -273,12 +274,13 @@ router.get('/add-game/opponents', ah(async (req, res) => {
     const c = await pairingCheck(r, team, o, { rules, ctx });
     if (c.errors.length) continue;
     if (!isSuperAdmin(req.user) && c.exceptions.length) continue;
-    opponents.push({ id: o.id, name: o.name, divisionId: o.divisionId, divisionName: o.divisionName, programName: o.programName,
+    opponents.push({ id: o.id, name: o.name, divisionId: o.divisionId, divisionName: o.divisionName, programName: o.programName, isGuest: o.isGuest,
       games: o.games, meetings: c.meetings, sameDivision: o.divisionId === team.divisionId, exceptions: c.exceptions });
   }
-  // Same division first, then fewest meetings so far.
-  opponents.sort((a, b) => Number(b.sameDivision) - Number(a.sameDivision) || a.exceptions.length - b.exceptions.length || a.meetings - b.meetings || a.name.localeCompare(b.name));
-  res.json({ team: { id: team.id, name: team.name, divisionName: team.divisionName, games: ctx.games(team.id) }, gamesPerTeam: rules.gamesPerTeam, opponents });
+  // Same division first, league teams before guests, then fewest meetings so far.
+  opponents.sort((a, b) => Number(b.sameDivision) - Number(a.sameDivision) || a.exceptions.length - b.exceptions.length
+    || Number(a.isGuest) - Number(b.isGuest) || a.meetings - b.meetings || a.name.localeCompare(b.name));
+  res.json({ team: { id: team.id, name: team.name, divisionName: team.divisionName, isGuest: !!team.isGuest, games: ctx.games(team.id), guestGames: ctx.guestGames(team.id) }, gamesPerTeam: rules.gamesPerTeam, opponents });
 }));
 
 // GET /api/schedule/add-game/options?runId=&teamId=&opponentId= — open times

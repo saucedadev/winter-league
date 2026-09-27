@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assertLeagueProgram } from '../utils/guests.js';
 import { one, all, run, db, newId } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole, readScope, assertCanManageProgram, resolveWriteProgram } from '../middleware/auth.js';
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
@@ -47,6 +48,7 @@ router.get('/', requireRole('super_admin', 'program_director', 'league_coach'), 
 router.post('/', managers, ah(async (req, res) => {
   requireFields(req.body, ['name']);
   const programId = resolveWriteProgram(req, req.body.programId);
+  await assertLeagueProgram(programId, 'venues');
   const name = req.body.name.trim();
   if (await one('SELECT 1 FROM venues WHERE program_id = ? AND name = ?', [programId, name])) throw conflict('This program already has a venue with that name.');
 
