@@ -15,6 +15,10 @@
 //                                            games, referee assignments, or sample change
 //                                            requests, so a demo can build and publish the
 //                                            season live (DEMO.md, "Full-process walkthrough")
+//   npm run seed:demo -- --draft             nothing published, but a draft schedule is already
+//                                            generated and waiting in the Schedule builder
+//   npm run seed:demo -- --draft --share     the same, and the draft is already shared with the
+//                                            Program Directors for sign-off (deadline in a week)
 //
 // Refuses to run against Turso unless --force.
 import path from 'node:path';
@@ -24,6 +28,8 @@ import { hashPassword } from '../utils/security.js';
 import { addDays } from '../utils/validate.js';
 import { seedBase } from './seed.js';
 import { generateDraft, getRules, getGame, placementOptions } from '../scheduling/data.js';
+import { shareDraft } from '../scheduling/review.js';
+import { leagueToday } from '../utils/leagueTime.js';
 import { snapshotOf } from '../routes/requests.js';
 import { syncSlots, autoFill } from '../referees/data.js';
 import { testLeagueDataset } from './demoData/testLeague.js';
@@ -35,6 +41,10 @@ if (!config.databaseUrl.startsWith('file:') && !process.argv.includes('--force')
 }
 
 const DEMO_PASSWORD = 'WinterDemo2026';
+if (process.argv.includes('--share') && !process.argv.includes('--draft')) {
+  console.error('❌ --share only works together with --draft (it shares the draft the loader creates).');
+  process.exit(1);
+}
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 // Accounts every dataset shares; spreadsheet directors never get these usernames.
 const REFEREE_ROSTER = [
@@ -176,10 +186,27 @@ async function main() {
   await db.batch(stmts, 'write');
   console.log(`✅ Demo data: 1 season, ${data.programs.length} programs, ${venueCount} venues, ${teamCount} teams, ${slotCount} gym slots.`);
 
-  const noSchedule = process.argv.includes('--no-schedule');
-  const admin = await one("SELECT id FROM users WHERE username = 'gkim'");
+  const draftOnly = process.argv.includes('--draft');
+  const noSchedule = process.argv.includes('--no-schedule') || draftOnly;
+  const admin = await one("SELECT id, first_name, last_name, role, program_id FROM users WHERE username = 'gkim'");
   let draft = null;
-  if (!noSchedule) {
+  if (draftOnly) {
+    // A draft waiting in the Schedule builder: nothing published, no referee
+    // slots or change requests yet. With --share it's also shared with the
+    // Program Directors, so a demo can start at director review.
+    const season = await one('SELECT * FROM seasons WHERE id = ?', [seasonId]);
+    const d = await generateDraft(season, await getRules(), admin.id);
+    console.log(`✅ Draft schedule: ${d.summary.scheduledGames} games placed, nothing published yet.`);
+    if (process.argv.includes('--share')) {
+      const run = await one('SELECT * FROM schedule_runs WHERE id = ?', [d.runId]);
+      const deadline = new Date(`${leagueToday()}T12:00:00Z`);
+      deadline.setUTCDate(deadline.getUTCDate() + 7);
+      const r = await shareDraft(run, { deadline: deadline.toISOString().slice(0, 10), actor: admin });
+      console.log(`✅ Draft shared with the Program Directors of ${r.programs} programs for sign-off (deadline ${deadline.toISOString().slice(0, 10)}).`);
+    } else {
+      console.log('   Not shared yet: click “Share with directors” in the Schedule builder when the demo gets there.');
+    }
+  } else if (!noSchedule) {
     // Phase 2: generate and publish a schedule, then file two sample change
     // requests so every approval screen has something in it.
     const season = await one('SELECT * FROM seasons WHERE id = ?', [seasonId]);

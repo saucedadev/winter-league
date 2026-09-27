@@ -102,7 +102,7 @@ The demo league's **programs, venues, and Program Directors** come from `backend
 | `npm run dev`           | Start the API with auto-restart on file changes. |
 | `npm run migrate`       | Apply any new migrations in `src/db/migrations/`. Safe to run repeatedly. |
 | `npm run seed`          | Create the first System Admin, starter divisions and default theme. Idempotent and production-safe. |
-| `npm run seed:demo`     | Demo league from the demo spreadsheet, including a published schedule and sample requests. Refuses to run against Turso. |
+| `npm run seed:demo`     | Demo league from the demo spreadsheet, including a published schedule and sample requests. `-- --no-schedule`: nothing published; `-- --draft`: a draft waiting in the Schedule builder; `-- --draft --share`: that draft already shared with the directors for sign-off. Refuses to run against Turso unless `--force`. |
 | `npm run demo:signoff`  | Demos only: signs off the shared draft for every program still waiting (recorded as done by the demo script). Local only unless `--force`. |
 | `npm run db:reset`      | Check the demo spreadsheet, then delete the local database file and rebuild it (migrate + seed + demo). Local only. **Restart `npm run dev` afterwards.** |
 | `npm run db:reset:test` | The same, but with the built-in test league the smoke tests need. |

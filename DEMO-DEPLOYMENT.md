@@ -2,7 +2,7 @@
 
 This guide covers running the Winter League Platform as a **demo**: filled with the demo league from the spreadsheet in `backend/demo-data/`, for presentations and training.
 
-There are two ways to run one, and each can be loaded **with** a schedule already published or **without** one:
+There are two ways to run one, and each can be loaded in one of four styles: **with** a schedule already published, **without** one, or with a **draft** waiting (not shared yet, or already shared with the directors):
 
 | | Where it runs | Who can see it | Setup |
 |---|---|---|---|
@@ -13,6 +13,10 @@ There are two ways to run one, and each can be loaded **with** a schedule alread
 |---|---|---|
 | **With a schedule** | *(nothing extra)* | [DEMO.md](./DEMO.md) walkthrough A: everything is ready, every screen has data |
 | **Without a schedule** | `--no-schedule` | walkthrough B: the audience watches you generate and publish the season live |
+| **With a draft, not shared** | `--draft` | walkthrough B without the wait: nothing is published, but a draft is already generated in the Schedule builder. Start at reviewing the draft and **Share with directors**. |
+| **With a draft, shared** | `--draft --share` | Start at director review: the draft is shared and every director is waiting to sign off (deadline a week out). Good for showing **Draft review**, flags, and sign-off. |
+
+In the two draft styles nothing is published yet, so coaches, referees, and the assignor see no games, and there are no referee slots or change requests until you publish. Directors see the draft only in the *shared* style.
 
 For the **real league**, use [DEPLOYMENT.md](./DEPLOYMENT.md). A demo is always separate from it: its own database, its own server, its own website.
 
@@ -50,14 +54,16 @@ Everything runs on your machine against a local database file. Nothing is publis
    That lets referees check in and coaches enter scores on any day, so you can show both outside the season.
 2. **Load the demo.** In `backend/`:
    ```bash
-   npm run db:reset                    # with a schedule (walkthrough A)
-   npm run db:reset -- --no-schedule   # without a schedule (walkthrough B)
+   npm run db:reset                         # with a schedule (walkthrough A)
+   npm run db:reset -- --no-schedule        # without a schedule (walkthrough B)
+   npm run db:reset -- --draft              # with a draft, not shared yet
+   npm run db:reset -- --draft --share      # with a draft, shared with the directors
    ```
-   Note the `--` before `--no-schedule`: that's how npm passes the option through. The command prints every login at the end.
+   Note the `--` before the options: that's how npm passes them through. The command prints every login at the end.
 3. **Restart the app,** because the database file was replaced: stop and re-run `npm run dev` in both `backend/` and `frontend/`.
 4. **Open** `http://localhost:5174` and sign in as `gkim` / `WinterDemo2026`.
 
-**To start over,** or to switch between the two styles, run step 2 again and restart. It always replaces what's there.
+**To start over,** or to switch between styles, run step 2 again and restart. It always replaces what's there.
 
 ---
 
@@ -124,9 +130,12 @@ node src/scripts/seedDemo.js --env=.env.demo.local --force --check
 node src/scripts/migrate.js --env=.env.demo.local
 
 # 3. load the demo league (first time only — to reload, see section 3)
-node src/scripts/seedDemo.js --env=.env.demo.local --force               # with a schedule
-node src/scripts/seedDemo.js --env=.env.demo.local --force --no-schedule # without a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force                   # with a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --no-schedule     # without a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --draft           # with a draft, not shared
+node src/scripts/seedDemo.js --env=.env.demo.local --force --draft --share   # with a draft, shared
 ```
+Run **one** of the four.
 
 - `--env=.env.demo.local` points at the demo database instead of your local one. **Leave it out and you'll load your laptop's database instead.**
 - `--force` is required because this writes to a hosted database; it's a deliberate speed bump.
@@ -199,15 +208,17 @@ Open the site and sign in with `WinterDemo2026`:
 
 # 3. Refreshing a demo
 
-Use this **any time the demo database already has a league in it**: after a meeting, after editing the spreadsheet, after updating the code, or to switch between the two styles. The first-time commands in section 2.2 deliberately refuse to overwrite an existing demo.
+Use this **any time the demo database already has a league in it**: after a meeting, after editing the spreadsheet, after updating the code, or to switch between styles. The first-time commands in section 2.2 deliberately refuse to overwrite an existing demo.
 
 ## Local
 
 In `backend/`, then restart `npm run dev` in both folders:
 
 ```bash
-npm run db:reset                    # with a schedule
-npm run db:reset -- --no-schedule   # without a schedule
+npm run db:reset                         # with a schedule
+npm run db:reset -- --no-schedule        # without a schedule
+npm run db:reset -- --draft              # with a draft, not shared
+npm run db:reset -- --draft --share      # with a draft, shared with the directors
 ```
 
 ## Hosted
@@ -215,8 +226,10 @@ npm run db:reset -- --no-schedule   # without a schedule
 One command, in `backend/`. `--replace` clears everything in the demo database first, so there's no need to delete or recreate anything in Turso, and no tokens or Render settings change:
 
 ```bash
-node src/scripts/seedDemo.js --env=.env.demo.local --force --replace                # with a schedule
-node src/scripts/seedDemo.js --env=.env.demo.local --force --replace --no-schedule  # without a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --replace                  # with a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --replace --no-schedule    # without a schedule
+node src/scripts/seedDemo.js --env=.env.demo.local --force --replace --draft          # with a draft, not shared
+node src/scripts/seedDemo.js --env=.env.demo.local --force --replace --draft --share  # with a draft, shared
 ```
 
 It prints `🧹 Replacing everything in winter-league-demo-…turso.io…`, then the new league and logins. **Everything from the previous demo is deleted**, which is the point. Anyone signed in should sign in again afterwards.
@@ -247,6 +260,7 @@ Both demo services redeploy whenever `main` changes, so the demo always runs the
 
 # 6. Things to know
 
+- **The draft styles.** `--draft` generates the draft exactly as **Generate draft** would, using the matchmaker rules. It's a normal draft: you can edit it, **Regenerate draft**, or discard it. `--draft --share` also shares it, which emails each demo director. Demo email addresses are safe placeholders, so nobody real is emailed. `--share` on its own is refused: it only works with `--draft`.
 - **Publishing needs every program's sign-off.** In a demo, share the draft, show one director signing off live, then sign off the rest with the demo helper. From `backend/`: locally `npm run demo:signoff`; for the hosted demo `node src/scripts/demoSignOff.js --env=.env.demo.local --force`. It only works on a shared draft, and each sign-off is recorded as *"Signed off by the demo script"*. **Never run it against the real league.**
 - **The demo season is Winter 2026–27** (Nov 2, 2026 – Feb 28, 2027), fixed in the loader. Demos work best before or during that season; after it, there are no upcoming games and the dates in `backend/src/scripts/seedDemo.js` should be moved forward.
 - **Demo check-ins and scores count** toward the demo's payouts and results. That's expected.
@@ -258,6 +272,7 @@ Both demo services redeploy whenever `main` changes, so the demo always runs the
 |---|---|---|
 | `seed:demo only runs against a local SQLite database` | `--force` missing | Add `--force` (intentional for hosted databases). |
 | `Demo data already present — nothing to do. To load a fresh demo over it, add --replace.` | The demo database already has a league, and the command you ran was the first-time one | Run the same command with `--replace` added, e.g. `node src/scripts/seedDemo.js --env=.env.demo.local --force --replace` (see [section 3](#3-refreshing-a-demo)). |
+| `--share only works together with --draft` | `--share` was given without `--draft` | Use `--draft --share`, or leave `--share` out. |
 | The spreadsheet is listed with problems | A typo or missing value | Fix the rows it names and run again. Nothing was written. |
 | `Tables not found. Run the migration first` | The demo database has no tables yet | `node src/scripts/migrate.js --env=.env.demo.local` (step 2.2), then load again. |
 | `401` / `UNAUTHORIZED` | The token is wrong, or from a database you recreated | `turso db tokens create winter-league-demo`, update `.env.demo.local` **and** Render, redeploy. |

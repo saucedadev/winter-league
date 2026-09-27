@@ -105,6 +105,8 @@ Email addresses are safe placeholders (`…@demo.example` for directors, `…@ex
 
 Load with `npm run db:reset -- --no-schedule` (hosted demo: see [DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md), section 2.2 or 3). Allow about 20–25 minutes. The same people play the same parts; the reset prints them under "For the DEMO.md walkthrough".
 
+> **Short on time?** Load with `npm run db:reset -- --draft` instead to start with the draft already generated (skip "Generate draft" in step 3), or with `-- --draft --share` to start at director sign-off, with the draft already shared and every director waiting.
+
 ### 1. Before there's a schedule — 2 min
 Show that nobody has games yet, which makes the moment of publishing land:
 - **Tasha (`tgreene`, coach) → Schedule:** "The schedule hasn't been published yet".
