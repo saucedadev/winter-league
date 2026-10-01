@@ -1,7 +1,7 @@
 import { one, all, db, newId } from '../db/client.js';
 import { addDays, formatTime12 } from '../utils/validate.js';
 import { leagueToday } from '../utils/leagueTime.js';
-import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride, reservationFit, reservationLabel, reservationText, withReservations } from './core.js';
+import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride, reservationFit, reservationLabel, reservationText, withReservations, addMinutes } from './core.js';
 
 // Every division, for naming the divisions a slot is kept for.
 const allDivisions = () => all('SELECT id, name, grade, gender, is_active FROM divisions ORDER BY sort_order');
@@ -128,7 +128,7 @@ async function loadInputs(season, rules) {
     }
   }
   const programNames = Object.fromEntries(teams.map((t) => [t.programId, t.programName]));
-  return { teams, windows: carveWindows(withReservations(slots, await allDivisions()), rules.gameMinutes), homes: programHomes(venues), programBlackouts, programNames };
+  return { teams, windows: carveWindows(withReservations(slots, await allDivisions()), rules.gameMinutes, rules.bufferMinutes), homes: programHomes(venues), programBlackouts, programNames };
 }
 
 // Builds a new draft for the season. Any earlier draft for the season is
@@ -229,6 +229,14 @@ export async function checkPlacement(game, target, { excludeIds = [], rules, tod
     AND start_time < ? AND end_time > ? AND id NOT IN (${ph}) LIMIT 1`,
   [game.runId, court.id, target.date, target.endTime, target.startTime, ...exclude]);
   if (courtClash) errors.push(`Another game is already on that court at ${formatTime12(courtClash.startTime)}.`);
+  else if (rules.bufferMinutes) {
+    // Not overlapping, but closer than the buffer to a game before or after it.
+    const buf = rules.bufferMinutes;
+    const near = await one(`SELECT start_time, end_time FROM games WHERE run_id = ? AND status = 'scheduled' AND court_id = ? AND date = ?
+      AND start_time < ? AND end_time > ? AND id NOT IN (${ph}) LIMIT 1`,
+    [game.runId, court.id, target.date, addMinutes(target.endTime, buf), addMinutes(target.startTime, -buf), ...exclude]);
+    if (near) warnings.push(`That leaves less than the ${buf}-minute buffer next to the ${formatTime12(near.startTime)} game on that court.`);
+  }
 
   for (const t of [home, away]) {
     const tg = await all(`SELECT date FROM games WHERE run_id = ? AND status = 'scheduled' AND (home_team_id = ? OR away_team_id = ?)
@@ -265,7 +273,7 @@ export async function placementOptions(game, { today = null, limit = 150 } = {})
       AND NOT EXISTS (SELECT 1 FROM blackout_dates b WHERE b.program_id = g.program_id
         AND (b.venue_id IS NULL OR b.venue_id = v.id) AND g.date BETWEEN b.start_date AND b.end_date)
     ORDER BY g.date, g.start_time`, [...programIds, season.id, from, season.endDate]);
-  const windows = carveWindows(withReservations(slots, await allDivisions()), rules.gameMinutes);
+  const windows = carveWindows(withReservations(slots, await allDivisions()), rules.gameMinutes, rules.bufferMinutes);
 
   const progBlackouts = await all(`SELECT program_id, start_date, end_date FROM blackout_dates WHERE venue_id IS NULL AND program_id IN (${pph})`, programIds);
   const blockedDay = (date) => progBlackouts.some((b) => date >= b.startDate && date <= b.endDate);
@@ -273,7 +281,10 @@ export async function placementOptions(game, { today = null, limit = 150 } = {})
   const runGames = await all(`SELECT id, court_id, date, start_time, end_time, home_team_id, away_team_id FROM games
     WHERE run_id = ? AND status = 'scheduled' AND id != ?`, [game.runId, game.id]);
   const busy = new Set(runGames.map((g) => `${g.courtId}|${g.date}`));
-  const courtBusy = (w) => busy.has(`${w.courtId}|${w.date}`) && runGames.some((g) => g.courtId === w.courtId && g.date === w.date && g.startTime < w.endTime && g.endTime > w.startTime);
+  // Busy: another game overlaps the window, or is closer than the buffer to it.
+  const buf = rules.bufferMinutes || 0;
+  const courtBusy = (w) => busy.has(`${w.courtId}|${w.date}`) && runGames.some((g) => g.courtId === w.courtId && g.date === w.date
+    && g.startTime < addMinutes(w.endTime, buf) && g.endTime > addMinutes(w.startTime, -buf));
   const gamesOf = (teamId) => runGames.filter((g) => g.homeTeamId === teamId || g.awayTeamId === teamId);
   const homeGames = gamesOf(game.homeTeamId);
   const awayGames = gamesOf(game.awayTeamId);

@@ -91,7 +91,7 @@ function overridesText(rules, divisionNames, programNames = {}) {
 router.put('/rules', adminOnly, ah(async (req, res) => {
   const { rules, divisionNames, programNames } = await cleanRules(req.body);
   await saveRules(rules);
-  await logActivity({ category: 'schedule', action: 'rules', actor: req.user, details: `Updated schedule rules: ${rules.gamesPerTeam} games per team, ${rules.gameMinutes}-minute games, ${rules.maxTravelMiles}-mile travel cap${overridesText(rules, divisionNames, programNames)}` });
+  await logActivity({ category: 'schedule', action: 'rules', actor: req.user, details: `Updated schedule rules: ${rules.gamesPerTeam} games per team, ${rules.gameMinutes}-minute games${rules.bufferMinutes ? ` with a ${rules.bufferMinutes}-minute buffer` : ''}, ${rules.maxTravelMiles}-mile travel cap${overridesText(rules, divisionNames, programNames)}` });
   res.json({ rules });
 }));
 

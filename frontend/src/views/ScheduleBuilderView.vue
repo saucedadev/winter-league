@@ -25,7 +25,8 @@ const generating = ref(false);
 
 const RULE_FIELDS = [
   { key: 'gamesPerTeam', label: 'Games per team', help: 'Regular-season target for every team.', min: 1, max: 40 },
-  { key: 'gameMinutes', label: 'Game length (minutes)', help: 'Each game slot is split into back-to-back games of this length.', min: 30, max: 180 },
+  { key: 'gameMinutes', label: 'Game length (minutes)', help: 'Each game slot is split into games of this length.', min: 30, max: 180 },
+  { key: 'bufferMinutes', label: 'Buffer between games (minutes)', help: 'Free time on a court between one game and the next, for warm-ups and changeover. 0 = back to back.', min: 0, max: 60 },
   { key: 'maxTravelMiles', label: 'Travel cap (miles)', help: 'Straight-line distance from the away program to the gym.', min: 1, max: 500 },
   { key: 'minDaysBetween', label: 'Days between games', help: '1 = not on the same day; 2 = at least one day off in between.', min: 1, max: 7 },
   { key: 'maxGamesPerWeek', label: 'Games per week', help: 'Most games one team plays Monday–Sunday.', min: 1, max: 7 },
@@ -340,7 +341,7 @@ const publishMessage = computed(() => {
             {{ generating ? 'Building…' : overview.draft ? 'Regenerate draft' : 'Generate draft' }}
           </button>
         </div>
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div v-for="f in RULE_FIELDS" :key="f.key">
             <label class="label" :for="`rule-${f.key}`">{{ f.label }}</label>
             <input :id="`rule-${f.key}`" v-model.number="rules[f.key]" type="number" :min="f.min" :max="f.max" class="input" />

@@ -5,6 +5,7 @@
 export const DEFAULT_RULES = Object.freeze({
   gamesPerTeam: 8,        // target regular-season games for every team
   gameMinutes: 60,        // each game slot is carved into back-to-back games of this length
+  bufferMinutes: 0,       // free time on a court between one game and the next (warm-ups, changeover)
   maxTravelMiles: 30,     // straight-line cap between the game venue and the away program's home
   minDaysBetween: 2,      // a team's games must be at least this many days apart (1 = not same day)
   maxGamesPerWeek: 2,     // per team, Monday–Sunday
@@ -58,6 +59,7 @@ export const hasOverride = (rules, divisionId, key) =>
 const RULE_LIMITS = {
   gamesPerTeam: [1, 40, 'Games per team'],
   gameMinutes: [30, 180, 'Game length (minutes)'],
+  bufferMinutes: [0, 60, 'Buffer between games (minutes)'],
   maxTravelMiles: [1, 500, 'Travel cap (miles)'],
   minDaysBetween: [1, 7, 'Days between a team’s games'],
   maxGamesPerWeek: [1, 7, 'Games per team per week'],
@@ -159,6 +161,8 @@ export function programHomes(venues) {
 // ---- dates & times ----
 export const toMinutes = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 export const fromMinutes = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+// "18:30" + 15 -> "18:45" (kept within the day, for comparisons).
+export const addMinutes = (t, n) => fromMinutes(Math.min(24 * 60 - 1, Math.max(0, toMinutes(t) + n)));
 const dayNumber = (d) => Math.round(Date.parse(`${d}T00:00:00Z`) / 86400000);
 export const daysApart = (a, b) => Math.abs(dayNumber(a) - dayNumber(b));
 
@@ -169,14 +173,16 @@ export function weekOf(date) {
   return d.toISOString().slice(0, 10);
 }
 
-// Split each game slot into consecutive game windows of gameMinutes.
-// A 6:30–9:00 weeknight slot with 60-minute games gives 6:30 and 7:30.
-export function carveWindows(slots, gameMinutes) {
+// Split each game slot into game windows of gameMinutes, with bufferMinutes
+// free between one game and the next on the same court. A 6:30–9:00 slot with
+// 60-minute games gives 6:30 and 7:30; with a 15-minute buffer, 6:30 and 7:45
+// (no buffer is needed after the last game).
+export function carveWindows(slots, gameMinutes, bufferMinutes = 0) {
   const windows = [];
   for (const s of slots) {
     const start = toMinutes(s.startTime);
     const end = toMinutes(s.endTime);
-    for (let t = start; t + gameMinutes <= end; t += gameMinutes) {
+    for (let t = start; t + gameMinutes <= end; t += gameMinutes + (bufferMinutes || 0)) {
       windows.push({
         slotId: s.id, courtId: s.courtId, courtName: s.courtName, venueId: s.venueId, venueName: s.venueName,
         programId: s.programId, date: s.date, startTime: fromMinutes(t), endTime: fromMinutes(t + gameMinutes),

@@ -89,6 +89,7 @@ Once programs have entered their gym slots, blackouts, and teams, the Schedule b
 |---|---|---|
 | Games per team | The target for every team | 8 |
 | Game length | Each game slot is split into back-to-back games this long | 60 minutes |
+| Buffer between games | Free time on a court between one game and the next, for warm-ups and changeover. With 60-minute games and a 15-minute buffer, a 6:30–9:00 slot holds games at 6:30 and 7:45. Fewer games fit in each slot, so check the draft for teams left short. If you place a game by hand closer than the buffer, you're warned but can go ahead. | 0 minutes (back to back) |
 | Travel cap | Furthest the away team should travel (a program can have its own, lower cap, see below) | 30 miles |
 | Days between games | 2 means at least one day off between a team's games | 2 |
 | Games per week | Most games one team plays Monday–Sunday | 2 |

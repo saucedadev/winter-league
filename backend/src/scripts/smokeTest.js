@@ -456,6 +456,43 @@ console.log('\nDay preferences (tagged slots)');
   check('the Activity log records tagging', (await call('GET', '/activity?category=slot', { token: pd })).data.entries.some((e) => e.details.includes('as Girls priority')));
 }
 
+console.log('\nBuffer between games');
+{
+  const { carveWindows } = await import('../scheduling/core.js');
+  const slot = [{ id: 's', courtId: 'c', date: '2026-11-05', startTime: '18:30', endTime: '21:00' }];
+  check('no buffer: back-to-back games', carveWindows(slot, 60).map((w) => w.startTime).join() === '18:30,19:30');
+  check('a 15-minute buffer spaces the games out', carveWindows(slot, 60, 15).map((w) => `${w.startTime}-${w.endTime}`).join() === '18:30-19:30,19:45-20:45');
+  check('no buffer is needed after the last game', carveWindows([{ ...slot[0], endTime: '20:45' }], 60, 15).length === 2);
+  check('the buffer must be 0 to 60 minutes', (await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules, bufferMinutes: 61 } })).status === 400
+    && (await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules, bufferMinutes: -5 } })).status === 400);
+  const saved = await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules, bufferMinutes: 15 } });
+  check('the buffer is saved with the rules', saved.status === 200 && (await call('GET', '/schedule/rules', { token: admin })).data.rules.bufferMinutes === 15);
+  check('the activity log mentions the buffer', (await call('GET', '/activity?category=schedule', { token: admin })).data.entries.some((e) => e.details.includes('15-minute buffer')));
+  const gap = (games) => {
+    const byCourt = {};
+    for (const g of games.filter((x) => x.status === 'scheduled')) (byCourt[`${g.courtId}|${g.date}`] ||= []).push(g);
+    let min = Infinity;
+    const m = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    for (const list of Object.values(byCourt)) {
+      list.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      for (let i = 1; i < list.length; i++) min = Math.min(min, m(list[i].startTime) - m(list[i - 1].endTime));
+    }
+    return min;
+  };
+  const dNoBuf = await draftWith({});
+  check('without a buffer, games run back to back', gap(dNoBuf.games) === 0, String(gap(dNoBuf.games)));
+  const dBuf = await draftWith({ bufferMinutes: 15 });
+  check('with a 15-minute buffer, every court has 15 minutes between games', dBuf.status === 201 && gap(dBuf.games) >= 15, String(gap(dBuf.games)));
+  check('the draft keeps the buffer in its rules', dBuf.draft.rules.bufferMinutes === 15);
+  const placed = dBuf.games.find((g) => g.status === 'scheduled');
+  const opts = (await call('GET', `/schedule/games/${placed.id}/options`, { token: admin })).data.options;
+  const m = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const tooClose = opts.some((o) => dBuf.games.some((g) => g.id !== placed.id && g.status === 'scheduled' && g.courtId === o.courtId && g.date === o.date
+    && m(g.startTime) < m(o.endTime) + 15 && m(g.endTime) + 15 > m(o.startTime)));
+  check('moving a game never offers a time inside the buffer', opts.length > 0 && !tooClose);
+  await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
+}
+
 console.log('\nMatchmaker draft');
 const gen = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2 } } });
 check('draft generated', gen.status === 201 && gen.data.draft.status === 'draft' && gen.data.draft.summary.scheduledGames > 0, JSON.stringify(gen.data).slice(0, 200));
