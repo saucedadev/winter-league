@@ -5,8 +5,8 @@ import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/
 import { ah, badRequest } from '../utils/http.js';
 import { getBranding, validateBranding, publicBranding, DEFAULT_BRANDING } from '../utils/branding.js';
 import { buildEmail, sendEmail, clearEmailBrandCache } from '../utils/email.js';
-import { inlineImages } from '../utils/emailTemplate.js';
 import { makeEmailLogo, cachedEmailLogo } from '../utils/emailLogo.js';
+import { publishEmailLogo, isCurrentLogoUrl, logoHosting, logoHash } from '../utils/emailLogoHost.js';
 import { logActivity } from '../utils/activityLog.js';
 
 const router = Router();
@@ -41,6 +41,9 @@ router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_
   const before = await getBranding();
   // The PNG copy for emails (reused if the logo didn't change).
   branding.emailLogo = !branding.logo ? null : branding.logo === before.logo && before.emailLogo ? before.emailLogo : await makeEmailLogo(branding.logo);
+  // ...and its public web address, which emails load it from.
+  branding.emailLogoUrl = !branding.emailLogo ? null
+    : isCurrentLogoUrl(before.emailLogoUrl, branding.emailLogo) ? before.emailLogoUrl : await publishEmailLogo(branding.emailLogo);
   await run("INSERT INTO app_settings (key, value) VALUES ('branding', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [JSON.stringify(branding)]);
   const changes = [];
   if (before.appName !== branding.appName) changes.push(`name “${before.appName}” → “${branding.appName}”`);
@@ -48,6 +51,17 @@ router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_
   if (changes.length) await logActivity({ category: 'program', action: 'branding', actor: req.user, details: `Branding: ${changes.join('; ')}` });
   clearEmailBrandCache();
   res.json({ branding: publicBranding(branding) });
+}));
+
+// ---- The logo for emails, when the API serves it (no Vercel Blob) ----
+// Public, like the logo itself: email apps load it without signing in. The
+// hash in the name changes with the logo, so it can be cached for a year.
+router.get('/email-logo/:file', ah(async (req, res) => {
+  const { emailLogo } = await getBranding();
+  const m = /^([0-9a-f]{16})\.png$/.exec(req.params.file);
+  if (!emailLogo || !m || m[1] !== logoHash(emailLogo)) return res.status(404).end();
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+  res.send(Buffer.from(emailLogo.split(',')[1], 'base64'));
 }));
 
 // ---- Emails: preview and test ----
@@ -69,8 +83,8 @@ router.post('/email-preview', requireAuth, requirePasswordCurrent, requireRole('
   try { b = validateBranding({ appName: req.body?.appName || DEFAULT_BRANDING.appName, logo: req.body?.logo }); } catch (e) { throw badRequest(e.message); }
   b.emailLogo = await cachedEmailLogo(b.logo);
   const themeRow = await one("SELECT value FROM app_settings WHERE key = 'theme'");
-  const mail = await buildEmail({ text: SAMPLE_TEXT(req.user.firstName), action: SAMPLE_ACTION, brand: { ...b, themeId: themeRow?.value || 'light' } });
-  res.json({ html: inlineImages(mail.html, mail.attachments) });
+  const mail = await buildEmail({ text: SAMPLE_TEXT(req.user.firstName), action: SAMPLE_ACTION, brand: { ...b, themeId: themeRow?.value || 'light' }, inline: true });
+  res.json({ html: mail.html });
 }));
 
 // POST /api/settings/email-test: send the sample to the signed-in admin.
@@ -96,7 +110,10 @@ router.post('/email-test', requireAuth, requirePasswordCurrent, requireRole('sup
     throw badRequest(`The email couldn’t be sent (${msg}). ${hint}`);
   }
   await logActivity({ category: 'user', action: 'test email', actor: req.user, details: `Sent a test email to ${me.email}` });
-  res.json({ sentTo: me.email, provider: config.email.provider === 'brevo' ? 'brevo' : 'console' });
+  // How the logo reaches inboxes, so the page can say if it may not show.
+  const b = await getBranding();
+  const logo = !b.logo ? 'built-in' : b.emailLogoUrl ? logoHosting() : 'none';
+  res.json({ sentTo: me.email, provider: config.email.provider === 'brevo' ? 'brevo' : 'console', logo });
 }));
 
 export default router;

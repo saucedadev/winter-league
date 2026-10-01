@@ -68,6 +68,7 @@ This step proves to Gmail and Microsoft that Brevo may send mail for your domain
    | `EMAIL_FROM` | `Winter League <no-reply@winterleague.org>`. The address must be exactly the sender from Step 3. The name in front is only a fallback: emails go out under the app name from Branding. |
    | `BREVO_SMTP_USER` | the **Login** from Step 4 (e.g. `8a1b2c001@smtp-brevo.com`) |
    | `BREVO_SMTP_PASS` | the **SMTP key** from Step 4 |
+   | `BLOB_READ_WRITE_TOKEN` | optional, for your logo in emails; see Step 6 |
    | `BREVO_SMTP_PORT` | optional; leave it out. The app uses port **2525**, because Render's free plan blocks the usual email ports (25, 465 and 587). Set `587` only if you move to a paid plan and want the standard port. |
 
 3. Click **Save, rebuild, and deploy** (or Save, then **Manual Deploy** → **Deploy latest commit**). The variables take effect after the restart.
@@ -75,11 +76,26 @@ This step proves to Gmail and Microsoft that Brevo may send mail for your domain
 
 > Don't paste the SMTP key anywhere else (chat, email, a file in the repo). If it leaks, delete it in Brevo and create a new one.
 
-## Step 6: Send a test
+## Step 6: Let emails show your logo (Vercel Blob)
+
+Skip this if you use the built-in hexagon mark; it already shows in every email.
+
+Brevo doesn't deliver images attached inside an email, so emails load your uploaded logo from a web address. Vercel Blob gives it one that's always on. (Without it, the app's own server on Render serves the logo, but Render's free plan puts the server to sleep, so an email opened while it's asleep may show an empty box instead of the logo.)
+
+1. In Vercel, open the **Storage** tab (on your team, or on the frontend project) → **Create** → **Blob**.
+2. Name it `winter-league-email` and pick a region near you.
+3. Choose **Public** access. This matters: email apps load the logo without signing in, and Vercel doesn't let you change it later. The store only ever holds the logo.
+4. Create it, and connect it to your frontend project if Vercel offers to.
+5. Copy the store's **`BLOB_READ_WRITE_TOKEN`**. Vercel adds it to the connected project's **Settings → Environment Variables**, where you can reveal and copy it. The store's own page also shows it.
+6. In Render, on the **API** service → **Environment**, add `BLOB_READ_WRITE_TOKEN` with that value, and save and redeploy.
+
+The app uploads the logo the next time an email goes out or you save Branding & Theme. A new logo gets a new file, so inboxes never show an old one. Keep the token private, like the SMTP key.
+
+## Step 7: Send a test
 
 The quickest check: sign in as a System Admin, open **Menu → League admin → Branding & Theme**, scroll to **Emails**, and click **Send me a test email**. It sends a sample to the email address on your own account.
 
-- *"Sent to …"*: check your inbox (and spam) for it.
+- *"Sent to …"*: check your inbox (and spam) for it. If it adds a note about your logo, finish Step 6.
 - *"Email is in console mode…"*: `EMAIL_PROVIDER` isn't `brevo` yet, or the service wasn't redeployed (Step 5).
 - *"The email couldn't be sent: …"*: the reason is from Brevo; see Troubleshooting below.
 
@@ -97,7 +113,7 @@ Then try a real one:
 
 Every email has the **app name and logo** across the top in the **theme's color**, the message with any details in a box, a button to the right page of the app, and a footer saying the inbox isn't monitored and who to contact instead (coaches: their program director; referees: the assignor; directors and the assignor: the league administrator). All of it comes from **Branding & Theme**, where the **Emails** section shows a live sample. Each email also includes a plain-text version for email apps that don't show designs.
 
-Logos: email apps don't show SVG, so the server makes a small PNG copy of the logo for emails when you click **Save branding** (or, for a logo saved earlier, with the next email).
+Logos: email apps don't show SVG, so the server makes a small PNG copy of the logo for emails when you click **Save branding** (or, for a logo saved earlier, with the next email), and emails load it from Vercel Blob (Step 6). The built-in mark is served by the app's website, which is always on.
 
 ## The demo environment
 
@@ -115,13 +131,17 @@ If the demo does need to send (to show an email live), put your own address on y
 | Email arrives from `…@brevosend.com` | The domain isn't authenticated | Finish Step 2 and wait for **Authenticated** |
 | Email goes to spam, or Outlook/Hotmail rejects it | DMARC or DKIM record missing or mistyped | Re-check the records in Step 2; Brevo shows which one fails |
 | `Sender not valid` error | The address in `EMAIL_FROM` doesn't match a sender in Step 3 | Make the address in `EMAIL_FROM` match exactly |
-| Logo missing in the email | Images are blocked by the email app, or the logo couldn't be converted | Click "show images" in the email app; if the Branding page's sample shows the hexagon instead of your logo, re-export the logo as a PNG and upload that |
+| Empty box where the logo should be | Vercel Blob isn't set up, so the logo comes from the sleeping Render server; or the email app blocks images | Set up Step 6; click "show images" in the email app. If the Render log says *could not upload the email logo to Vercel Blob*, check the token and that the store is **Public** |
+| The hexagon shows instead of your logo | The logo couldn't be converted, or has no web address yet | Send another email after Step 6; if the Branding page's sample shows the hexagon too, re-export the logo as a PNG and upload that |
 | Some emails missing on a busy day | Free plan daily limit (about 300) | Check Brevo's usage; upgrade if the league regularly exceeds it |
 | Reset link points to the wrong site | `APP_URL` first entry | Put the main site first in `APP_URL` |
 
-## Brevo help articles
+## Help articles
 
 - [Create and manage your SMTP keys](https://help.brevo.com/hc/en-us/articles/7959631848850-Create-and-manage-your-SMTP-keys)
 - [Authenticate your domain with Brevo (Brevo code, DKIM, DMARC)](https://help.brevo.com/hc/en-us/articles/12163873383186-Authenticate-your-domain-with-Brevo-Brevo-code-DKIM-DMARC)
 - [Comply with Gmail, Yahoo and Microsoft's requirements for email senders](https://help.brevo.com/hc/en-us/articles/14925263522578-Comply-with-Gmail-Yahoo-and-Microsoft-s-requirements-for-email-senders)
 - [Create a new sender](https://help.brevo.com/hc/en-us/articles/208836149-Create-a-new-sender-From-name-and-From-email)
+- [Vercel Blob](https://vercel.com/docs/vercel-blob)
+- [Brevo: embedded images aren't supported for transactional email](https://community.brevo.com/t/does-transactional-email-support-embedded-image/6665)
+- [Brevo: which SMTP port to use](https://help.brevo.com/hc/en-us/articles/10905415650322)

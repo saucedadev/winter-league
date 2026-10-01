@@ -6,13 +6,14 @@ import { one } from '../db/client.js';
 //   logo:    optional data: URL (PNG, JPEG, WebP, or SVG). null = built-in mark.
 //   emailLogo: a small PNG copy of the logo for emails, made by the server when
 //            the logo is saved (utils/emailLogo.js). Not sent to browsers.
+//   emailLogoUrl: where emails load that copy from (utils/emailLogoHost.js).
 export const DEFAULT_BRANDING = Object.freeze({ appName: 'Winter League', logo: null, emailLogo: null });
 
 export const LOGO_MAX_BYTES = 300 * 1024;
 const LOGO_RE = /^data:image\/(png|jpeg|webp|svg\+xml);base64,([A-Za-z0-9+/=]+)$/;
 
 // What browsers get: no emailLogo (it's only for emails), just whether there is one.
-export const publicBranding = ({ emailLogo, ...b }) => ({ ...b, hasEmailLogo: !!emailLogo });
+export const publicBranding = ({ emailLogo, emailLogoUrl, ...b }) => ({ ...b, hasEmailLogo: !!emailLogo });
 
 export async function getBranding() {
   const row = await one("SELECT value FROM app_settings WHERE key = 'branding'");

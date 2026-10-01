@@ -5,7 +5,8 @@ import { config } from '../config.js';
 import { one, run } from '../db/client.js';
 import { getBranding } from './branding.js';
 import { makeEmailLogo } from './emailLogo.js';
-import { renderEmail, contactFor, inlineImages } from './emailTemplate.js';
+import { publishEmailLogo, isCurrentLogoUrl } from './emailLogoHost.js';
+import { renderEmail, contactFor } from './emailTemplate.js';
 
 let transport = null;
 function getTransport() {
@@ -35,12 +36,16 @@ export function clearEmailBrandCache() { brandCache = null; }
 async function emailBrand() {
   if (brandCache && Date.now() - brandCache.at < 10_000) return brandCache;
   const [branding, themeRow] = await Promise.all([getBranding(), one("SELECT value FROM app_settings WHERE key = 'theme'")]);
-  // A logo saved before emails were branded has no email copy yet: make it once.
-  if (branding.logo && !branding.emailLogo) {
-    branding.emailLogo = await makeEmailLogo(branding.logo);
-    if (branding.emailLogo) {
-      await run("UPDATE app_settings SET value = ? WHERE key = 'branding'", [JSON.stringify(branding)]).catch(() => {});
+  // A logo saved earlier may have no email copy yet, or no web address for it
+  // (or one from before Vercel Blob was set up): make and publish it once.
+  if (branding.logo) {
+    let changed = false;
+    if (!branding.emailLogo) { branding.emailLogo = await makeEmailLogo(branding.logo); changed = !!branding.emailLogo; }
+    if (branding.emailLogo && !isCurrentLogoUrl(branding.emailLogoUrl, branding.emailLogo)) {
+      const url = await publishEmailLogo(branding.emailLogo);
+      if (url && url !== branding.emailLogoUrl) { branding.emailLogoUrl = url; changed = true; }
     }
+    if (changed) await run("UPDATE app_settings SET value = ? WHERE key = 'branding'", [JSON.stringify(branding)]).catch(() => {});
   }
   brandCache = { at: Date.now(), branding, themeId: themeRow?.value || 'light' };
   return brandCache;
@@ -53,14 +58,15 @@ async function emailBrand() {
  *   role     the recipient's role, to pick who they should contact instead of replying
  *   contact  overrides that sentence
  *   brand    optional { appName, logo, emailLogo, themeId } (Branding page preview)
+ *   inline   true: images as data: URLs, for viewing in a browser (previews)
  */
-export async function buildEmail({ text, action = null, role = null, contact = null, brand = null }) {
+export async function buildEmail({ text, action = null, role = null, contact = null, brand = null, inline = false }) {
   const b = brand ? { branding: brand, themeId: brand.themeId } : await emailBrand();
   const appUrl = config.appUrls[0] || '';
   const act = action ? { label: action.label.replace('{app}', b.branding.appName), url: action.url.startsWith('/') ? `${appUrl}${action.url}` : action.url } : null;
   return {
     appName: b.branding.appName,
-    ...renderEmail({ appName: b.branding.appName, themeId: b.themeId, branding: b.branding, appUrl, text, action: act, contact: contact || contactFor(role) }),
+    ...renderEmail({ appName: b.branding.appName, themeId: b.themeId, branding: b.branding, appUrl, text, action: act, contact: contact || contactFor(role), inline }),
   };
 }
 
@@ -75,13 +81,14 @@ export async function sendEmail({ to, subject, text, action, role, contact }) {
       try {
         mkdirSync(process.env.EMAIL_PREVIEW_DIR, { recursive: true });
         const file = `${new Date().toISOString().replace(/[:.]/g, '-')}-${String(to).replace(/[^a-z0-9@.]/gi, '_')}.html`;
-        writeFileSync(path.join(process.env.EMAIL_PREVIEW_DIR, file), inlineImages(mail.html, mail.attachments).replace('<title>', `<title>${subject.replace(/</g, '&lt;')} · `));
+        const preview = await buildEmail({ text, action, role, contact, inline: true });
+        writeFileSync(path.join(process.env.EMAIL_PREVIEW_DIR, file), preview.html.replace('<title>', `<title>${subject.replace(/</g, '&lt;')} · `));
       } catch (err) { console.error('email preview failed:', err.message); }
     }
     return;
   }
   await getTransport().sendMail({
     from: { name: mail.appName, address: fromAddress() },
-    to, subject, text: mail.text, html: mail.html, attachments: mail.attachments,
+    to, subject, text: mail.text, html: mail.html,
   });
 }

@@ -2,12 +2,14 @@
 // name and logo (from Branding), the message, an optional button, and a footer
 // saying the inbox isn't monitored and who to contact instead.
 //
-// Colors follow the sitewide theme (Branding & Theme). Images go out as inline
-// attachments (cid:), because Gmail and Outlook block images embedded as data:
-// URLs and don't show SVG at all:
-//   - an uploaded logo: the PNG copy made when it was saved (branding.emailLogo),
-//     or the logo itself if it's already a PNG;
-//   - otherwise the built-in hexagon mark, pre-rendered per theme in assets/email.
+// Colors follow the sitewide theme (Branding & Theme). Images are linked by
+// web address (<img src="https://...">): Brevo doesn't deliver images attached
+// inside the email (cid:), and Gmail and Outlook block data: URLs.
+//   - an uploaded logo: the PNG copy made when it was saved, published to Vercel
+//     Blob (or served by the API) - branding.emailLogoUrl (utils/emailLogoHost.js);
+//   - otherwise the built-in hexagon mark, pre-rendered per theme and served by
+//     the frontend from /email/ (frontend/public/email, copies in assets/email).
+// The Branding page preview and console-mode files inline the images instead.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -47,28 +49,30 @@ export function pngSize(buf) {
 }
 const dataUrlBuffer = (u) => { const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(u || ''); return m ? Buffer.from(m[1], 'base64') : null; };
 
-// The images for this branding + theme: { header, footer } each { cid, content, width, height, onTile }.
+// The images for this branding + theme: { header, footer }, each
+// { content (PNG Buffer), url (hosted copy or null), width, height, onTile }.
 const markCache = new Map();
 function builtInMark(kind, themeId) {
   const key = `${kind}-${themeId}`;
   if (!markCache.has(key)) markCache.set(key, readFileSync(path.join(ASSETS, `mark-${kind}-${themeId}.png`)));
   return markCache.get(key);
 }
-export function emailImages(branding, themeId) {
+export function emailImages(branding, themeId, { assetBase = '', inline = false } = {}) {
   const logo = dataUrlBuffer(branding.emailLogo) || dataUrlBuffer(branding.logo); // a PNG logo works as is
-  if (branding.logo && logo) {
+  // Sent emails need the logo at a web address; without one, use the built-in mark.
+  if (branding.logo && logo && (inline || branding.emailLogoUrl)) {
     const size = pngSize(logo) || { width: 1, height: 1 };
     const ratio = size.width / size.height;
     // h px tall, at most 4× as wide; a wider logo gets shorter instead of squashed.
     const fit = (h) => (ratio > 4 ? { width: h * 4, height: Math.max(1, Math.round((h * 4) / ratio)) } : { height: h, width: Math.max(1, Math.round(ratio * h)) });
     return {
-      header: { cid: 'brand-logo@email', content: logo, ...fit(30), onTile: true },
-      footer: { cid: 'brand-logo@email', content: logo, ...fit(26) },
+      header: { content: logo, url: branding.emailLogoUrl || null, ...fit(30), onTile: true },
+      footer: { content: logo, url: branding.emailLogoUrl || null, ...fit(26) },
     };
   }
   return {
-    header: { cid: 'brand-mark-header@email', content: builtInMark('header', themeId), width: 30, height: 30 },
-    footer: { cid: 'brand-mark-footer@email', content: builtInMark('footer', themeId), width: 24, height: 24 },
+    header: { content: builtInMark('header', themeId), url: `${assetBase}/email/mark-header-${themeId}.png`, width: 30, height: 30 },
+    footer: { content: builtInMark('footer', themeId), url: `${assetBase}/email/mark-footer-${themeId}.png`, width: 24, height: 24 },
   };
 }
 
@@ -117,16 +121,18 @@ export function contactFor(role) {
  *   text     the message (greeting included)
  *   action   optional { label, url } shown as a button
  *   contact  the "who to contact" sentence in the footer
- * @returns {{ html, text, attachments }}
+ *   inline   true: images as data: URLs (previews); false: linked by web address (sent emails)
+ * @returns {{ html, text }}
  */
-export function renderEmail({ appName, themeId, branding = {}, appUrl = '', text, action = null, contact }) {
+export function renderEmail({ appName, themeId, branding = {}, appUrl = '', text, action = null, contact, inline = false }) {
   const c = themeColors(themeId);
-  const img = emailImages(branding, c.id);
+  const img = emailImages(branding, c.id, { assetBase: appUrl.replace(/\/$/, ''), inline });
+  const src = (i) => (inline ? `data:image/png;base64,${i.content.toString('base64')}` : esc(i.url));
   const name = esc(appName);
   const host = appUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
   const notice = `This is an automated message from ${appName} and this inbox is not monitored — please don’t reply. ${contact}`;
 
-  const headerImg = `<img src="cid:${img.header.cid}" width="${img.header.width}" height="${img.header.height}" alt="" style="display:block;border:0;">`;
+  const headerImg = `<img src="${src(img.header)}" width="${img.header.width}" height="${img.header.height}" alt="" style="display:block;border:0;">`;
   const headerLogo = img.header.onTile
     ? `<td style="padding-right:12px;" valign="middle"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#FFFFFF;border-radius:6px;padding:4px 6px;">${headerImg}</td></tr></table></td>`
     : `<td style="padding-right:10px;" valign="middle">${headerImg}</td>`;
@@ -147,7 +153,7 @@ ${bodyHtml(text, c)}
 ${button}
 </td></tr>
 <tr><td align="center" style="background:#F6F8FA;border-top:1px solid #E3E8ED;padding:18px 24px;font-size:12.5px;line-height:1.5;color:#5B7285;">
-<img src="cid:${img.footer.cid}" width="${img.footer.width}" height="${img.footer.height}" alt="" style="display:block;border:0;margin:0 auto 8px;">
+<img src="${src(img.footer)}" width="${img.footer.width}" height="${img.footer.height}" alt="" style="display:block;border:0;margin:0 auto 8px;">
 <p style="margin:0 0 6px;">${esc(notice)}</p>
 <p style="margin:0;font-size:11px;color:#8A99A6;">${host ? `${esc(host)} · ` : ''}You’re receiving this because you have a ${name} account.</p>
 </td></tr>
@@ -156,14 +162,5 @@ ${button}
 </body></html>`;
 
   const plain = `${String(text).trim()}${action ? `\n\n${action.label}: ${action.url}` : ''}\n\n--\n${notice}`;
-  const seen = new Set();
-  const attachments = [img.header, img.footer].filter((i) => !seen.has(i.cid) && seen.add(i.cid))
-    .map((i) => ({ filename: i.cid.startsWith('brand-logo') ? 'logo.png' : 'mark.png', content: i.content, cid: i.cid, contentType: 'image/png', contentDisposition: 'inline' }));
-  return { html, text: plain, attachments };
-}
-
-// For the Branding page preview and console mode: the same HTML with the
-// images inlined, so a browser can show it.
-export function inlineImages(html, attachments) {
-  return attachments.reduce((h, a) => h.split(`cid:${a.cid}`).join(`data:image/png;base64,${a.content.toString('base64')}`), html);
+  return { html, text: plain };
 }

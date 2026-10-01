@@ -70,8 +70,12 @@ async function sendTest() {
   testResult.value = null;
   try {
     const { data } = await api.post('/settings/email-test');
+    const logoNote = {
+      api: ' Your logo is served by the app’s server, so if the server is asleep when the email is opened it may not show. Set up Vercel Blob for a logo that always shows (EMAIL-SETUP.md).',
+      none: ' Your logo can’t be shown in emails yet, so they use the built-in mark. Set up Vercel Blob (EMAIL-SETUP.md).',
+    }[data.logo] || '';
     testResult.value = data.provider === 'brevo'
-      ? { ok: true, text: `Sent to ${data.sentTo}. It should arrive within a minute; check spam if it doesn’t.` }
+      ? { ok: true, text: `Sent to ${data.sentTo}. It should arrive within a minute; check spam if it doesn’t.${logoNote}` }
       : { ok: false, text: `Email is in console mode, so nothing was sent: the email was written to the server log. Set up Brevo to send for real (EMAIL-SETUP.md).` };
   } catch (err) { testResult.value = { ok: false, text: errorMessage(err) }; }
   finally { testing.value = false; }

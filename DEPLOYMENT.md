@@ -148,6 +148,7 @@ Under **Environment** add:
 | `BREVO_SMTP_USER` | only if `EMAIL_PROVIDER=brevo` |
 | `BREVO_SMTP_PASS` | only if `EMAIL_PROVIDER=brevo` |
 | `BREVO_SMTP_PORT` | optional; defaults to `2525` (Render's free plan blocks port 587) |
+| `BLOB_READ_WRITE_TOKEN` | optional; a **Public** Vercel Blob store's token, so emails can show the uploaded logo (EMAIL-SETUP.md, Step 6) |
 
 Don't set `PORT`; Render provides it. The server refuses to start in production if `JWT_SECRET` is still the development placeholder, which protects you from a common mistake.
 
