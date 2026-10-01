@@ -30,7 +30,8 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^10.0.10"
+    "nodemailer": "^10.0.10",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "exceljs": "^4.4.0"

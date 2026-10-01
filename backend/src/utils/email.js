@@ -2,8 +2,9 @@ import nodemailer from 'nodemailer';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
-import { one } from '../db/client.js';
+import { one, run } from '../db/client.js';
 import { getBranding } from './branding.js';
+import { makeEmailLogo } from './emailLogo.js';
 import { renderEmail, contactFor, inlineImages } from './emailTemplate.js';
 
 let transport = null;
@@ -31,6 +32,13 @@ export function clearEmailBrandCache() { brandCache = null; }
 async function emailBrand() {
   if (brandCache && Date.now() - brandCache.at < 10_000) return brandCache;
   const [branding, themeRow] = await Promise.all([getBranding(), one("SELECT value FROM app_settings WHERE key = 'theme'")]);
+  // A logo saved before emails were branded has no email copy yet: make it once.
+  if (branding.logo && !branding.emailLogo) {
+    branding.emailLogo = await makeEmailLogo(branding.logo);
+    if (branding.emailLogo) {
+      await run("UPDATE app_settings SET value = ? WHERE key = 'branding'", [JSON.stringify(branding)]).catch(() => {});
+    }
+  }
   brandCache = { at: Date.now(), branding, themeId: themeRow?.value || 'light' };
   return brandCache;
 }

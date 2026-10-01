@@ -6,6 +6,7 @@ import { ah, badRequest } from '../utils/http.js';
 import { getBranding, validateBranding, publicBranding, DEFAULT_BRANDING } from '../utils/branding.js';
 import { buildEmail, sendEmail, clearEmailBrandCache } from '../utils/email.js';
 import { inlineImages } from '../utils/emailTemplate.js';
+import { makeEmailLogo, cachedEmailLogo } from '../utils/emailLogo.js';
 import { logActivity } from '../utils/activityLog.js';
 
 const router = Router();
@@ -38,6 +39,8 @@ router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_
   let branding;
   try { branding = validateBranding(req.body || {}); } catch (e) { throw badRequest(e.message); }
   const before = await getBranding();
+  // The PNG copy for emails (reused if the logo didn't change).
+  branding.emailLogo = !branding.logo ? null : branding.logo === before.logo && before.emailLogo ? before.emailLogo : await makeEmailLogo(branding.logo);
   await run("INSERT INTO app_settings (key, value) VALUES ('branding', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [JSON.stringify(branding)]);
   const changes = [];
   if (before.appName !== branding.appName) changes.push(`name “${before.appName}” → “${branding.appName}”`);
@@ -60,10 +63,11 @@ Now: Sun Jan 11 · 1:30 PM · Ridgeway Community Center, Court 2
 The name, logo, and colors come from Branding & Theme.`;
 const SAMPLE_ACTION = { label: 'Open {app}', url: '/' };
 
-// POST /api/settings/email-preview { appName, logo, emailLogo }  (unsaved form values; the theme is the current one)
+// POST /api/settings/email-preview { appName, logo }  (unsaved form values; the theme is the current one)
 router.post('/email-preview', requireAuth, requirePasswordCurrent, requireRole('super_admin'), ah(async (req, res) => {
   let b;
-  try { b = validateBranding({ appName: req.body?.appName || DEFAULT_BRANDING.appName, logo: req.body?.logo, emailLogo: req.body?.emailLogo }); } catch (e) { throw badRequest(e.message); }
+  try { b = validateBranding({ appName: req.body?.appName || DEFAULT_BRANDING.appName, logo: req.body?.logo }); } catch (e) { throw badRequest(e.message); }
+  b.emailLogo = await cachedEmailLogo(b.logo);
   const themeRow = await one("SELECT value FROM app_settings WHERE key = 'theme'");
   const mail = await buildEmail({ text: SAMPLE_TEXT(req.user.firstName), action: SAMPLE_ACTION, brand: { ...b, themeId: themeRow?.value || 'light' } });
   res.json({ html: inlineImages(mail.html, mail.attachments) });

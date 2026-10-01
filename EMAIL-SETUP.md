@@ -47,12 +47,13 @@ This step proves to Gmail and Microsoft that Brevo may send mail for your domain
 ## Step 4: Create an SMTP key
 
 1. **Settings** → **SMTP & API** → **SMTP** tab.
-2. Note the two values at the top of the page. You need them in Step 5:
-   - **SMTP server:** `smtp-relay.brevo.com`, port `587` (the app already uses these).
-   - **Login:** an address such as `8a1b2c001@smtp-brevo.com`. This is **not** your Brevo sign-in email.
-3. Click **Generate a new SMTP key**. Brevo may ask for a verification code sent to your email.
+2. You may see a notice that *"Unauthorized IP addresses are not blocked for your SMTP keys"* with an **Activate** button. **Leave it off.** Render doesn't send from a fixed IP address, so turning on blocking would stop the app's emails or set off security alerts. It's optional; Brevo doesn't require it.
+3. Click **Generate a new SMTP key** (top right). Brevo may ask for a verification code sent to your email.
 4. Name it `Winter League (Render)`, choose **Standard**, and pick an expiry (or none).
 5. **Copy the key now.** Brevo shows it only once. If you lose it, generate a new one and delete the old one.
+6. Find the **SMTP login**. Once a key exists, the SMTP tab lists the connection details: **SMTP server** `smtp-relay.brevo.com`, **Port** `587` (the app already uses both), and **Login**, an address such as `8a1b2c001@smtp-brevo.com`. On some (usually older) accounts the login is the email you sign in to Brevo with. Copy whatever the page shows as the login; you need it in Step 5.
+
+   Can't see a login after creating the key? Refresh the page. Still nothing: the login is shown in Brevo's SMTP connection details. Search Brevo's help for "SMTP login" or ask Brevo support, since the app can't send without it.
 
 > **Keep it working:** Brevo turns off an SMTP key after **90 days without a successful send**. In the off-season, if emails stop after a long quiet spell, generate a new key and update `BREVO_SMTP_PASS` (Step 5).
 
@@ -95,7 +96,7 @@ Then try a real one:
 
 Every email has the **app name and logo** across the top in the **theme's color**, the message with any details in a box, a button to the right page of the app, and a footer saying the inbox isn't monitored and who to contact instead (coaches: their program director; referees: the assignor; directors and the assignor: the league administrator). All of it comes from **Branding & Theme**, where the **Emails** section shows a live sample. Each email also includes a plain-text version for email apps that don't show designs.
 
-Logos: email apps don't show SVG, so the app saves a small PNG copy of the logo when you click **Save branding**. If you uploaded your logo before this was added, save the branding page once.
+Logos: email apps don't show SVG, so the server makes a small PNG copy of the logo for emails when you click **Save branding** (or, for a logo saved earlier, with the next email).
 
 ## The demo environment
 
@@ -106,11 +107,11 @@ The demo site loads people with placeholder emails (e.g. `@example.com`), so it'
 | What you see | Likely cause | Fix |
 |---|---|---|
 | No email; Render log shows `📧 [email:console]` | `EMAIL_PROVIDER` is still `console`, or the service wasn't redeployed | Set it to `brevo` and redeploy |
-| Render log shows `Invalid login` / `535 Authentication failed` | Wrong `BREVO_SMTP_USER` or key; key expired or deactivated | Use the **Login** from SMTP & API (not your sign-in email); generate a new key |
+| Render log shows `Invalid login` / `535 Authentication failed` | Wrong `BREVO_SMTP_USER` or key; key expired or deactivated | Use the **Login** exactly as the SMTP tab shows it; generate a new key |
 | Email arrives from `…@brevosend.com` | The domain isn't authenticated | Finish Step 2 and wait for **Authenticated** |
 | Email goes to spam, or Outlook/Hotmail rejects it | DMARC or DKIM record missing or mistyped | Re-check the records in Step 2; Brevo shows which one fails |
 | `Sender not valid` error | The address in `EMAIL_FROM` doesn't match a sender in Step 3 | Make the address in `EMAIL_FROM` match exactly |
-| Logo missing in the email | Images are blocked by the email app, or an old logo has no email copy | Click "show images" in the email app; save Branding & Theme once |
+| Logo missing in the email | Images are blocked by the email app, or the logo couldn't be converted | Click "show images" in the email app; if the Branding page's sample shows the hexagon instead of your logo, re-export the logo as a PNG and upload that |
 | Some emails missing on a busy day | Free plan daily limit (about 300) | Check Brevo's usage; upgrade if the league regularly exceeds it |
 | Reset link points to the wrong site | `APP_URL` first entry | Put the main site first in `APP_URL` |
 

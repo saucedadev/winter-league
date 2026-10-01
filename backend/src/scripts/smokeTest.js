@@ -139,16 +139,20 @@ check('back to defaults', (await call('PUT', '/settings/branding', { token: admi
 console.log('\nBranded emails');
 {
   check('browsers never get the email copy of the logo', !('emailLogo' in pubBrand.data.branding) && pubBrand.data.branding.hasEmailLogo === false);
-  check('the email copy of the logo must be a PNG', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Test', logo: tinyPng, emailLogo: 'data:image/jpeg;base64,AAAA' } })).status === 400);
-  const withCopy = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: tinyPng, emailLogo: tinyPng } });
-  check('the email copy is saved with the logo', withCopy.status === 200 && withCopy.data.branding.hasEmailLogo === true && !('emailLogo' in withCopy.data.branding));
-  const noLogo = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: null, emailLogo: tinyPng } });
+  const withCopy = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: tinyPng } });
+  check('the server makes the email copy when the logo is saved', withCopy.status === 200 && withCopy.data.branding.hasEmailLogo === true && !('emailLogo' in withCopy.data.branding));
+  const svgLogo = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 20"><rect width="60" height="20" fill="#E07A1F"/></svg>').toString('base64')}`;
+  const svgSaved = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: svgLogo } });
+  check('an SVG logo gets a PNG copy for emails', svgSaved.status === 200 && svgSaved.data.branding.hasEmailLogo === true);
+  const svgPrev = (await call('POST', '/settings/email-preview', { token: admin, body: { appName: 'Coastal League', logo: svgLogo } })).data.html || '';
+  check('the email shows the SVG logo as a PNG', svgPrev.includes('data:image/png;base64,') && !svgPrev.includes('svg+xml'));
+  const noLogo = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: null } });
   check('no logo, no email copy', noLogo.data.branding.hasEmailLogo === false);
   check('only System Admins preview emails', (await call('POST', '/settings/email-preview', { token: pd, body: { appName: 'X' } })).status === 403);
-  const prev = await call('POST', '/settings/email-preview', { token: admin, body: { appName: 'Coastal <League>', logo: tinyPng, emailLogo: tinyPng } });
+  const prev = await call('POST', '/settings/email-preview', { token: admin, body: { appName: 'Coastal <League>', logo: tinyPng } });
   const h = prev.data.html || '';
   check('preview uses the unsaved name (escaped)', prev.status === 200 && h.includes('Coastal &lt;League&gt;') && !h.includes('<League>'));
-  check('preview shows the logo copy inline', h.includes(tinyPng.split(',')[1]) && !h.includes('cid:'));
+  check('preview shows the logo inline', /data:image\/png;base64,[A-Za-z0-9+/=]{20,}/.test(h) && !h.includes('cid:'));
   check('preview says the inbox isn’t monitored', h.includes('this inbox is not monitored'));
   check('preview uses the theme color', h.includes('#2F6A87'));
   check('without a logo the built-in mark is used', ((await call('POST', '/settings/email-preview', { token: admin, body: { appName: 'Coastal League' } })).data.html || '').includes('data:image/png;base64,iVBOR'));

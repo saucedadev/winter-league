@@ -4,12 +4,9 @@ import { one } from '../db/client.js';
 // deployment + database, so each sets its own name and logo).
 //   appName: shown in the header, sign-in page, browser tab, and emails.
 //   logo:    optional data: URL (PNG, JPEG, WebP, or SVG). null = built-in mark.
-//   emailLogo: a small PNG copy of the logo, made in the browser when the logo is
-//            saved, for emails (email apps don't show SVG, or images embedded as
-//            data: URLs, so emails attach this PNG instead). Not sent to browsers.
+//   emailLogo: a small PNG copy of the logo for emails, made by the server when
+//            the logo is saved (utils/emailLogo.js). Not sent to browsers.
 export const DEFAULT_BRANDING = Object.freeze({ appName: 'Winter League', logo: null, emailLogo: null });
-export const EMAIL_LOGO_MAX_BYTES = 150 * 1024;
-const EMAIL_LOGO_RE = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/;
 
 export const LOGO_MAX_BYTES = 300 * 1024;
 const LOGO_RE = /^data:image\/(png|jpeg|webp|svg\+xml);base64,([A-Za-z0-9+/=]+)$/;
@@ -34,14 +31,5 @@ export function validateBranding(input = {}) {
     if (bytes > LOGO_MAX_BYTES) throw new Error(`The logo must be under ${LOGO_MAX_BYTES / 1024} KB. Try exporting it smaller.`);
     logo = input.logo;
   }
-  // Only kept with a logo. If the browser couldn't make one, emails use the
-  // logo itself when it's a PNG, or the built-in mark.
-  let emailLogo = null;
-  if (logo && input.emailLogo) {
-    const m = EMAIL_LOGO_RE.exec(String(input.emailLogo));
-    if (!m) throw new Error('The email copy of the logo must be a PNG image.');
-    if (Math.floor((m[1].length * 3) / 4) > EMAIL_LOGO_MAX_BYTES) throw new Error('The email copy of the logo is too large.');
-    emailLogo = input.emailLogo;
-  }
-  return { appName, logo, emailLogo };
+  return { appName, logo };
 }

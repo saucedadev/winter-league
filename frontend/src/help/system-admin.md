@@ -71,7 +71,7 @@ The next screen shows the username and temporary password **once**. The password
 
 **Emails** use the same branding. Every email the app sends has the app name across the top (it's also the sender's name in the inbox), your logo beside it, buttons in the theme's color, and a footer saying the inbox isn't monitored and who to contact instead: coaches are pointed to their program director, referees to the assignor, and directors and the assignor to you. The **Emails** section at the bottom of the page shows a sample that updates as you edit, before you save.
 
-- **Logo in emails:** email apps don't show SVG logos, so when you save, the app also stores a small PNG copy for emails. A logo uploaded before this existed shows a reminder: click **Save branding** once to make the copy. Until you upload a logo, emails use the built-in hexagon mark in the theme's colors.
+- **Logo in emails:** email apps don't show SVG logos, so when you save, the server also makes a small PNG copy of your logo for emails. Nothing else to do. Until you upload a logo, emails use the built-in hexagon mark in the theme's colors.
 - **Send me a test email** sends the sample to your own address, so you can check how it looks in your inbox and that sending works. If the server isn't set up to send yet, it says so (the email is only written to the server log); see EMAIL-SETUP.md for setting up Brevo.
 
 ![The Emails section with the sample email](/help/img/sa-branding-emails.png)

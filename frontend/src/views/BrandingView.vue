@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { api, errorMessage } from '../api/client';
 import { useThemeStore } from '../stores/theme';
-import { makeEmailLogo } from '../utils/emailLogo';
 import { useBrandingStore, DEFAULT_APP_NAME } from '../stores/branding';
 import { useToast } from '../stores/toast';
 import PageHeader from '../components/PageHeader.vue';
@@ -19,9 +18,7 @@ const saving = ref(false);
 const error = ref('');
 const fileInput = ref(null);
 
-// A logo saved before emails were branded has no PNG copy yet: saving once makes it.
-const needsEmailCopy = computed(() => !!branding.logo && !branding.hasEmailLogo && form.value.logo === branding.logo);
-const dirty = computed(() => form.value.appName.trim() !== branding.appName || (form.value.logo || null) !== (branding.logo || null) || needsEmailCopy.value);
+const dirty = computed(() => form.value.appName.trim() !== branding.appName || (form.value.logo || null) !== (branding.logo || null));
 const isDefault = computed(() => form.value.appName.trim() === DEFAULT_APP_NAME && !form.value.logo);
 
 function pickFile(e) {
@@ -41,21 +38,15 @@ async function save() {
   error.value = '';
   saving.value = true;
   try {
-    const logo = form.value.logo || null;
-    await branding.save({ appName: form.value.appName, logo, emailLogo: await emailLogoFor(logo) });
+    await branding.save({ appName: form.value.appName, logo: form.value.logo || null });
     form.value = { appName: branding.appName, logo: branding.logo };
     toast.success('Branding saved. Everyone sees it the next time a page loads.');
   } catch (err) { error.value = errorMessage(err); }
   finally { saving.value = false; }
 }
-// ---- Emails: the PNG copy of the logo, a live preview, and a test send ----
+// ---- Emails: a live preview and a test send ----
+// (The server makes the PNG copy of the logo that emails use.)
 const theme = useThemeStore();
-const emailLogoCache = new Map();
-async function emailLogoFor(logo) {
-  if (!logo) return null;
-  if (!emailLogoCache.has(logo)) emailLogoCache.set(logo, await makeEmailLogo(logo));
-  return emailLogoCache.get(logo);
-}
 const previewHtml = ref('');
 const previewError = ref('');
 let previewTimer = null;
@@ -65,8 +56,7 @@ async function loadPreview() {
   const appName = form.value.appName.trim();
   if (appName.length < 2) return;
   try {
-    const logo = form.value.logo || null;
-    const { data } = await api.post('/settings/email-preview', { appName, logo, emailLogo: await emailLogoFor(logo) });
+    const { data } = await api.post('/settings/email-preview', { appName, logo: form.value.logo || null });
     if (seq === previewSeq) { previewHtml.value = data.html; previewError.value = ''; }
   } catch (err) { if (seq === previewSeq) previewError.value = errorMessage(err); }
 }
@@ -115,7 +105,6 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
           <input ref="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" class="sr-only" aria-label="Upload logo" @change="pickFile" />
         </div>
         <p class="text-xs text-text-muted mt-2">PNG, JPEG, WebP, or SVG, under {{ MAX_KB }} KB. A transparent background works best. It’s shown 28 px tall in the header and 40 px on the sign-in page, and it becomes the browser-tab icon. Emails get a PNG copy of it, made when you save. Until you upload one, the built-in hexagon mark is used.</p>
-        <p v-if="needsEmailCopy" class="text-xs mt-1 font-medium">Save branding once so emails can show this logo. Until then they use the built-in mark{{ branding.logo?.startsWith('data:image/png') ? ' or your PNG as is' : '' }}.</p>
       </div>
 
       <div>
