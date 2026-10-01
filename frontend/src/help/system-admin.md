@@ -137,6 +137,7 @@ Read the summary cards (games placed, home/away balance, longest trip, season sp
 - **By date:** every game. **Move** picks a new time from a list that already passes every rule; **Flip** swaps home and away; **Unplace** takes a game off the calendar but keeps the pairing; **Remove** deletes the pairing from the draft.
 - **Unplaced:** pairings the matchmaker couldn't fit. Use **Place game** to put them somewhere by hand, or **Remove** to drop one.
 - **Team balance:** each team's games and home/away count. Bold rows are more than one game off 50/50 or short of the target.
+- **Download CSV** saves the games you're looking at (the draft, or the published schedule, for all divisions or the one chosen) as a spreadsheet file, including unplaced games and each game's travel distance. The **Schedule** page has the same button for the published schedule, with its filters.
 
 ![Moving a game](/help/img/sa-builder-move.png)
 

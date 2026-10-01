@@ -5,6 +5,8 @@ import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../stores/toast';
 import { longDate, todayISO, timestamp, leagueTimeZoneLabel } from '../utils/format';
+import { downloadSchedule, slug } from '../utils/scheduleCsv';
+import { useBrandingStore } from '../stores/branding';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import GameRow from '../components/GameRow.vue';
@@ -77,6 +79,14 @@ const filtered = computed(() => games.value.filter((g) => (showPast.value || g.d
   && (!divisionId.value || g.divisionId === divisionId.value)
   && (!programId.value || [g.homeProgramId, g.awayProgramId].includes(programId.value))
   && (!teamId.value || [g.homeTeamId, g.awayTeamId].includes(teamId.value))));
+// Download the games shown (with the current filters) as a CSV file.
+const branding = useBrandingStore();
+function downloadCsv() {
+  const parts = [mine.value && 'my-games', divisionId.value && divisions.value.find(([id]) => id === divisionId.value)?.[1],
+    programId.value && programs.value.find(([id]) => id === programId.value)?.[1], teamId.value && teams.value.find(([id]) => id === teamId.value)?.[1]]
+    .filter(Boolean).map(slug);
+  downloadSchedule(`${slug(branding.appName)}-schedule${parts.length ? `-${parts.join('-')}` : ''}-${today}.csv`, filtered.value);
+}
 const pastCount = computed(() => games.value.filter((g) => g.date < today).length);
 const byDate = computed(() => {
   const m = new Map();
@@ -98,6 +108,7 @@ function onGameRequested() { requestingGame.value = false; }
       :subtitle="data?.published ? `${data.season.name} · published ${timestamp(data.publishedAt)} · All times ${leagueTimeZoneLabel()}` : 'League games for the active season'">
       <RouterLink v-if="auth.isSuperAdmin" to="/schedule/builder" class="btn btn-secondary">Open schedule builder</RouterLink>
       <button v-if="hasOwn && data?.published" class="btn btn-secondary" @click="requestingGame = true">Request a game</button>
+      <button v-if="data?.published" class="btn btn-secondary" :disabled="!filtered.length" :title="`Download the ${filtered.length} game${filtered.length === 1 ? '' : 's'} shown, with your filters, as a spreadsheet file`" @click="downloadCsv">Download CSV</button>
     </PageHeader>
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>

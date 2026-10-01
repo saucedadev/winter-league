@@ -4,6 +4,9 @@ import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../stores/toast';
 import { longDate, timestamp } from '../utils/format';
+import { downloadSchedule, slug } from '../utils/scheduleCsv';
+import { useBrandingStore } from '../stores/branding';
+import { todayISO } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import Modal from '../components/Modal.vue';
@@ -23,6 +26,11 @@ async function load() {
 }
 onMounted(load);
 
+// Download the program's draft games as a CSV file.
+const branding = useBrandingStore();
+function downloadCsv() {
+  downloadSchedule(`${slug(branding.appName)}-draft-schedule-${slug(auth.user.programName || 'my-program')}-${todayISO()}.csv`, data.value.games, { withTravel: true });
+}
 const byDate = computed(() => {
   const m = new Map();
   for (const g of data.value?.games || []) { const k = g.date || 'unplaced'; if (!m.has(k)) m.set(k, []); m.get(k).push(g); }
@@ -99,7 +107,10 @@ async function flag() {
         </ul>
       </section>
 
-      <p class="text-xs text-text-muted mb-2">{{ data.games.length }} game{{ data.games.length === 1 ? '' : 's' }} involving your program</p>
+      <div class="flex flex-wrap items-center gap-2 mb-2">
+        <p class="text-xs text-text-muted">{{ data.games.length }} game{{ data.games.length === 1 ? '' : 's' }} involving your program</p>
+        <button class="btn btn-secondary ml-auto" :disabled="!data.games.length" title="Download your program’s draft games as a spreadsheet file" @click="downloadCsv">Download CSV</button>
+      </div>
       <section v-for="[date, list] in byDate" :key="date" class="mb-4">
         <h2 class="text-sm font-semibold mb-1.5">{{ date === 'unplaced' ? 'Not placed yet' : longDate(date) }}</h2>
         <ul class="card card-blocky divide-y divide-border">

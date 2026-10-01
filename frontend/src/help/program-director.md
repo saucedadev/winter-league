@@ -112,6 +112,8 @@ If you add a blackout after the schedule is published and it covers games alread
 
 Each game shows the referees assigned to it, or **Referees: not assigned yet** if the assignor hasn't filled them.
 
+**Download CSV** saves the games you're looking at, with your filters, as a spreadsheet file you can open in Excel, Google Sheets, or Numbers: date, day, times, division, both teams and programs, venue, court and address, status, scores, referees, and notes (e.g. *Cancelled: gym closed*).
+
 **Travel.** The league has one travel cap (30 miles by default) for how far a team travels to an away game. If your program needs a shorter one, ask the league to set a **program travel cap** for you. Your teams then never travel further than that, and opponents beyond it come to your gyms instead. That means more home games for your teams, so make sure you have enough game slots, and possibly fewer games if there isn't enough gym time.
 
 ## Reviewing the draft schedule
@@ -126,6 +128,8 @@ Before the league publishes a schedule, you're asked to check your program's gam
 - **Flag** a game that doesn't work, with a note, e.g. *"11/5 clashes with our school event."* The league is emailed and either changes the game or replies. Either way you're emailed, and the reply shows under **Your flags**. When your games work, sign off. Signing off withdraws any flags still open.
 
 ![Draft review](/help/img/pd-draft-review.png)
+
+**Download CSV** (above the list of games) saves your program's draft games as a spreadsheet file, e.g. to check them against school calendars or share with your coaches before you sign off. It's a snapshot: if the league changes the draft, download it again.
 
 Please respond by the deadline shown at the top. If the league changes one of your games after you've signed off, your status goes back to **Waiting**, you're emailed with what changed, and the page shows it, so please review again. Changes to other programs' games don't affect your sign-off.
 

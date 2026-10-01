@@ -10,6 +10,8 @@ Coaches see their teams' schedule and ask for a game to be moved when something 
 
 ![A coach's schedule on a phone](/help/img/coach-schedule.png)
 
+**Download CSV** saves the games you're looking at, with your filters, as a spreadsheet file you can open in Excel, Google Sheets, or Numbers: date, day, times, division, both teams and programs, venue, court and address, status, scores, referees, and notes (e.g. *Cancelled: gym closed*). For example, choose **My teams** and one team to save just that team's games.
+
 **Change requested** on a game means someone has asked to change it and it's waiting for approval. Each game also lists the referees assigned to it, or **Referees: not assigned yet**.
 
 ## Entering the final score

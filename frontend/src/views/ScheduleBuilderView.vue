@@ -4,6 +4,9 @@ import { RouterLink } from 'vue-router';
 import { api, errorMessage } from '../api/client';
 import { useToast } from '../stores/toast';
 import { dateRange, longDate, timestamp } from '../utils/format';
+import { downloadSchedule, slug } from '../utils/scheduleCsv';
+import { useBrandingStore } from '../stores/branding';
+import { todayISO } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import Modal from '../components/Modal.vue';
@@ -204,6 +207,12 @@ const LIMIT_STEP = 150;
 const limit = ref(LIMIT_STEP);
 watch([tab, divisionFilter, view], () => { limit.value = LIMIT_STEP; });
 const scoped = computed(() => games.value.filter((g) => !divisionFilter.value || g.divisionId === divisionFilter.value));
+// Download the draft (or published) games, for the chosen division, as a CSV file.
+const branding = useBrandingStore();
+function downloadCsv() {
+  const div = divisionFilter.value ? `-${slug(divisions.value.find(([id]) => id === divisionFilter.value)?.[1])}` : '';
+  downloadSchedule(`${slug(branding.appName)}-${view.value === 'draft' ? 'draft' : 'published'}-schedule${div}-${todayISO()}.csv`, scoped.value, { withTravel: true });
+}
 const unplacedList = computed(() => scoped.value.filter((g) => g.status === 'unscheduled'));
 const placedList = computed(() => scoped.value.filter((g) => g.status !== 'unscheduled'));
 const byDate = computed(() => {
@@ -471,7 +480,8 @@ const publishMessage = computed(() => {
             <option value="">All divisions</option>
             <option v-for="[id, name] in divisions" :key="id" :value="id">{{ name }}</option>
           </select>
-          <button class="btn btn-secondary ml-auto" @click="adding = true">+ Add game</button>
+          <button class="btn btn-secondary ml-auto" :disabled="!scoped.length" :title="`Download the ${scoped.length} ${view === 'draft' ? 'draft' : 'published'} game${scoped.length === 1 ? '' : 's'}${divisionFilter ? ' in this division' : ''} as a spreadsheet file`" @click="downloadCsv">Download CSV</button>
+          <button class="btn btn-secondary" @click="adding = true">+ Add game</button>
         </div>
         <p v-if="gamesLoading" class="text-sm text-text-muted">Loading games…</p>
 
