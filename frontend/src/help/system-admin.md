@@ -65,7 +65,7 @@ The next screen shows the username and temporary password **once**. The password
 | Referee | Sees their games, checks in, and marks dates they can't work |
 
 ### 4. Branding & Theme
-**Menu → League admin → Branding & Theme.** Set the name shown across the app and in emails, upload a logo (PNG, JPEG, WebP, or SVG under 300 KB), and pick the sitewide color theme. The preview shows your changes before you save.
+**Menu → League admin → Branding & Theme.** Set the name shown across the app and in emails, upload a logo (PNG, JPEG, WebP, or SVG under 300 KB), and pick the sitewide color theme. The theme is chosen only here (it's no longer in the top bar), and applies to everyone as soon as you pick it. The preview shows your name and logo changes before you save.
 
 ![Branding & Theme](/help/img/sa-branding.png)
 
@@ -127,7 +127,7 @@ Directors can't set a cap themselves; they ask the league, and you add it here. 
 ### 2. Generate a draft
 Click **Generate draft** (or **Regenerate draft** to start over). It takes a few seconds. Changed rules are saved when you generate.
 
-**Day preferences.** Directors can tag game slots for girls', boys', or one division's games (e.g. *girls on Mondays*) under **Gym slots → Tag game slots**, and you can too for any program. A **Priority** tag means those games take the slot first, before an untagged slot in the same week, and other games use it only if nothing else fits anywhere. An **Only** tag means no other game is ever placed there. The notes report how tagged slots were used, e.g. *"Girls priority slots: 7 of 14 game times used by Girls games; 2 went to other games because nothing else fit"* or *"Girls-only slots: 7 of 14 used; 7 left open (other games can't use them)."* When you move or place a game by hand, a slot kept **only** for other games isn't offered (and is refused), and a **priority** slot for other games is marked so you can avoid it.
+**Day preferences.** Directors can keep game slots for any mix of divisions (e.g. *4th–6th grade boys and girls on Mondays and Wednesdays*, or *girls on Mondays*) under **Gym slots → Tag game slots**, and you can too for any program. A **Priority** tag means those games take the slot first, before an untagged slot in the same week, and other games use it only if nothing else fits anywhere. An **Only** tag means no other game is ever placed there. The notes report how tagged slots were used, e.g. *"Girls priority slots: 7 of 14 game times used by Girls games; 2 went to other games because nothing else fit"* or *"Girls-only slots: 7 of 14 used; 7 left open (other games can't use them)."* When you move or place a game by hand, a slot kept **only** for other games isn't offered (and is refused), and a **priority** slot for other games is marked so you can avoid it.
 
 ![A draft schedule](/help/img/sa-builder-draft.png)
 

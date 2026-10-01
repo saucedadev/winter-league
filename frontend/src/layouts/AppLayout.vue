@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useProgramContext } from '../stores/programContext';
 import BrandMark from '../components/BrandMark.vue';
-import ThemePicker from '../components/ThemePicker.vue';
 import ProgramSwitcher from '../components/ProgramSwitcher.vue';
 import { useRequestBadge } from '../stores/requestBadge';
 import { useBrandingStore } from '../stores/branding';
@@ -162,7 +161,6 @@ function signOut() {
 
       <ProgramSwitcher v-if="auth.isSuperAdmin" class="hidden md:flex" />
       <span v-else-if="auth.user?.programName" class="hidden md:inline text-sm text-header-text/75 truncate max-w-[14rem]">{{ auth.user.programName }}</span>
-      <ThemePicker v-if="auth.isSuperAdmin" class="hidden sm:block xl:hidden 2xl:block" />
 
       <div ref="menuRoot" class="relative">
         <button ref="menuButton" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/5" :aria-expanded="menuOpen" aria-controls="account-menu"

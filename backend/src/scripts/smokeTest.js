@@ -91,6 +91,25 @@ check('removing blackout restores slots', nov9b.length === nov9.length && nov9b.
 const del = await call('DELETE', `/slots/${repeat.data.slots[2].id}?scope=following`, { token: pd });
 check('delete "this and following" in series', del.data.deleted === repeat.data.slots.length - 2);
 
+// Date range + several weekdays: Mondays and Wednesdays, Nov 2 through Jan 15.
+{
+  const rangeBody = { ...base, startTime: '04:00', endTime: '04:45', startDate: '2026-11-02', endDate: '2027-01-15', weekdays: [1, 3] };
+  const want = [];
+  for (let d = new Date('2026-11-02T12:00:00Z'); d <= new Date('2027-01-15T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) if ([1, 3].includes(d.getUTCDay())) want.push(d.toISOString().slice(0, 10));
+  const r = await call('POST', '/slots', { token: pd, body: rangeBody });
+  const made = r.data.slots || [];
+  check('a date range repeats on every chosen weekday', r.status === 201 && made.length + r.data.skipped.length === want.length
+    && made.every((x) => [1, 3].includes(new Date(`${x.date}T12:00:00Z`).getUTCDay())) && made.some((x) => new Date(`${x.date}T12:00:00Z`).getUTCDay() === 3), `${made.length}+${r.data.skipped?.length} of ${want.length}`);
+  check('the range skips blackout dates and says why', r.data.skipped.every((x) => x.reason.startsWith('blackout')) && r.data.skipped.length > 0);
+  check('the range is one series', new Set(made.map((x) => x.seriesId)).size === 1 && !!made[0].seriesId);
+  check('a range with none of the chosen days is refused', (await call('POST', '/slots', { token: pd, body: { ...rangeBody, startDate: '2026-11-02', endDate: '2026-11-03', weekdays: [5] } })).status === 400);
+  check('weekdays must be days of the week', (await call('POST', '/slots', { token: pd, body: { ...rangeBody, weekdays: [8] } })).status === 400);
+  check('the end date can’t be before the start', (await call('POST', '/slots', { token: pd, body: { ...rangeBody, endDate: '2026-10-01' } })).status === 400);
+  check('the activity log names the days', (await call('GET', '/activity?category=slot', { token: pd })).data.entries.some((e) => e.details.includes('(Monday and Wednesday, 2026-11-02')));
+  const cleared = await call('DELETE', `/slots/${made[0].id}?scope=following`, { token: pd });
+  check('deleting the series removes every date in the range', cleared.data.deleted === made.length);
+}
+
 console.log('\nHealth check');
 {
   const h = (await call('GET', '/health')).data;
@@ -418,8 +437,22 @@ console.log('\nDay preferences (tagged slots)');
   check('a slot can be kept for one division', divTag.status === 200 && (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.find((x) => x.id === tagged.id).reservedText === '6th Grade Girls only');
   const dDiv = await draftWith({});
   check('only that division plays there', onTagDay(dDiv).every((g) => g.divisionId === g6div.id));
+  // Any mix of divisions, on several days at once.
+  const lower = divs.filter((d) => ['4', '5', '6'].includes(String(d.grade)));
+  const lowerIds = new Set(lower.map((d) => d.id));
+  const otherDay = Number(Object.entries(byDay).sort((a, b) => b[1] - a[1]).find(([d]) => Number(d) !== tagDay)?.[0] ?? tagDay);
+  const multi = await call('POST', '/slots/tag', { token: pd, body: { weekdays: [tagDay, otherDay], reservedDivisionIds: lower.map((d) => d.id), reservedMode: 'only' } });
+  check('slots on several days can be kept for a mix of divisions', multi.status === 200 && multi.data.updated === byDay[tagDay] + (otherDay !== tagDay ? byDay[otherDay] : 0), JSON.stringify(multi.data));
+  const multiSlot = (await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.find((x) => x.id === tagged.id);
+  check('the tag reads as grades and genders', multiSlot.reservedText === '4th–6th Grade Boys & Girls only' && multiSlot.reservedDivisionIds.length === lower.length, multiSlot.reservedText);
+  const dMulti = await draftWith({});
+  const onDays = dMulti.games.filter((g) => g.status === 'scheduled' && g.venueProgramId === nfh.id && [tagDay, otherDay].includes(dow(g.date)));
+  check('only those divisions play in those slots', onDays.length > 0 && onDays.every((g) => lowerIds.has(g.divisionId)), JSON.stringify(onDays.map((g) => g.divisionName)));
+  check('an unknown division is refused', (await call('POST', '/slots/tag', { token: pd, body: { weekdays: [tagDay], reservedDivisionIds: ['nope'] } })).status === 400);
+  check('tagging needs at least one day', (await call('POST', '/slots/tag', { token: pd, body: { weekdays: [], reservedDivisionIds: [] } })).status === 400);
+  await call('POST', '/slots/tag', { token: pd, body: { weekdays: [otherDay], reservedDivisionIds: [] } });
   check('tags can be cleared', (await call('POST', '/slots/tag', { token: pd, body: { weekday: tagDay, reservedFor: '' } })).data.updated === byDay[tagDay]
-    && !(await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.some((x) => x.reservedFor));
+    && !(await call('GET', `/slots?from=${seasonNow.startDate}&to=${seasonNow.endDate}`, { token: pd })).data.slots.some((x) => x.reservedDivisionIds.length));
   check('the Activity log records tagging', (await call('GET', '/activity?category=slot', { token: pd })).data.entries.some((e) => e.details.includes('as Girls priority')));
 }
 

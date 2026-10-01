@@ -164,7 +164,7 @@ https://winter-league-api.onrender.com/api/health
 ```
 Expected (`schema` is how many database updates have been applied, and `latestUpdate` the most recent one — handy for confirming a deploy landed):
 ```json
-{"ok":true,"app":"winter-league","database":"turso","schema":12,"latestUpdate":"012_directory.sql"}
+{"ok":true,"app":"winter-league","database":"turso","schema":13,"latestUpdate":"013_slot_multi_tags.sql"}
 ```
 Save the base URL plus `/api` as the **API URL**, e.g. `https://winter-league-api.onrender.com/api`.
 

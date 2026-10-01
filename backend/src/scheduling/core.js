@@ -181,8 +181,7 @@ export function carveWindows(slots, gameMinutes) {
         slotId: s.id, courtId: s.courtId, courtName: s.courtName, venueId: s.venueId, venueName: s.venueName,
         programId: s.programId, date: s.date, startTime: fromMinutes(t), endTime: fromMinutes(t + gameMinutes),
         lat: s.latitude, lng: s.longitude, category: s.category,
-        reservedFor: s.reservedFor || null, reservedDivisionId: s.reservedDivisionId || null, reservedMode: s.reservedMode || null,
-        reservedDivisionName: s.reservedDivisionName || null,
+        reservedDivisionIds: reservedIds(s), reservedMode: s.reservedMode || null, reservedLabel: s.reservedLabel || '',
       });
     }
   }
@@ -228,29 +227,88 @@ export function roundRobin(teams) {
   return rounds;
 }
 
-// ---- day preferences: tagged game slots (migration 011) ----
-// A slot (or a window carved from it) may be tagged for Girls, Boys, or one
-// division, as a preference ('prefer') or a requirement ('only').
+// ---- day preferences: tagged game slots (migrations 011, 013) ----
+// A slot (or a window carved from it) may be kept for any set of divisions
+// (reservedDivisionIds), as a preference ('prefer') or a requirement ('only').
+// reservedLabel is the readable form, e.g. "4th–6th Grade Boys & Girls".
 export const RESERVATION_MODES = ['prefer', 'only'];
-export function isReserved(w) {
-  return !!w?.reservedFor && (w.reservedFor !== 'division' || !!w.reservedDivisionId);
+
+// The division ids a slot row is kept for (reserved_divisions is JSON text).
+export function reservedIds(s) {
+  const v = s?.reservedDivisionIds ?? s?.reservedDivisions;
+  if (Array.isArray(v)) return v;
+  if (!v) return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a.filter((x) => typeof x === 'string') : []; } catch { return []; }
 }
-// Does a game in this division (with this gender) belong in the slot?
-export function reservationMatches(w, divisionId, gender) {
-  if (!isReserved(w)) return true;
-  if (w.reservedFor === 'division') return w.reservedDivisionId === divisionId;
-  return w.reservedFor === gender; // 'girls' / 'boys'; coed divisions match neither
+export function isReserved(w) {
+  return reservedIds(w).length > 0;
+}
+// Does a game in this division belong in the slot? (gender is no longer
+// needed: a division is already one grade and one gender.)
+export function reservationMatches(w, divisionId) {
+  return !isReserved(w) || reservedIds(w).includes(divisionId);
 }
 // 'open' (untagged) | 'match' | 'prefer-other' (usable if nothing else fits) | 'only-other' (never)
-export function reservationFit(w, divisionId, gender) {
+export function reservationFit(w, divisionId) {
   if (!isReserved(w)) return 'open';
-  if (reservationMatches(w, divisionId, gender)) return 'match';
+  if (reservationMatches(w, divisionId)) return 'match';
   return w.reservedMode === 'only' ? 'only-other' : 'prefer-other';
 }
-// "Girls", "Boys", or the division's name.
 export function reservationLabel(w) {
-  if (!isReserved(w)) return '';
-  return w.reservedFor === 'girls' ? 'Girls' : w.reservedFor === 'boys' ? 'Boys' : (w.reservedDivisionName || 'One division');
+  return isReserved(w) ? (w.reservedLabel || 'Some divisions') : '';
 }
-// "Girls priority" / "Girls only"
+// "Girls priority" / "4th–6th Grade Boys & Girls only"
 export const reservationText = (w) => (isReserved(w) ? `${reservationLabel(w)} ${w.reservedMode === 'only' ? 'only' : 'priority'}` : '');
+
+// A short readable name for a set of divisions, given every division:
+//   all girls' divisions -> "Girls"; all boys' -> "Boys";
+//   4th, 5th, 6th boys and girls -> "4th–6th Grade Boys & Girls";
+//   otherwise grouped by gender, or the division names.
+const ordinal = (n) => { const v = n % 100; return `${n}${v >= 11 && v <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th')}`; };
+function gradeList(grades) {
+  const nums = grades.map(Number);
+  if (nums.some((n) => !Number.isInteger(n))) return grades.join(', ');
+  nums.sort((a, b) => a - b);
+  const runs = [];
+  for (const n of nums) {
+    const last = runs.at(-1);
+    if (last && n === last[1] + 1) last[1] = n; else runs.push([n, n]);
+  }
+  return runs.map(([a, b]) => (a === b ? ordinal(a) : b === a + 1 ? `${ordinal(a)}, ${ordinal(b)}` : `${ordinal(a)}–${ordinal(b)}`)).join(', ');
+}
+export function divisionsLabel(ids, divisions) {
+  const set = new Set(ids);
+  const chosen = divisions.filter((d) => set.has(d.id));
+  if (!chosen.length) return '';
+  if (chosen.length === 1) return chosen[0].name;
+  const active = divisions.filter((d) => d.isActive !== 0 && d.isActive !== false);
+  const ofGender = (g) => active.filter((d) => d.gender === g);
+  const same = (a, b) => a.length === b.length && a.every((d) => b.includes(d));
+  const girls = chosen.filter((d) => d.gender === 'girls');
+  const boys = chosen.filter((d) => d.gender === 'boys');
+  const others = chosen.filter((d) => d.gender !== 'girls' && d.gender !== 'boys');
+  if (!others.length && girls.length && !boys.length && same(girls, ofGender('girls'))) return 'Girls';
+  if (!others.length && boys.length && !girls.length && same(boys, ofGender('boys'))) return 'Boys';
+  if (!others.length && girls.length && boys.length && same(girls, ofGender('girls')) && same(boys, ofGender('boys'))) return 'All divisions';
+  // Grouped by grade, when every chosen division has one.
+  if (chosen.every((d) => d.grade)) {
+    const g = (list) => [...new Set(list.map((d) => String(d.grade)))];
+    const gG = g(girls); const bG = g(boys);
+    const parts = [];
+    if (gG.length && bG.length && gG.length === bG.length && gG.every((x) => bG.includes(x))) parts.push(`${gradeList(gG)} Grade Boys & Girls`);
+    else {
+      if (bG.length) parts.push(`${gradeList(bG)} Grade Boys`);
+      if (gG.length) parts.push(`${gradeList(gG)} Grade Girls`);
+    }
+    parts.push(...others.map((d) => d.name));
+    return parts.join(' + ');
+  }
+  return chosen.map((d) => d.name).join(', ');
+}
+// Give slot rows their reservedDivisionIds and reservedLabel.
+export function withReservations(rows, divisions) {
+  return rows.map((s) => {
+    const ids = reservedIds(s).filter((id) => divisions.some((d) => d.id === id)); // ignore deleted divisions
+    return { ...s, reservedDivisionIds: ids, reservedLabel: divisionsLabel(ids, divisions), reservedMode: ids.length ? s.reservedMode || 'prefer' : null };
+  });
+}

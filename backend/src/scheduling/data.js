@@ -1,7 +1,10 @@
 import { one, all, db, newId } from '../db/client.js';
 import { addDays, formatTime12 } from '../utils/validate.js';
 import { leagueToday } from '../utils/leagueTime.js';
-import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride, reservationFit, reservationLabel, reservationText } from './core.js';
+import { normalizeRules, programHomes, carveWindows, milesBetween, teamProblems, toMinutes, travelCapFor, hasTravelOverride, reservationFit, reservationLabel, reservationText, withReservations } from './core.js';
+
+// Every division, for naming the divisions a slot is kept for.
+const allDivisions = () => all('SELECT id, name, grade, gender, is_active FROM divisions ORDER BY sort_order');
 import { buildSchedule } from './matchmaker.js';
 
 export const GAME_CATEGORIES = ['WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK'];
@@ -106,10 +109,9 @@ async function loadInputs(season, rules) {
   // Open game slots: game categories, inside the season, active venue, not
   // covered by any blackout for the venue or the whole program.
   const slots = await all(`SELECT g.id, g.program_id, g.court_id, g.date, g.start_time, g.end_time, g.category,
-      g.reserved_for, g.reserved_division_id, g.reserved_mode, rd.name AS reserved_division_name,
+      g.reserved_divisions, g.reserved_mode,
       c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.latitude, v.longitude
     FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id JOIN programs p ON p.id = g.program_id
-    LEFT JOIN divisions rd ON rd.id = g.reserved_division_id
     WHERE g.season_id = ? AND g.category IN ${CAT_SQL} AND v.is_active = 1 AND p.is_active = 1
       AND g.date BETWEEN ? AND ?
       AND NOT EXISTS (SELECT 1 FROM blackout_dates b WHERE b.program_id = g.program_id
@@ -126,7 +128,7 @@ async function loadInputs(season, rules) {
     }
   }
   const programNames = Object.fromEntries(teams.map((t) => [t.programId, t.programName]));
-  return { teams, windows: carveWindows(slots, rules.gameMinutes), homes: programHomes(venues), programBlackouts, programNames };
+  return { teams, windows: carveWindows(withReservations(slots, await allDivisions()), rules.gameMinutes), homes: programHomes(venues), programBlackouts, programNames };
 }
 
 // Builds a new draft for the season. Any earlier draft for the season is
@@ -202,10 +204,11 @@ export async function checkPlacement(game, target, { excludeIds = [], rules, tod
   if (today && target.date < today) errors.push('That date has already passed.');
   if (toMinutes(target.endTime) - toMinutes(target.startTime) < rules.gameMinutes) warnings.push(`That’s shorter than the ${rules.gameMinutes}-minute game length.`);
 
-  const slot = await one(`SELECT s.id, s.reserved_for, s.reserved_division_id, s.reserved_mode, rd.name AS reserved_division_name
-    FROM gym_slots s LEFT JOIN divisions rd ON rd.id = s.reserved_division_id
+  const slotRow = await one(`SELECT s.id, s.reserved_divisions, s.reserved_mode
+    FROM gym_slots s
     WHERE s.court_id = ? AND s.date = ? AND s.category IN ${CAT_SQL}
     AND s.start_time <= ? AND s.end_time >= ? LIMIT 1`, [court.id, target.date, target.startTime, target.endTime]);
+  const slot = slotRow ? withReservations([slotRow], await allDivisions())[0] : null;
   if (!slot) errors.push(`${court.venueName} – ${court.name} has no open game slot covering that time.`);
   else {
     // Day preferences: a slot tagged for other games.
@@ -255,15 +258,14 @@ export async function placementOptions(game, { today = null, limit = 150 } = {})
   const pph = programIds.map(() => '?').join(',');
 
   const slots = await all(`SELECT g.id, g.program_id, g.court_id, g.date, g.start_time, g.end_time, g.category,
-      g.reserved_for, g.reserved_division_id, g.reserved_mode, rd.name AS reserved_division_name,
+      g.reserved_divisions, g.reserved_mode,
       c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.latitude, v.longitude
     FROM gym_slots g JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id
-    LEFT JOIN divisions rd ON rd.id = g.reserved_division_id
     WHERE g.program_id IN (${pph}) AND g.season_id = ? AND g.category IN ${CAT_SQL} AND v.is_active = 1 AND g.date BETWEEN ? AND ?
       AND NOT EXISTS (SELECT 1 FROM blackout_dates b WHERE b.program_id = g.program_id
         AND (b.venue_id IS NULL OR b.venue_id = v.id) AND g.date BETWEEN b.start_date AND b.end_date)
     ORDER BY g.date, g.start_time`, [...programIds, season.id, from, season.endDate]);
-  const windows = carveWindows(slots, rules.gameMinutes);
+  const windows = carveWindows(withReservations(slots, await allDivisions()), rules.gameMinutes);
 
   const progBlackouts = await all(`SELECT program_id, start_date, end_date FROM blackout_dates WHERE venue_id IS NULL AND program_id IN (${pph})`, programIds);
   const blockedDay = (date) => progBlackouts.some((b) => date >= b.startDate && date <= b.endDate);

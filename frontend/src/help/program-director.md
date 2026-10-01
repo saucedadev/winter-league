@@ -64,29 +64,37 @@ Gym slots are the times your program can offer the league. **Menu → My program
 
 ### Adding gym slots
 1. Choose **Add gym slots** (or the **+** on any day).
-2. Pick the court, date, start and end time, and category.
-3. To add the same time every week, tick **Repeat every [day]** and choose **Repeat through** (the last date). With **Skip blackout dates** ticked, dates that fall in a blackout are skipped, and the app lists any dates it skipped.
+2. Pick the court, category, **Start date**, and start and end time. For one date, that's all.
+3. To repeat it, also pick an **End date**, e.g. *11/02/2026 to 1/15/2027*, and under **Repeat on** choose the days of the week, e.g. **Mon** and **Wed**, or **Tue**, **Wed** and **Thu**. The form says how many slots that makes. With **Skip blackout dates** ticked, dates that fall in a blackout are skipped, and the app lists any dates it skipped.
+4. For game slots, you can also choose who they're kept for (see *Day preferences* below).
 
 ![Adding gym slots](/help/img/pd-add-slots.png)
 
-Use the arrows, **This week**, or **Go to** to move between weeks, and the category buttons to show one kind of slot. Open a slot to edit or delete it. For a repeating slot, **This and following** deletes it and every later week.
+Use the arrows, **This week**, or **Go to** to move between weeks, and the category buttons to show one kind of slot. Open a slot to edit or delete it. For a repeating slot, **This and later dates in the series** deletes it and every later date added with it.
 
 > A slot that already has published games in it can't be changed or deleted, and its card says how many games are scheduled. Ask the league admin to move those games first.
 
-### Day preferences: keeping game slots for girls, boys, or one division
-If, for example, your girls' teams play on Mondays, tag your Monday game slots **Girls**. The league's matchmaker then gives those slots to girls' games first.
+### Day preferences: keeping game slots for certain divisions
+If, for example, your 4th to 6th grade teams play on Mondays and Wednesdays, keep those game slots for them. The league's matchmaker then gives those slots to their games first.
 
-**Tag many slots at once:** choose **Tag game slots**, pick the **Day** (e.g. *Mondays*), optionally one **Venue** and a date range, then choose who the slots are for:
-- **Keep for:** *Girls' games*, *Boys' games*, or one division (e.g. *6th Grade Girls*).
+**Keep for** is a grid of grades and Boys/Girls. Tick any mix of divisions:
+- click a grade (e.g. **4th grade**) to tick its boys' and girls' divisions;
+- click **Boys** or **Girls** (or **All boys** / **All girls**) to tick every division of that gender;
+- **Clear** unticks everything, so any game can use the slot.
+
+The form shows the result, e.g. *Kept for: 4th–6th Grade Boys & Girls*.
+
+**Tag many slots at once:** choose **Tag game slots**, pick the **Days** (e.g. *Mon* and *Wed*), optionally one **Venue** and a date range, then choose:
+- **Keep for:** the divisions, as above.
 - **How strictly?**
   - **Priority** (the default): those games get the slot first. Other games use it only if nothing else fits, so a priority tag never costs anyone games.
   - **Only**: no other games are ever placed there. If there aren't enough of those games, the slot stays empty, and other teams may end up short of gym time.
 
 ![Tagging game slots](/help/img/pd-tag-slots.png)
 
-It changes your existing weeknight and weekend game slots; practice slots aren't affected. To tag a single slot, open it and use **Keep for**. New slots can be tagged when you add them. Tagged slots show a ★ line on the week board, e.g. *★ Girls priority*. To remove tags, use **Tag game slots** with **Keep for: Any game**.
+It changes your existing weeknight and weekend game slots; practice slots aren't affected. To tag a single slot, open it and use **Keep for**. New slots can be tagged when you add them. Tagged slots show a ★ line on the week board, e.g. *★ 4th–6th Grade Boys & Girls priority* or *★ Girls only*. To remove tags, use **Tag game slots** with no divisions ticked.
 
-**What it can and can't do:** a tag decides which games are played **in your gyms**, so it covers your home games. Away games are at the other program's gyms, on their slots. A team also can't play two games too close together, so a team with two games in a week may still play one on another day. After the league generates a draft, its notes report how your tagged slots were used, e.g. *"Girls priority slots: 7 of 14 game times used by Girls games."*
+**What it can and can't do:** a tag decides which games are played **in your gyms**, so it covers your home games. Away games are at the other program's gyms, on their slots. A team also can't play two games too close together, so a team with two games in a week may still play one on another day. After the league generates a draft, its notes report how your tagged slots were used, e.g. *"4th–6th Grade Boys & Girls priority slots: 12 of 14 game times used by 4th–6th Grade Boys & Girls games."*
 
 ## Blackout dates
 

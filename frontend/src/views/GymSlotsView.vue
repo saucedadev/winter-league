@@ -100,32 +100,37 @@ const blankForm = (date) => ({
   venueId: venueFilter.value || '',
   courtId: '',
   category: 'PRACTICE',
-  date: date || (season.value && today < season.value.startDate ? season.value.startDate : today),
+  date: date || (season.value && today < season.value.startDate ? season.value.startDate : today), // the start date
+  endDate: '',      // empty: just the one date
+  weekdays: [],     // 0–6; filled from the start date
   startTime: '18:00',
   endTime: '20:00',
-  repeat: false,
-  repeatUntil: '',
   skipBlackouts: true,
   notes: '',
-  tag: { reservedFor: '', reservedDivisionId: null, reservedMode: 'prefer' },
+  tag: { reservedDivisionIds: [], reservedMode: 'prefer' },
 });
 
 // ---- day preferences (tagged game slots) ----
 const divisions = ref([]);
 api.get('/league/divisions').then(({ data }) => { divisions.value = data.divisions.filter((d) => d.isActive); }).catch(() => {});
 const isGameCategory = (c) => c === 'WEEKNIGHT_GAME' || c === 'WEEKEND_GAME_BLOCK';
-const tagBody = (t, category) => (isGameCategory(category) && t.reservedFor
-  ? { reservedFor: t.reservedFor, reservedDivisionId: t.reservedDivisionId, reservedMode: t.reservedMode || 'prefer' }
-  : { reservedFor: '' });
+const tagBody = (t, category) => (isGameCategory(category) && t.reservedDivisionIds?.length
+  ? { reservedDivisionIds: t.reservedDivisionIds, reservedMode: t.reservedMode || 'prefer' }
+  : { reservedDivisionIds: [] });
 
-// Bulk: tag every game slot on one weekday (optionally one venue, a date range).
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const dayOf = (iso) => new Date(`${iso}T12:00:00`).getDay();
+// "Mondays and Wednesdays"
+const dayList = (days) => (days.length === 7 ? 'every day' : [...days].sort().map((d) => `${WEEKDAYS[d]}s`).join(', ').replace(/, ([^,]*)$/, ' and $1'));
+function toggleDay(list, d) { const i = list.indexOf(d); i >= 0 ? list.splice(i, 1) : list.push(d); list.sort(); }
+
+// Bulk: tag every game slot on chosen weekdays (optionally one venue, a date range).
 const tagging = ref(null);
 const tagError = ref('');
 function openTagging() {
   tagError.value = '';
-  tagging.value = { programId: ctx.programId || '', weekday: 1, venueId: '', from: season.value?.startDate || '', to: season.value?.endDate || '',
-    tag: { reservedFor: 'girls', reservedDivisionId: null, reservedMode: 'prefer' } };
+  tagging.value = { programId: ctx.programId || '', weekdays: [1], venueId: '', from: season.value?.startDate || '', to: season.value?.endDate || '',
+    tag: { reservedDivisionIds: [], reservedMode: 'prefer' } };
 }
 const taggingVenues = ref([]);
 watch(() => tagging.value?.programId, async (pid) => { taggingVenues.value = pid ? (pid === ctx.programId ? venues.value : await loadVenues(pid)) : []; });
@@ -134,9 +139,11 @@ async function applyTags() {
   tagError.value = '';
   saving.value = true;
   try {
-    const { data } = await api.post('/slots/tag', { programId: t.programId, weekday: t.weekday, venueId: t.venueId || undefined, from: t.from, to: t.to,
-      reservedFor: t.tag.reservedFor || '', reservedDivisionId: t.tag.reservedDivisionId, reservedMode: t.tag.reservedMode });
-    toast.success(data.updated ? `${t.tag.reservedFor ? 'Tagged' : 'Cleared the tag on'} ${data.updated} ${WEEKDAYS[t.weekday]} game slot${data.updated === 1 ? '' : 's'}.` : `No ${WEEKDAYS[t.weekday]} game slots matched.`);
+    if (!t.weekdays.length) { tagError.value = 'Choose at least one day.'; return; }
+    const { data } = await api.post('/slots/tag', { programId: t.programId, weekdays: t.weekdays, venueId: t.venueId || undefined, from: t.from, to: t.to,
+      reservedDivisionIds: t.tag.reservedDivisionIds, reservedMode: t.tag.reservedMode });
+    const tagged = t.tag.reservedDivisionIds.length;
+    toast.success(data.updated ? `${tagged ? 'Tagged' : 'Cleared the tag on'} ${data.updated} game slot${data.updated === 1 ? '' : 's'} on ${dayList(t.weekdays)}.` : `No game slots on ${dayList(t.weekdays)} matched.`);
     tagging.value = null;
     await load();
   } catch (err) { tagError.value = errorMessage(err); }
@@ -162,7 +169,7 @@ async function openEdit(slot) {
     slot,
     form: { programId: slot.programId, venueId: slot.venueId, courtId: slot.courtId, category: slot.category, date: slot.date,
       startTime: slot.startTime, endTime: slot.endTime, notes: slot.notes || '',
-      tag: { reservedFor: slot.reservedFor || '', reservedDivisionId: slot.reservedDivisionId || null, reservedMode: slot.reservedMode || 'prefer' } },
+      tag: { reservedDivisionIds: [...(slot.reservedDivisionIds || [])], reservedMode: slot.reservedMode || 'prefer' } },
   };
 }
 
@@ -178,19 +185,30 @@ watch(() => editor.value?.form.programId, async (pid, old) => {
   editorVenues.value = await loadVenues(pid);
   editor.value.form.venueId = editorVenues.value.length === 1 ? editorVenues.value[0].id : '';
 });
-watch(() => editor.value?.form.repeat, (on) => {
+// Date range: with an end date, the slot repeats on the chosen weekdays.
+// Until days are picked, the start date's weekday is used.
+const isRange = computed(() => !!editor.value?.form.endDate && editor.value.form.endDate > editor.value.form.date);
+watch(() => [editor.value?.form.date, isRange.value], ([date, range], old) => {
   const f = editor.value?.form;
-  if (on && f && !f.repeatUntil) {
-    const eightWeeks = addDays(f.date, 7 * 8);
-    f.repeatUntil = season.value && eightWeeks > season.value.endDate ? season.value.endDate : eightWeeks;
-  }
+  if (!f || !date || editor.value.mode !== 'create') return;
+  // Follow the start date while it's a single day, or before any day was picked.
+  if (!range || !f.weekdays.length || (old && old[0] && f.weekdays.length === 1 && f.weekdays[0] === dayOf(old[0]))) f.weekdays = [dayOf(date)];
 });
-
-const repeatPreview = computed(() => {
+const rangeDates = computed(() => {
   const f = editor.value?.form;
-  if (!f?.repeat || !f.date || !f.repeatUntil || f.repeatUntil <= f.date) return '';
-  const n = Math.floor((new Date(`${f.repeatUntil}T12:00:00`) - new Date(`${f.date}T12:00:00`)) / (7 * 86400000)) + 1;
-  return `Up to ${n} ${weekday(f.date, 'long')} slots, ${monthDay(f.date)} through ${monthDay(f.repeatUntil)}. Dates that conflict are skipped and listed afterward.`;
+  if (!f?.date) return [];
+  if (!isRange.value) return [f.date];
+  const out = [];
+  for (let d = f.date; d <= f.endDate && out.length <= 400; d = addDays(d, 1)) if (f.weekdays.includes(dayOf(d))) out.push(d);
+  return out;
+});
+const rangePreview = computed(() => {
+  const f = editor.value?.form;
+  if (!isRange.value) return '';
+  if (!f.weekdays.length) return 'Choose at least one day of the week.';
+  const n = rangeDates.value.length;
+  if (!n) return `There’s no ${dayList(f.weekdays).replace(/s( |$)/g, '$1')} in that range.`;
+  return `Up to ${n} slot${n === 1 ? '' : 's'}: ${dayList(f.weekdays)}, ${monthDay(f.date)} through ${monthDay(f.endDate)}. Dates that conflict are skipped and listed afterward.`;
 });
 
 async function save() {
@@ -201,8 +219,9 @@ async function save() {
   saving.value = true;
   try {
     if (editor.value.mode === 'create') {
-      const body = { programId: f.programId, courtId: f.courtId, category: f.category, date: f.date, startTime: f.startTime,
-        endTime: f.endTime, notes: f.notes, skipBlackouts: f.skipBlackouts, ...(f.repeat ? { repeatWeeklyUntil: f.repeatUntil } : {}), ...tagBody(f.tag, f.category) };
+      if (isRange.value && !rangeDates.value.length) { formError.value = rangePreview.value; saving.value = false; return; }
+      const body = { programId: f.programId, courtId: f.courtId, category: f.category, startDate: f.date, startTime: f.startTime,
+        endTime: f.endTime, notes: f.notes, skipBlackouts: f.skipBlackouts, ...(isRange.value ? { endDate: f.endDate, weekdays: f.weekdays } : {}), ...tagBody(f.tag, f.category) };
       const { data } = await api.post('/slots', body);
       const n = data.slots.length;
       toast.success(`Added ${n} gym slot${n === 1 ? '' : 's'}.`);
@@ -246,7 +265,7 @@ watch(editor, () => { confirmDelete.value = false; });
   <div>
     <PageHeader title="Gym slots"
       :subtitle="`Gym time available for league play${ctx.current ? ` at ${ctx.current.name}` : auth.isSuperAdmin ? ' across all programs' : ''}.`">
-      <button class="btn btn-secondary" :disabled="!season" title="Keep game slots on one day of the week for girls’, boys’, or one division’s games" @click="openTagging()">Tag game slots</button>
+      <button class="btn btn-secondary" :disabled="!season" title="Keep game slots on chosen days for certain divisions" @click="openTagging()">Tag game slots</button>
       <button class="btn btn-primary" :disabled="!season" :title="season ? '' : 'A season must be active first'" @click="openCreate()">Add gym slots</button>
     </PageHeader>
 
@@ -366,38 +385,45 @@ watch(editor, () => { confirmDelete.value = false; });
           </div>
         </fieldset>
 
-        <div>
-          <label class="label" for="sf-date">{{ editor.form.repeat ? 'First date' : 'Date' }}</label>
+        <div v-if="editor.mode === 'edit'">
+          <label class="label" for="sf-date">Date</label>
           <input id="sf-date" v-model="editor.form.date" type="date" class="input" :min="season?.startDate" :max="season?.endDate" required />
+        </div>
+        <div v-else class="sm:col-span-2 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="sf-date">Start date</label>
+            <input id="sf-date" v-model="editor.form.date" type="date" class="input" :min="season?.startDate" :max="season?.endDate" required />
+          </div>
+          <div>
+            <label class="label" for="sf-end-date">End date <span class="font-normal text-text-muted">(optional, to repeat)</span></label>
+            <input id="sf-end-date" v-model="editor.form.endDate" type="date" class="input" :min="editor.form.date" :max="season?.endDate" />
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="label" for="sf-start">Start</label><input id="sf-start" v-model="editor.form.startTime" type="time" step="900" class="input" required /></div>
           <div><label class="label" for="sf-end">End</label><input id="sf-end" v-model="editor.form.endTime" type="time" step="900" class="input" required /></div>
         </div>
 
-        <div v-if="editor.mode === 'create'" class="sm:col-span-2 rounded-lg border border-border p-3 space-y-3">
-          <label class="flex items-center gap-2 text-sm font-medium">
-            <input v-model="editor.form.repeat" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" />
-            Repeat every {{ editor.form.date ? weekday(editor.form.date, 'long') : 'week' }}
-          </label>
-          <template v-if="editor.form.repeat">
-            <div class="grid gap-3 sm:grid-cols-2 items-end">
-              <div>
-                <label class="label" for="sf-until">Repeat through</label>
-                <input id="sf-until" v-model="editor.form.repeatUntil" type="date" class="input" :min="editor.form.date" :max="season?.endDate" required />
-              </div>
-              <label class="flex items-center gap-2 text-sm pb-2">
-                <input v-model="editor.form.skipBlackouts" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" />
-                Skip blackout dates
-              </label>
+        <div v-if="editor.mode === 'create' && isRange" class="sm:col-span-2 rounded-lg border border-border p-3 space-y-3">
+          <fieldset>
+            <legend class="label">Repeat on</legend>
+            <div class="flex flex-wrap gap-1.5" role="group" aria-label="Days of the week">
+              <button v-for="(d, i) in WEEKDAYS" :key="d" type="button" :aria-pressed="editor.form.weekdays.includes(i)" :aria-label="d"
+                class="rounded-full border px-3 py-1 text-sm font-medium"
+                :class="editor.form.weekdays.includes(i) ? 'bg-accent text-accent-contrast border-accent' : 'border-border'"
+                @click="toggleDay(editor.form.weekdays, i)">{{ d.slice(0, 3) }}</button>
             </div>
-            <p class="text-xs text-text-muted">{{ repeatPreview }}</p>
-          </template>
+          </fieldset>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="editor.form.skipBlackouts" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" />
+            Skip blackout dates
+          </label>
+          <p class="text-xs" :class="rangeDates.length && editor.form.weekdays.length ? 'text-text-muted' : 'text-danger'">{{ rangePreview }}</p>
         </div>
 
         <div v-if="isGameCategory(editor.form.category)" class="sm:col-span-2 rounded-lg border border-border p-3">
           <SlotTagFields v-model="editor.form.tag" :divisions="divisions" id-prefix="sf-tag" />
-          <p class="text-xs text-text-muted mt-2">For example, keep Monday slots for girls’ games. To tag many slots at once, use <strong>Tag game slots</strong>.</p>
+          <p class="text-xs text-text-muted mt-2">For example, keep these slots for 4th–6th grade boys’ and girls’ games. To tag slots you’ve already added, use <strong>Tag game slots</strong>.</p>
         </div>
 
         <div class="sm:col-span-2">
@@ -422,12 +448,12 @@ watch(editor, () => { confirmDelete.value = false; });
             </template>
             <template v-else>
               <button class="btn btn-danger" :disabled="deleting" @click="remove('one')">Delete this slot</button>
-              <button v-if="editor.slot.seriesId" class="btn btn-secondary !text-danger" :disabled="deleting" @click="remove('following')">This and following weeks</button>
+              <button v-if="editor.slot.seriesId" class="btn btn-secondary !text-danger" :disabled="deleting" @click="remove('following')">This and later dates in the series</button>
             </template>
           </div>
           <button class="btn btn-secondary" @click="editor = null">Cancel</button>
           <button class="btn btn-primary" type="submit" form="slot-form" :disabled="saving">
-            {{ saving ? 'Saving…' : editor.mode === 'create' ? (editor.form.repeat ? 'Add weekly slots' : 'Add slot') : 'Save changes' }}
+            {{ saving ? 'Saving…' : editor.mode === 'create' ? (isRange ? `Add ${rangeDates.length} slot${rangeDates.length === 1 ? '' : 's'}` : 'Add slot') : 'Save changes' }}
           </button>
         </template>
       </template>
@@ -436,14 +462,17 @@ watch(editor, () => { confirmDelete.value = false; });
     <!-- Tag many game slots at once -->
     <Modal v-if="tagging" title="Tag game slots" wide @close="tagging = null">
       <form id="tag-form" class="grid gap-4 sm:grid-cols-2" @submit.prevent="applyTags">
-        <p class="sm:col-span-2 text-sm text-text-muted">Keep every game slot on one day of the week for girls’, boys’, or one division’s games, e.g. <em>girls on Mondays</em>. It changes existing weeknight and weekend game slots; practice slots aren’t affected. Choose <strong>Any game</strong> to clear tags.</p>
+        <p class="sm:col-span-2 text-sm text-text-muted">Keep the game slots on chosen days for certain divisions, e.g. <em>4th–6th grade boys and girls on Mondays and Wednesdays</em>. It changes weeknight and weekend game slots you’ve already added; practice slots aren’t affected. Tick no divisions to clear the tags.</p>
         <ProgramPicker v-model="tagging.programId" class="sm:col-span-2" />
-        <div>
-          <label class="label" for="tg-day">Day</label>
-          <select id="tg-day" v-model.number="tagging.weekday" class="input">
-            <option v-for="(d, i) in WEEKDAYS" :key="d" :value="i">{{ d }}s</option>
-          </select>
-        </div>
+        <fieldset class="sm:col-span-2">
+          <legend class="label">Days</legend>
+          <div class="flex flex-wrap gap-1.5" role="group" aria-label="Days of the week">
+            <button v-for="(d, i) in WEEKDAYS" :key="d" type="button" :aria-pressed="tagging.weekdays.includes(i)" :aria-label="d"
+              class="rounded-full border px-3 py-1 text-sm font-medium"
+              :class="tagging.weekdays.includes(i) ? 'bg-accent text-accent-contrast border-accent' : 'border-border'"
+              @click="toggleDay(tagging.weekdays, i)">{{ d.slice(0, 3) }}</button>
+          </div>
+        </fieldset>
         <div>
           <label class="label" for="tg-venue">Venue</label>
           <select id="tg-venue" v-model="tagging.venueId" class="input">
@@ -458,7 +487,7 @@ watch(editor, () => { confirmDelete.value = false; });
       </form>
       <template #footer>
         <button class="btn btn-secondary" @click="tagging = null">Cancel</button>
-        <button class="btn btn-primary" type="submit" form="tag-form" :disabled="saving || (auth.isSuperAdmin && !tagging.programId)">{{ saving ? 'Saving…' : tagging.tag.reservedFor ? 'Tag slots' : 'Clear tags' }}</button>
+        <button class="btn btn-primary" type="submit" form="tag-form" :disabled="saving || !tagging.weekdays.length || (auth.isSuperAdmin && !tagging.programId)">{{ saving ? 'Saving…' : tagging.tag.reservedDivisionIds.length ? 'Tag slots' : 'Clear tags' }}</button>
       </template>
     </Modal>
   </div>
