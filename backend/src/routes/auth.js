@@ -91,7 +91,8 @@ router.post('/forgot-username', authLimiter, ah(async (req, res) => {
     await sendEmail({
       to: email,
       subject: `Your ${appName} username`,
-      text: `Hi ${r.rows[0].first_name},\n\nThe ${appName} username${r.rows.length > 1 ? 's' : ''} for this email:\n${names}\n\nSign in at ${config.appUrls[0]}/login`,
+      text: `Hi ${r.rows[0].first_name},\n\nThe ${appName} username${r.rows.length > 1 ? 's' : ''} for this email:\n${names}\n\nIf you didn’t ask for this, you can ignore this email.`,
+      action: { label: 'Sign in', url: '/login' },
     });
   }
   res.json({ message: 'If an account uses that email, we sent the username to it.' });
@@ -111,7 +112,8 @@ router.post('/forgot-password', authLimiter, ah(async (req, res) => {
     await sendEmail({
       to: user.email,
       subject: `Reset your ${appName} password`,
-      text: `Hi ${user.firstName},\n\nUse this link within one hour to choose a new password:\n${config.appUrls[0]}/reset-password?token=${token}\n\nIf you didn’t ask for this, ignore this email — your password stays the same.`,
+      text: `Hi ${user.firstName},\n\nSomeone asked to reset the password for the username ${user.username}. Use the button within one hour to choose a new password.\n\nIf you didn’t ask for this, ignore this email — your password stays the same.`,
+      action: { label: 'Choose a new password', url: `/reset-password?token=${token}` }, role: user.role,
     });
   }
   res.json({ message: 'If that username exists, we emailed a reset link to the address on file.' });

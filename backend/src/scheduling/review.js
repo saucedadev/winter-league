@@ -15,6 +15,8 @@ import { logActivity } from '../utils/activityLog.js';
 
 export const REVIEW_LABELS = { waiting: 'Waiting', signed_off: 'Signed off', flagged: 'Flagged' };
 
+// 2026-10-07 → Wednesday, October 7
+const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 export const deadlinePassed = (run) => !!run?.reviewDeadline && leagueToday() > run.reviewDeadline;
 
 export const gameLabel = (g) => `${g.homeTeamName} vs ${g.awayTeamName}${g.date ? `, ${g.date} at ${formatTime12(g.startTime)}` : ' (not placed)'}`;
@@ -68,7 +70,7 @@ export async function shareDraft(run, { deadline = null, actor }) {
     details: `Shared the draft schedule with Program Directors for sign-off${deadline ? ` (deadline ${deadline})` : ''}` });
   await notifyUsers(`role = 'program_director' AND program_id IN (${programs.map(() => '?').join(',') || "''"})`, programs.map((p) => p.id),
     'The draft schedule is ready for your review',
-    `The league has shared the draft schedule. Please review your program's games and sign off, or flag any game that doesn't work, under Draft review.${deadline ? `\nPlease respond by ${deadline}.` : ''}\nIt isn't published yet: coaches and referees can't see it.`);
+    `The league has shared the draft schedule. Please review your program's games and sign off, or flag any game that doesn't work, under Draft review.${deadline ? `\n\nPlease respond by the end of ${longDate(deadline)}.` : ''}\n\nIt isn't published yet: coaches and referees can't see it.`, { label: 'Review the draft', url: '/schedule/draft' });
   return { programs: programs.length };
 }
 
@@ -104,6 +106,6 @@ export async function draftChanged(runId, programIds, reason, actor) {
   if (reset.length) {
     await notifyUsers(`role = 'program_director' AND program_id IN (${reset.map(() => '?').join(',')})`, reset,
       'The draft schedule changed: please review again',
-      `The league changed a game involving your program in the draft schedule:\n${reason}\nPlease review your games again and sign off under Draft review.`);
+      `The league changed a game involving your program in the draft schedule:\n${reason}\n\nPlease review your games again and sign off under Draft review.`, { label: 'Review the draft', url: '/schedule/draft' });
   }
 }

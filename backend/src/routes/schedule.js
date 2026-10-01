@@ -355,7 +355,7 @@ router.post('/runs/:id/games', adminOnly, ah(async (req, res) => {
     await notifyUsers("id != ? AND ((role = 'program_director' AND program_id IN (?, ?)) OR id IN (?, ?))",
       [req.user.id, home.programId, away.programId, home.coachId || '', away.coachId || ''],
       `Game added: ${home.name} vs ${away.name}`,
-      `The league added a game to the schedule:\n${home.name} vs ${away.name}\n${game.date} at ${formatTime12(game.startTime)} · ${game.venueName} – ${game.courtName}${reason ? `\nReason: ${reason}` : ''}`);
+      `The league added a game to the schedule:\n${home.name} vs ${away.name}\n${game.date} at ${formatTime12(game.startTime)} · ${game.venueName} – ${game.courtName}${reason ? `\nReason: ${reason}` : ''}`, { label: 'View the schedule', url: '/schedule' });
   }
   // In a shared draft, both programs have to review again.
   if (r.status === 'draft') await draftChanged(r.id, [home.programId, away.programId], `${home.name} vs ${away.name} was added${where}.`, req.user);
@@ -472,7 +472,7 @@ router.put('/games/:id/score', ah(async (req, res) => {
     const coachId = side === 'home' ? game.homeCoachId : game.awayCoachId;
     await notifyUsers("id != ? AND ((role = 'program_director' AND program_id = ?) OR id = ?)", [req.user.id, programId, coachId || ''],
       `${game.hasScore ? 'Score corrected' : 'Final score entered'}: ${game.homeTeamName} vs ${game.awayTeamName}`,
-      `${req.user.firstName} ${req.user.lastName} ${game.hasScore ? 'corrected' : 'entered'} the final score for the ${game.date} game:\n${line}${note ? `\nNote: ${note}` : ''}\nIf it’s wrong, correct it on the Schedule page or contact the league.`);
+      `${req.user.firstName} ${req.user.lastName} ${game.hasScore ? 'corrected' : 'entered'} the final score for the ${game.date} game:\n${line}${note ? `\nNote: ${note}` : ''}\n\nIf it’s wrong, correct it on the Schedule page or contact the league.`, { label: 'View the schedule', url: '/schedule' });
   }
   res.json({ game: await getGame(game.id) });
 }));
@@ -548,7 +548,7 @@ router.post('/flags/:id/resolve', adminOnly, ah(async (req, res) => {
   await run(`UPDATE draft_flags SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'), resolution_note = ? WHERE id = ?`, [req.user.id, note || null, f.id]);
   await logActivity({ category: 'schedule', action: 'flag resolved', actor: req.user, programId: f.programId, details: `Resolved a draft flag on ${f.gameLabel}${note ? `: ${note}` : ''}` });
   await notifyUsers("role = 'program_director' AND program_id = ?", [f.programId], 'The league answered your flag on the draft',
-    `Your flag on ${f.gameLabel} has been resolved.${note ? `\n${note}` : ''}\nCheck your games under Draft review and sign off when they work.`);
+    `Your flag on this game has been resolved:\n${f.gameLabel}${note ? `\nLeague note: ${note}` : ''}\n\nCheck your games under Draft review and sign off when they work.`, { label: 'Open Draft review', url: '/schedule/draft' });
   const r = await one('SELECT * FROM schedule_runs WHERE id = ?', [f.runId]);
   res.json({ review: await reviewState(r) });
 }));
@@ -593,7 +593,7 @@ router.post('/draft-review/sign-off', directorOnly, ah(async (req, res) => {
   await logActivity({ category: 'schedule', action: 'signed off', actor: req.user, programId: req.user.programId, details: `Signed off the draft schedule${note ? `: ${note}` : ''}` });
   const left = await one("SELECT COUNT(*) AS n FROM draft_reviews WHERE run_id = ? AND status != 'signed_off'", [r.id]);
   if (Number(left.n) === 0) {
-    await notifyUsers("role = 'super_admin'", [], 'Every program has signed off the draft', 'Every program has signed off the draft schedule. You can publish it from the Schedule builder.');
+    await notifyUsers("role = 'super_admin'", [], 'Every program has signed off the draft', 'Every program has signed off the draft schedule. You can publish it from the Schedule builder.', { label: 'Open the Schedule builder', url: '/schedule/builder' });
   }
   res.json({ ok: true, remaining: Number(left.n) });
 }));
@@ -614,7 +614,7 @@ router.post('/draft-review/flags', directorOnly, ah(async (req, res) => {
   ], 'write');
   await logActivity({ category: 'schedule', action: 'flagged', actor: req.user, programId: req.user.programId, details: `Flagged a draft game: ${label}: ${note.slice(0, 200)}` });
   await notifyUsers("role = 'super_admin'", [], 'A director flagged a game in the draft',
-    `${req.user.firstName} ${req.user.lastName} flagged a game in the draft schedule:\n${label}\n“${note.slice(0, 400)}”\nReview it in the Schedule builder.`);
+    `${req.user.firstName} ${req.user.lastName} flagged a game in the draft schedule:\n${label}\n“${note.slice(0, 400)}”\n\nReview it in the Schedule builder.`, { label: 'Open the Schedule builder', url: '/schedule/builder' });
   res.status(201).json({ ok: true });
 }));
 

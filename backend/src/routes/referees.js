@@ -183,14 +183,14 @@ router.put('/assignments/:id', managers, ah(async (req, res) => {
     warnings = p.warnings;
     await run(`UPDATE referee_assignments SET referee_id = ?, status = 'assigned', assigned_by = ?, assigned_at = datetime('now'),
       checked_in_at = NULL, check_in_method = NULL, check_in_distance_miles = NULL, pay_cents = NULL, updated_at = datetime('now') WHERE id = ?`, [refereeId, req.user.id, a.id]);
-    await notifyUsers('id = ?', [refereeId], 'You have a new game', `You’ve been assigned to referee:\n${gameLine(game)}\nSee your games at /my-games. If you can’t make it, decline it there before game day.`);
-    if (a.refereeId && a.refereeId !== refereeId) await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You’re no longer assigned to ${gameLine(game)}.`);
+    await notifyUsers('id = ?', [refereeId], 'You have a new game', `You’ve been assigned to referee:\n${gameLine(game)}\n\nIf you can’t make it, decline it under My games before game day.`, { label: 'See your games', url: '/my-games' });
+    if (a.refereeId && a.refereeId !== refereeId) await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You’re no longer assigned to ${gameLine(game)}.`, { label: 'See your games', url: '/my-games' });
     await logActivity({ category: 'referee', action: 'assigned', actor: req.user, details: `Assigned ${refName(ref)} to ${game.homeTeamName} vs ${game.awayTeamName} on ${game.date}` });
   } else {
     if (!a.refereeId) return res.json({ ok: true });
     await run(`UPDATE referee_assignments SET referee_id = NULL, status = 'assigned', assigned_by = NULL, assigned_at = NULL,
       checked_in_at = NULL, check_in_method = NULL, check_in_distance_miles = NULL, pay_cents = NULL, updated_at = datetime('now') WHERE id = ?`, [a.id]);
-    await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You’re no longer assigned to ${gameLine(game)}.`);
+    await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You’re no longer assigned to ${gameLine(game)}.`, { label: 'See your games', url: '/my-games' });
     await logActivity({ category: 'referee', action: 'unassigned', actor: req.user, details: `Removed a referee from ${game.homeTeamName} vs ${game.awayTeamName} on ${game.date}` });
   }
   const [fresh] = await gamesWithAssignments('g.id = ?', [game.id]);
@@ -211,7 +211,7 @@ router.post('/auto-fill', managers, ah(async (req, res) => {
   if (!(await activeReferees()).length) throw conflict('Add referees to the roster first.');
   const { filled, stillOpen, byRef } = await autoFill({ runId: r.id, from, to, assignedBy: req.user.id });
   for (const [id, list] of byRef) {
-    await notifyUsers('id = ?', [id], `You have ${list.length} new game${list.length > 1 ? 's' : ''}`, `You’ve been assigned to referee:\n${list.map(gameLine).join('\n')}`);
+    await notifyUsers('id = ?', [id], `You have ${list.length} new game${list.length > 1 ? 's' : ''}`, `You’ve been assigned to referee:\n${list.map(gameLine).join('\n')}\n\nIf you can’t make one, decline it under My games before game day.`, { label: 'See your games', url: '/my-games' });
   }
   await logActivity({ category: 'referee', action: 'auto-filled', actor: req.user, details: `Auto-filled ${filled} referee slot${filled === 1 ? '' : 's'}${stillOpen ? `; ${stillOpen} still open` : ''}` });
   res.json({ filled, stillOpen });

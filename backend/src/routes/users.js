@@ -142,7 +142,8 @@ router.put('/:id', ah(async (req, res) => {
     // They need the new username to sign in, so tell them.
     try {
       await sendEmail({ to: next.email, subject: 'Your username has changed',
-        text: `Hi ${next.firstName},\n\nThe league admin changed your username to: ${newUsername}\nYour password hasn’t changed. Sign in at ${config.appUrls[0]}` });
+        role: next.role, action: { label: 'Sign in', url: '/login' },
+        text: `Hi ${next.firstName},\n\nThe league admin changed your username. Sign in with:\n${newUsername}\n\nYour password hasn’t changed.` });
     } catch (err) { console.error('username change email failed:', err.message); }
   }
   res.json({ user: publicUser(await one(`${SELECT_USERS} WHERE u.id = ?`, [existing.id])) });

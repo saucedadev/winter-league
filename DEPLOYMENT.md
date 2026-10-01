@@ -144,13 +144,13 @@ Under **Environment** add:
 | `LEAGUE_TIMEZONE` | `America/Los_Angeles` (Pacific Time, the default; the league's clock for game times, "today", referee check-in, and timestamps) |
 | `DEMO_CHECKIN_ANYTIME` | `false` (optional; see **Live demos** under “Upgrading an existing deployment to Phase 3”) |
 | `EMAIL_PROVIDER` | `console` to start, or `brevo` (see below) |
-| `EMAIL_FROM` | `Winter League <no-reply@yourdomain.com>` |
+| `EMAIL_FROM` | `Winter League <no-reply@yourdomain.com>` (the address is used; emails go out under the app name from Branding) |
 | `BREVO_SMTP_USER` | only if `EMAIL_PROVIDER=brevo` |
 | `BREVO_SMTP_PASS` | only if `EMAIL_PROVIDER=brevo` |
 
 Don't set `PORT`; Render provides it. The server refuses to start in production if `JWT_SECRET` is still the development placeholder, which protects you from a common mistake.
 
-**Email:** with `console`, password-reset and forgot-username emails are written to the Render log instead of sent. That's fine while you test. To really send, use Brevo like Gym Hive; you can reuse the same Brevo account, but use a distinct `EMAIL_FROM` so people can tell the apps apart.
+**Email:** with `console`, password-reset and forgot-username emails are written to the Render log instead of sent. That's fine while you test. To really send, use Brevo like Gym Hive; you can reuse the same Brevo account, but use a distinct `EMAIL_FROM` so people can tell the apps apart. Step-by-step instructions: [EMAIL-SETUP.md](EMAIL-SETUP.md).
 
 ### 2.5 Health check and deploy
 - **Settings → Health Check Path:** `/api/health`
@@ -263,7 +263,7 @@ A demo copy of the app for presentations can run on your laptop or as its own Tu
 Each conference runs as its own copy of the app: its own Turso database, Render service, and Vercel project. Data, accounts, schedules, and referees are completely separate, the same way Winter League is separate from Gym Hive. For each additional conference:
 
 1. Follow steps 1–4 above with new names, e.g. Turso database `pacific-youth`, Render service `pacific-youth-api`, Vercel project `pacific-youth`.
-2. Give it its **own** `JWT_SECRET`, and set `EMAIL_FROM` to that conference's name (e.g. `Pacific Youth Conference <no-reply@yourdomain.com>`).
+2. Give it its **own** `JWT_SECRET`, and set `EMAIL_FROM` to its sending address (e.g. `Pacific Youth Conference <no-reply@yourdomain.com>`). Emails go out under the app name set on its Branding page.
 3. Sign in as its System Admin and open **Branding & Theme** (avatar menu → League admin) to set the app name, upload its logo, and pick its sitewide theme.
 
 The code is the same for every conference, so fixes and new features ship to all of them from the one repository. Each Render service and Vercel project simply redeploys from `main`.

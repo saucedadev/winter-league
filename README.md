@@ -19,6 +19,7 @@ The same backend code talks to the local SQLite file or to Turso. Only `DATABASE
 - **Themes:** Gym Hive's four sitewide themes (Light, Dark, Regal Opulence, Midnight Noir) plus two of the league's own: **Pacific Energy** (navy, teal, sand, sunset orange, and a gold accent line) and **Midnight Pacific** (a dark version: midnight navy with electric teal and sunset coral), chosen by the System Admin.
 - **Time zone:** the league runs on Pacific Time (`LEAGUE_TIMEZONE=America/Los_Angeles`, with daylight saving handled automatically). Game dates and times are stored as local Pacific wall-clock times. "Today", referee check-in windows, and timestamps all use the league zone on both the server (which itself runs on UTC) and every browser, whatever time zone a device is set to. Game screens say "All times Pacific Time", and the API prints the zone when it starts.
 - **Branding:** the app name and logo are sitewide settings the System Admin sets on **Branding & Theme** (avatar menu → League admin). The sitewide color theme is chosen on the same page. The name appears in the header, on the sign-in page, in the browser tab, and in account emails. An uploaded logo (PNG, JPEG, WebP, or SVG, under 300 KB) replaces the built-in hexagon mark and becomes the browser-tab icon. Defaults: "Winter League" and the built-in mark.
+- **Branded emails** (`utils/emailTemplate.js`, `utils/email.js`). Every email is sent as HTML plus a plain-text version: a band with the app name and logo in the theme's accent color, the message (a paragraph whose first line ends with ":" shows its other lines in a details box), an optional button (`action: { label, url }`), and a footer saying the inbox isn't monitored and who to contact, by the recipient's role. The sender name is the app name; `EMAIL_FROM` supplies the address. Images are inline attachments (`cid:`): the PNG copy of the logo the browser makes on save (`branding.emailLogo`, never sent to browsers), or the built-in mark pre-rendered per theme (`backend/src/assets/email`). Branding & Theme has a live preview (`POST /api/settings/email-preview`) and **Send me a test email** (`POST /api/settings/email-test`). Set `EMAIL_PREVIEW_DIR` in console mode to save each email as an .html file.
 - Referee payments are intentionally out of scope.
 
 ## Phase 2 – Scheduling (in draft form)
@@ -138,5 +139,6 @@ Then commit `frontend/public/guides/`. `--name` sets the conference name printed
 ## Deploying
 
 - **Real league:** **[DEPLOYMENT.md](./DEPLOYMENT.md)**, with step-by-step Turso, Render and Vercel setup.
+- **Sending email (Brevo):** **[EMAIL-SETUP.md](./EMAIL-SETUP.md)**, domain authentication, SMTP key and Render settings.
 - **Demo copies (local or hosted):** **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, loaded from the demo spreadsheet, with or without a schedule.
 - **Running the demo meeting:** **[DEMO.md](./DEMO.md)**.

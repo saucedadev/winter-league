@@ -23,7 +23,7 @@ export const useBrandingStore = defineStore('branding', {
   state: () => {
     const c = readCache();
     if (c.timezone) setLeagueTimeZone(c.timezone); // cached so the first screen already uses league time
-    return { appName: c.appName || DEFAULT_APP_NAME, logo: c.logo || null, timezone: c.timezone || null, pageTitle: '' };
+    return { appName: c.appName || DEFAULT_APP_NAME, logo: c.logo || null, hasEmailLogo: false, timezone: c.timezone || null, pageTitle: '' };
   },
   actions: {
     init() {
@@ -34,6 +34,7 @@ export const useBrandingStore = defineStore('branding', {
     apply(b, timezone = this.timezone) {
       this.appName = b.appName || DEFAULT_APP_NAME;
       this.logo = b.logo || null;
+      this.hasEmailLogo = !!b.hasEmailLogo; // the PNG copy emails use (made on save)
       if (timezone) { this.timezone = timezone; setLeagueTimeZone(timezone); }
       try { localStorage.setItem(CACHE_KEY, JSON.stringify({ appName: this.appName, logo: this.logo, timezone: this.timezone })); } catch { /* quota: the logo is optional */ }
       applyFavicon(this.logo);

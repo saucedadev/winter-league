@@ -3,7 +3,9 @@ import { config } from '../config.js';
 import { one, run } from '../db/client.js';
 import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/auth.js';
 import { ah, badRequest } from '../utils/http.js';
-import { getBranding, validateBranding, DEFAULT_BRANDING } from '../utils/branding.js';
+import { getBranding, validateBranding, publicBranding, DEFAULT_BRANDING } from '../utils/branding.js';
+import { buildEmail, sendEmail, clearEmailBrandCache } from '../utils/email.js';
+import { inlineImages } from '../utils/emailTemplate.js';
 import { logActivity } from '../utils/activityLog.js';
 
 const router = Router();
@@ -20,6 +22,7 @@ router.get('/theme', ah(async (req, res) => {
 router.put('/theme', requireAuth, requirePasswordCurrent, requireRole('super_admin'), ah(async (req, res) => {
   if (!VALID_THEMES.includes(req.body.theme)) throw badRequest(`Theme must be one of: ${VALID_THEMES.join(', ')}.`);
   await run("INSERT INTO app_settings (key, value) VALUES ('theme', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [req.body.theme]);
+  clearEmailBrandCache(); // emails use the theme's colors
   res.json({ theme: req.body.theme });
 }));
 
@@ -28,7 +31,7 @@ router.put('/theme', requireAuth, requirePasswordCurrent, requireRole('super_adm
 router.get('/branding', ah(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   // timezone: the league's clock, so every browser shows "today" and times the same way.
-  res.json({ branding: await getBranding(), defaults: DEFAULT_BRANDING, timezone: config.leagueTimezone });
+  res.json({ branding: publicBranding(await getBranding()), defaults: publicBranding(DEFAULT_BRANDING), timezone: config.leagueTimezone });
 }));
 
 router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_admin'), ah(async (req, res) => {
@@ -40,7 +43,45 @@ router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_
   if (before.appName !== branding.appName) changes.push(`name “${before.appName}” → “${branding.appName}”`);
   if (!!before.logo !== !!branding.logo || (before.logo && before.logo !== branding.logo)) changes.push(branding.logo ? 'uploaded a new logo' : 'went back to the built-in logo');
   if (changes.length) await logActivity({ category: 'program', action: 'branding', actor: req.user, details: `Branding: ${changes.join('; ')}` });
-  res.json({ branding });
+  clearEmailBrandCache();
+  res.json({ branding: publicBranding(branding) });
+}));
+
+// ---- Emails: preview and test ----
+// A sample email, so the System Admin can see how emails look with the
+// branding and theme (and, for the test, check that sending works).
+const SAMPLE_TEXT = (firstName) => `Hi ${firstName},
+
+This is a sample of the emails the app sends. A schedule change, for example, looks like this:
+7th Grade Boys · Northside Hawks vs Eastview Comets
+Was: Sat Jan 10 · 9:00 AM · Lincoln Middle School, Court 1
+Now: Sun Jan 11 · 1:30 PM · Ridgeway Community Center, Court 2
+
+The name, logo, and colors come from Branding & Theme.`;
+const SAMPLE_ACTION = { label: 'Open {app}', url: '/' };
+
+// POST /api/settings/email-preview { appName, logo, emailLogo }  (unsaved form values; the theme is the current one)
+router.post('/email-preview', requireAuth, requirePasswordCurrent, requireRole('super_admin'), ah(async (req, res) => {
+  let b;
+  try { b = validateBranding({ appName: req.body?.appName || DEFAULT_BRANDING.appName, logo: req.body?.logo, emailLogo: req.body?.emailLogo }); } catch (e) { throw badRequest(e.message); }
+  const themeRow = await one("SELECT value FROM app_settings WHERE key = 'theme'");
+  const mail = await buildEmail({ text: SAMPLE_TEXT(req.user.firstName), action: SAMPLE_ACTION, brand: { ...b, themeId: themeRow?.value || 'light' } });
+  res.json({ html: inlineImages(mail.html, mail.attachments) });
+}));
+
+// POST /api/settings/email-test: send the sample to the signed-in admin.
+router.post('/email-test', requireAuth, requirePasswordCurrent, requireRole('super_admin'), ah(async (req, res) => {
+  const me = await one('SELECT email, first_name FROM users WHERE id = ?', [req.user.id]);
+  if (!me?.email) throw badRequest('Your account has no email address. Add one to your account under Users first.');
+  clearEmailBrandCache();
+  const { appName } = await getBranding();
+  try {
+    await sendEmail({ to: me.email, subject: `Test email from ${appName}`, text: SAMPLE_TEXT(me.firstName), action: SAMPLE_ACTION });
+  } catch (err) {
+    throw badRequest(`The email couldn’t be sent: ${err.message}. Check the email settings on the server (see EMAIL-SETUP.md).`);
+  }
+  await logActivity({ category: 'user', action: 'test email', actor: req.user, details: `Sent a test email to ${me.email}` });
+  res.json({ sentTo: me.email, provider: config.email.provider === 'brevo' ? 'brevo' : 'console' });
 }));
 
 export default router;

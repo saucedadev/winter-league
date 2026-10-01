@@ -1,6 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue';
-import { errorMessage } from '../api/client';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { api, errorMessage } from '../api/client';
+import { useThemeStore } from '../stores/theme';
+import { makeEmailLogo } from '../utils/emailLogo';
 import { useBrandingStore, DEFAULT_APP_NAME } from '../stores/branding';
 import { useToast } from '../stores/toast';
 import PageHeader from '../components/PageHeader.vue';
@@ -17,7 +19,9 @@ const saving = ref(false);
 const error = ref('');
 const fileInput = ref(null);
 
-const dirty = computed(() => form.value.appName.trim() !== branding.appName || (form.value.logo || null) !== (branding.logo || null));
+// A logo saved before emails were branded has no PNG copy yet: saving once makes it.
+const needsEmailCopy = computed(() => !!branding.logo && !branding.hasEmailLogo && form.value.logo === branding.logo);
+const dirty = computed(() => form.value.appName.trim() !== branding.appName || (form.value.logo || null) !== (branding.logo || null) || needsEmailCopy.value);
 const isDefault = computed(() => form.value.appName.trim() === DEFAULT_APP_NAME && !form.value.logo);
 
 function pickFile(e) {
@@ -37,12 +41,52 @@ async function save() {
   error.value = '';
   saving.value = true;
   try {
-    await branding.save({ appName: form.value.appName, logo: form.value.logo || null });
+    const logo = form.value.logo || null;
+    await branding.save({ appName: form.value.appName, logo, emailLogo: await emailLogoFor(logo) });
     form.value = { appName: branding.appName, logo: branding.logo };
     toast.success('Branding saved. Everyone sees it the next time a page loads.');
   } catch (err) { error.value = errorMessage(err); }
   finally { saving.value = false; }
 }
+// ---- Emails: the PNG copy of the logo, a live preview, and a test send ----
+const theme = useThemeStore();
+const emailLogoCache = new Map();
+async function emailLogoFor(logo) {
+  if (!logo) return null;
+  if (!emailLogoCache.has(logo)) emailLogoCache.set(logo, await makeEmailLogo(logo));
+  return emailLogoCache.get(logo);
+}
+const previewHtml = ref('');
+const previewError = ref('');
+let previewTimer = null;
+let previewSeq = 0;
+async function loadPreview() {
+  const seq = ++previewSeq;
+  const appName = form.value.appName.trim();
+  if (appName.length < 2) return;
+  try {
+    const logo = form.value.logo || null;
+    const { data } = await api.post('/settings/email-preview', { appName, logo, emailLogo: await emailLogoFor(logo) });
+    if (seq === previewSeq) { previewHtml.value = data.html; previewError.value = ''; }
+  } catch (err) { if (seq === previewSeq) previewError.value = errorMessage(err); }
+}
+watch(() => [form.value.appName, form.value.logo, theme.activeTheme], () => { clearTimeout(previewTimer); previewTimer = setTimeout(loadPreview, 400); }, { immediate: true });
+onBeforeUnmount(() => clearTimeout(previewTimer));
+
+const testing = ref(false);
+const testResult = ref(null);
+async function sendTest() {
+  testing.value = true;
+  testResult.value = null;
+  try {
+    const { data } = await api.post('/settings/email-test');
+    testResult.value = data.provider === 'brevo'
+      ? { ok: true, text: `Sent to ${data.sentTo}. It should arrive within a minute; check spam if it doesn’t.` }
+      : { ok: false, text: `Email is in console mode, so nothing was sent: the email was written to the server log. Set up Brevo to send for real (EMAIL-SETUP.md).` };
+  } catch (err) { testResult.value = { ok: false, text: errorMessage(err) }; }
+  finally { testing.value = false; }
+}
+
 function resetDefaults() { form.value = { appName: DEFAULT_APP_NAME, logo: null }; }
 function discard() { form.value = { appName: branding.appName, logo: branding.logo }; error.value = ''; }
 </script>
@@ -70,7 +114,8 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
           </div>
           <input ref="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" class="sr-only" aria-label="Upload logo" @change="pickFile" />
         </div>
-        <p class="text-xs text-text-muted mt-2">PNG, JPEG, WebP, or SVG, under {{ MAX_KB }} KB. A transparent background works best. It’s shown 28 px tall in the header and 40 px on the sign-in page, and it becomes the browser-tab icon. Until you upload one, the built-in hexagon mark is used.</p>
+        <p class="text-xs text-text-muted mt-2">PNG, JPEG, WebP, or SVG, under {{ MAX_KB }} KB. A transparent background works best. It’s shown 28 px tall in the header and 40 px on the sign-in page, and it becomes the browser-tab icon. Emails get a PNG copy of it, made when you save. Until you upload one, the built-in hexagon mark is used.</p>
+        <p v-if="needsEmailCopy" class="text-xs mt-1 font-medium">Save branding once so emails can show this logo. Until then they use the built-in mark{{ branding.logo?.startsWith('data:image/png') ? ' or your PNG as is' : '' }}.</p>
       </div>
 
       <div>
@@ -99,9 +144,23 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
 
     <section class="card p-5 mt-5">
       <h2 class="font-semibold">Sitewide theme</h2>
-      <p class="text-sm text-text-muted mb-3">The color theme for everyone, including the sign-in page. Changes apply as soon as you pick one.</p>
+      <p class="text-sm text-text-muted mb-3">The color theme for everyone, including the sign-in page and emails. Changes apply as soon as you pick one.</p>
       <label class="label" for="theme-select">Theme</label>
       <ThemePicker id="theme-select" class="!text-base w-full sm:w-72 !py-2" />
+    </section>
+
+    <section class="card p-5 mt-5">
+      <h2 class="font-semibold">Emails</h2>
+      <p class="text-sm text-text-muted mb-3">Every email the app sends uses the app name, logo, and theme color: the name across the top and as the sender’s name, the logo beside it, and a note at the bottom that replies aren’t read. This sample updates as you edit (before you save).</p>
+      <div class="rounded-lg border border-border overflow-hidden bg-[#EEF1F4]">
+        <iframe v-if="previewHtml" :srcdoc="previewHtml" title="Sample email" sandbox="" class="w-full h-[640px] block border-0" />
+        <p v-else class="p-4 text-sm text-text-muted">{{ previewError || 'Loading the sample…' }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 mt-3">
+        <button type="button" class="btn btn-secondary" :disabled="testing" @click="sendTest">{{ testing ? 'Sending…' : 'Send me a test email' }}</button>
+        <p class="text-xs text-text-muted flex-1 min-w-[14rem]">Sends this sample, with the saved branding, to your own email address.</p>
+      </div>
+      <p v-if="testResult" class="text-sm mt-2" :class="testResult.ok ? 'text-success' : ''" role="status">{{ testResult.text }}</p>
     </section>
 
     <p class="text-xs text-text-muted mt-4">Running more than one conference? Each conference gets its own copy of the app with its own database (see DEPLOYMENT.md), so each sets its own name, logo, and theme here.</p>

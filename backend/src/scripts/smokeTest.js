@@ -135,6 +135,28 @@ const br = await call('PUT', '/settings/branding', { token: admin, body: { appNa
 check('branding saves (name tidied, logo kept)', br.status === 200 && br.data.branding.appName === 'Pacific Youth Conference' && br.data.branding.logo === tinyPng);
 check('new branding is public', (await call('GET', '/settings/branding')).data.branding.appName === 'Pacific Youth Conference');
 check('back to defaults', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Winter League', logo: null } })).data.branding?.logo === null);
+
+console.log('\nBranded emails');
+{
+  check('browsers never get the email copy of the logo', !('emailLogo' in pubBrand.data.branding) && pubBrand.data.branding.hasEmailLogo === false);
+  check('the email copy of the logo must be a PNG', (await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Test', logo: tinyPng, emailLogo: 'data:image/jpeg;base64,AAAA' } })).status === 400);
+  const withCopy = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: tinyPng, emailLogo: tinyPng } });
+  check('the email copy is saved with the logo', withCopy.status === 200 && withCopy.data.branding.hasEmailLogo === true && !('emailLogo' in withCopy.data.branding));
+  const noLogo = await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Pacific Youth Conference', logo: null, emailLogo: tinyPng } });
+  check('no logo, no email copy', noLogo.data.branding.hasEmailLogo === false);
+  check('only System Admins preview emails', (await call('POST', '/settings/email-preview', { token: pd, body: { appName: 'X' } })).status === 403);
+  const prev = await call('POST', '/settings/email-preview', { token: admin, body: { appName: 'Coastal <League>', logo: tinyPng, emailLogo: tinyPng } });
+  const h = prev.data.html || '';
+  check('preview uses the unsaved name (escaped)', prev.status === 200 && h.includes('Coastal &lt;League&gt;') && !h.includes('<League>'));
+  check('preview shows the logo copy inline', h.includes(tinyPng.split(',')[1]) && !h.includes('cid:'));
+  check('preview says the inbox isn’t monitored', h.includes('this inbox is not monitored'));
+  check('preview uses the theme color', h.includes('#2F6A87'));
+  check('without a logo the built-in mark is used', ((await call('POST', '/settings/email-preview', { token: admin, body: { appName: 'Coastal League' } })).data.html || '').includes('data:image/png;base64,iVBOR'));
+  const test = await call('POST', '/settings/email-test', { token: admin });
+  check('test email goes to the admin (console mode here)', test.status === 200 && !!test.data.sentTo && ['console', 'brevo'].includes(test.data.provider));
+  check('only System Admins send test emails', (await call('POST', '/settings/email-test', { token: pd })).status === 403);
+  await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Winter League', logo: null } });
+}
 for (const t of ['pacificEnergy', 'midnightPacific']) {
   check(`${t} theme can be chosen`, (await call('PUT', '/settings/theme', { token: admin, body: { theme: t } })).status === 200
     && (await call('GET', '/settings/theme')).data.theme === t);

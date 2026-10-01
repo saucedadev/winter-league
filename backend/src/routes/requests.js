@@ -52,8 +52,8 @@ async function notify({ role, programIds = null, userIds = [], subject, text }) 
       args.push(...userIds.filter(Boolean));
     }
     if (!where.length) return;
-    const users = await all(`SELECT DISTINCT email, first_name FROM users WHERE is_active = 1 AND (${where.join(' OR ')})`, args);
-    await Promise.all(users.map((u) => sendEmail({ to: u.email, subject, text: `Hi ${u.firstName},\n\n${text}\n\nReview it at ${config.appUrls[0]}/requests` })));
+    const users = await all(`SELECT DISTINCT email, first_name, role FROM users WHERE is_active = 1 AND (${where.join(' OR ')})`, args);
+    await Promise.all(users.map((u) => sendEmail({ to: u.email, subject, text: `Hi ${u.firstName},\n\n${text}`, action: { label: 'Open change requests', url: '/requests' }, role: u.role })));
   } catch (err) {
     console.error('request notification failed:', err.message);
   }

@@ -160,10 +160,11 @@ export async function gamesWithAssignments(where, args) {
 // ---------------------------------------------------------------------
 // Notifications
 // ---------------------------------------------------------------------
-export async function notifyUsers(where, args, subject, text) {
+// action: the button, e.g. { label: 'See your games', url: '/my-games' }.
+export async function notifyUsers(where, args, subject, text, action = { label: 'Open {app}', url: '/' }) {
   try {
-    const users = await all(`SELECT email, first_name FROM users WHERE is_active = 1 AND (${where})`, args);
-    await Promise.all(users.map((u) => sendEmail({ to: u.email, subject, text: `Hi ${u.firstName},\n\n${text}\n\n${config.appUrls[0]}` })));
+    const users = await all(`SELECT email, first_name, role FROM users WHERE is_active = 1 AND (${where})`, args);
+    await Promise.all(users.map((u) => sendEmail({ to: u.email, subject, text: `Hi ${u.firstName},\n\n${text}`, action, role: u.role })));
   } catch (err) { console.error('referee notification failed:', err.message); }
 }
 export const notifyAssignors = (subject, text) => notifyUsers("role = 'referee_assignor'", [], subject, text);
@@ -206,12 +207,12 @@ export async function onGamesChanged(gameIds, actor) {
       if (reason) {
         removed++;
         stmts.push({ sql: "UPDATE referee_assignments SET referee_id = NULL, status = 'assigned', assigned_by = NULL, assigned_at = NULL, checked_in_at = NULL, check_in_method = NULL, check_in_distance_miles = NULL, pay_cents = NULL, updated_at = datetime('now') WHERE id = ?", args: [a.id] });
-        await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You were removed from ${gameLine(g)} because ${reason}.`);
+        await notifyUsers('id = ?', [a.refereeId], 'You’ve been taken off a game', `You were removed from ${gameLine(g)} because ${reason}.`, { label: 'See your games', url: '/my-games' });
         if (g.status === 'scheduled') await notifyAssignors('A referee slot reopened', `${a.refereeName} was removed from ${gameLine(g)} after a schedule change. The slot needs a new referee.`);
         await logActivity({ category: 'referee', action: 'unassigned', actor, details: `${a.refereeName} removed from ${g.homeTeamName} vs ${g.awayTeamName}: ${logReason}` });
       } else {
         kept++;
-        await notifyUsers('id = ?', [a.refereeId], 'A game you’re working has moved', `This game has a new date, time, or court:\n${gameLine(g)}\nYou’re still assigned.`);
+        await notifyUsers('id = ?', [a.refereeId], 'A game you’re working has moved', `This game has a new date, time, or court:\n${gameLine(g)}\n\nYou’re still assigned.`, { label: 'See your games', url: '/my-games' });
       }
     }
   }
