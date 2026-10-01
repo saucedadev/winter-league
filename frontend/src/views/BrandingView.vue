@@ -65,18 +65,26 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
 
 const testing = ref(false);
 const testResult = ref(null);
+// Plain-English report on the logo in the test email: where it loads from and whether it loads.
+function logoReport(l) {
+  if (!l) return null;
+  const where = { 'built-in': 'the built-in mark, from the app’s website', 'vercel-blob': 'your logo, from Vercel Blob', api: 'your logo, from the app’s server on Render', none: 'the built-in mark, because your logo has no web address yet', other: 'your logo' }[l.kind] || 'the logo';
+  const loads = l.ok ? 'It loads correctly.' : `It does NOT load (${l.status ? `error ${l.status}${l.type ? `, ${l.type}` : ''}` : l.error || 'no response'}), so email apps show an empty box.`;
+  const tips = [];
+  if (l.blobError) tips.push(`Vercel Blob upload failed: “${l.blobError}”. Check that BLOB_READ_WRITE_TOKEN on Render is the token of a Public store, then send another test.`);
+  else if (!l.blobConfigured && l.kind === 'api') tips.push('The Render server sleeps on the free plan, so the logo can be missing in emails opened later. Set up Vercel Blob (EMAIL-SETUP.md, Step 6).');
+  if (!l.ok && l.kind === 'built-in') tips.push('Redeploy the frontend on Vercel: it serves these images from /email/.');
+  return { ok: l.ok, text: `Logo in this email: ${where}. ${loads}`, url: l.url, tips };
+}
+
 async function sendTest() {
   testing.value = true;
   testResult.value = null;
   try {
     const { data } = await api.post('/settings/email-test');
-    const logoNote = {
-      api: ' Your logo is served by the app’s server, so if the server is asleep when the email is opened it may not show. Set up Vercel Blob for a logo that always shows (EMAIL-SETUP.md).',
-      none: ' Your logo can’t be shown in emails yet, so they use the built-in mark. Set up Vercel Blob (EMAIL-SETUP.md).',
-    }[data.logo] || '';
     testResult.value = data.provider === 'brevo'
-      ? { ok: true, text: `Sent to ${data.sentTo}. It should arrive within a minute; check spam if it doesn’t.${logoNote}` }
-      : { ok: false, text: `Email is in console mode, so nothing was sent: the email was written to the server log. Set up Brevo to send for real (EMAIL-SETUP.md).` };
+      ? { ok: true, text: `Sent to ${data.sentTo}. It should arrive within a minute; check spam if it doesn’t.`, logo: logoReport(data.logo) }
+      : { ok: false, text: `Email is in console mode, so nothing was sent: the email was written to the server log. Set up Brevo to send for real (EMAIL-SETUP.md).`, logo: logoReport(data.logo) };
   } catch (err) { testResult.value = { ok: false, text: errorMessage(err) }; }
   finally { testing.value = false; }
 }
@@ -154,7 +162,14 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
         <button type="button" class="btn btn-secondary" :disabled="testing" @click="sendTest">{{ testing ? 'Sending…' : 'Send me a test email' }}</button>
         <p class="text-xs text-text-muted flex-1 min-w-[14rem]">Sends this sample, with the saved branding, to your own email address.</p>
       </div>
-      <p v-if="testResult" class="text-sm mt-2" :class="testResult.ok ? 'text-success' : ''" role="status">{{ testResult.text }}</p>
+      <div v-if="testResult" class="text-sm mt-2 space-y-1" role="status">
+        <p :class="testResult.ok ? 'text-success' : ''">{{ testResult.text }}</p>
+        <template v-if="testResult.logo">
+          <p :class="testResult.logo.ok ? '' : 'text-danger'">{{ testResult.logo.text }}</p>
+          <p v-for="t in testResult.logo.tips" :key="t">{{ t }}</p>
+          <p class="text-xs text-text-muted break-all">Logo address: <a :href="testResult.logo.url" target="_blank" rel="noopener" class="underline">{{ testResult.logo.url }}</a></p>
+        </template>
+      </div>
     </section>
 
     <p class="text-xs text-text-muted mt-4">Running more than one conference? Each conference gets its own copy of the app with its own database (see DEPLOYMENT.md), so each sets its own name, logo, and theme here.</p>

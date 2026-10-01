@@ -33,6 +33,24 @@ export function isCurrentLogoUrl(url, pngDataUrl) {
 // After a failed upload, wait before trying Vercel Blob again, so a bad token
 // doesn't slow every email down.
 let blobFailedAt = 0;
+let lastBlobError = null; // { at, message } from the most recent failed upload
+export const blobStatus = () => lastBlobError;
+// The test email retries straight away, so a fixed token works without waiting.
+export function resetBlobBackoff() { blobFailedAt = 0; }
+
+// Where a logo address points: 'vercel-blob', 'api', or 'other'.
+export const urlKind = (url) => (BLOB_HOST.test(url || '') ? 'vercel-blob' : apiPublicBase() && String(url).startsWith(`${apiPublicBase()}/`) ? 'api' : 'other');
+
+// Can the outside world load this image? (What an email app's image proxy does.)
+export async function checkImage(url) {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    const type = r.headers.get('content-type') || '';
+    return { ok: r.ok && type.startsWith('image/'), status: r.status, type };
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message };
+  }
+}
 
 // Publish the PNG copy; returns its public address, or null.
 export async function publishEmailLogo(pngDataUrl) {
@@ -51,10 +69,12 @@ export async function publishEmailLogo(pngDataUrl) {
           }),
           timeout,
         ]);
+        lastBlobError = null;
         return url;
       } finally { clearTimeout(timer); }
     } catch (err) {
       blobFailedAt = Date.now();
+      lastBlobError = { at: new Date().toISOString(), message: err.message };
       console.error('could not upload the email logo to Vercel Blob (check BLOB_READ_WRITE_TOKEN and that the store is Public):', err.message);
     }
   }

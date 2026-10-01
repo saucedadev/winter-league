@@ -159,7 +159,7 @@ console.log('\nBranded emails');
   const test = await call('POST', '/settings/email-test', { token: admin });
   check('test email goes to the admin (console mode here)', test.status === 200 && !!test.data.sentTo && ['console', 'brevo'].includes(test.data.provider));
   check('only System Admins send test emails', (await call('POST', '/settings/email-test', { token: pd })).status === 403);
-  check('test email says how the logo reaches inboxes', ['built-in', 'vercel-blob', 'api', 'none'].includes(test.data.logo));
+  check('test email says how the logo reaches inboxes', ['built-in', 'vercel-blob', 'api', 'none', 'other'].includes(test.data.logo?.kind));
   check('the email logo address only serves the current logo', (await fetch(`${API}/settings/email-logo/0123456789abcdef.png`)).status === 404);
   await call('PUT', '/settings/branding', { token: admin, body: { appName: 'Winter League', logo: null } });
 }

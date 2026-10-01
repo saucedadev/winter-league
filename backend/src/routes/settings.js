@@ -6,7 +6,8 @@ import { ah, badRequest } from '../utils/http.js';
 import { getBranding, validateBranding, publicBranding, DEFAULT_BRANDING } from '../utils/branding.js';
 import { buildEmail, sendEmail, clearEmailBrandCache } from '../utils/email.js';
 import { makeEmailLogo, cachedEmailLogo } from '../utils/emailLogo.js';
-import { publishEmailLogo, isCurrentLogoUrl, logoHosting, logoHash } from '../utils/emailLogoHost.js';
+import { publishEmailLogo, isCurrentLogoUrl, logoHosting, logoHash, resetBlobBackoff, blobStatus, urlKind, checkImage } from '../utils/emailLogoHost.js';
+import { emailImages } from '../utils/emailTemplate.js';
 import { logActivity } from '../utils/activityLog.js';
 
 const router = Router();
@@ -92,6 +93,7 @@ router.post('/email-test', requireAuth, requirePasswordCurrent, requireRole('sup
   const me = await one('SELECT email, first_name FROM users WHERE id = ?', [req.user.id]);
   if (!me?.email) throw badRequest('Your account has no email address. Add one to your account under Users first.');
   clearEmailBrandCache();
+  resetBlobBackoff(); // try Vercel Blob again now, in case its settings were just fixed
   const { appName } = await getBranding();
   try {
     await sendEmail({ to: me.email, subject: `Test email from ${appName}`, text: SAMPLE_TEXT(me.firstName), action: SAMPLE_ACTION });
@@ -110,9 +112,18 @@ router.post('/email-test', requireAuth, requirePasswordCurrent, requireRole('sup
     throw badRequest(`The email couldn’t be sent (${msg}). ${hint}`);
   }
   await logActivity({ category: 'user', action: 'test email', actor: req.user, details: `Sent a test email to ${me.email}` });
-  // How the logo reaches inboxes, so the page can say if it may not show.
+  // Where the logo in that email loads from, and whether it actually loads
+  // from the internet, so problems can be fixed without reading server logs.
   const b = await getBranding();
-  const logo = !b.logo ? 'built-in' : b.emailLogoUrl ? logoHosting() : 'none';
+  const themeRow = await one("SELECT value FROM app_settings WHERE key = 'theme'");
+  const img = emailImages(b, themeRow?.value || 'light', { assetBase: (config.appUrls[0] || '').replace(/\/$/, '') }).header;
+  const logo = {
+    kind: !b.logo ? 'built-in' : !b.emailLogoUrl || img.url !== b.emailLogoUrl ? 'none' : urlKind(b.emailLogoUrl),
+    url: img.url,
+    blobConfigured: logoHosting() === 'vercel-blob',
+    blobError: logoHosting() === 'vercel-blob' ? blobStatus()?.message || null : null,
+    ...(await checkImage(img.url)),
+  };
   res.json({ sentTo: me.email, provider: config.email.provider === 'brevo' ? 'brevo' : 'console', logo });
 }));
 

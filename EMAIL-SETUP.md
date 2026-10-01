@@ -95,7 +95,7 @@ The app uploads the logo the next time an email goes out or you save Branding & 
 
 The quickest check: sign in as a System Admin, open **Menu → League admin → Branding & Theme**, scroll to **Emails**, and click **Send me a test email**. It sends a sample to the email address on your own account.
 
-- *"Sent to …"*: check your inbox (and spam) for it. If it adds a note about your logo, finish Step 6.
+- *"Sent to …"*: check your inbox (and spam) for it. Below it, **Logo in this email** says where the logo loads from (Vercel Blob, the Render server, or the app's website) and whether it actually loads. If the Vercel Blob upload failed, it shows Vercel's exact error.
 - *"Email is in console mode…"*: `EMAIL_PROVIDER` isn't `brevo` yet, or the service wasn't redeployed (Step 5).
 - *"The email couldn't be sent: …"*: the reason is from Brevo; see Troubleshooting below.
 
