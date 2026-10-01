@@ -69,7 +69,7 @@ const testResult = ref(null);
 function logoReport(l) {
   if (!l) return null;
   const where = { 'built-in': 'the built-in mark, from the app’s website', 'vercel-blob': 'your logo, from Vercel Blob', api: 'your logo, from the app’s server on Render', none: 'the built-in mark, because your logo has no web address yet', other: 'your logo' }[l.kind] || 'the logo';
-  const loads = l.ok ? 'It loads correctly.' : `It does NOT load (${l.status ? `error ${l.status}${l.type ? `, ${l.type}` : ''}` : l.error || 'no response'}), so email apps show an empty box.`;
+  const loads = l.ok ? 'It loads correctly.' : l.blank ? 'It loads, but the image is blank (one flat color), so email apps show an empty box. Upload the logo again as a PNG.' : `It does NOT load (${l.status ? `error ${l.status}${l.type ? `, ${l.type}` : ''}` : l.error || 'no response'}), so email apps show an empty box.`;
   const tips = [];
   if (l.blobError) tips.push(`Vercel Blob upload failed: “${l.blobError}”. Check that BLOB_READ_WRITE_TOKEN on Render is the token of a Public store, then send another test.`);
   else if (!l.blobConfigured && l.kind === 'api') tips.push('The Render server sleeps on the free plan, so the logo can be missing in emails opened later. Set up Vercel Blob (EMAIL-SETUP.md, Step 6).');

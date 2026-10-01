@@ -13,7 +13,7 @@ export const LOGO_MAX_BYTES = 300 * 1024;
 const LOGO_RE = /^data:image\/(png|jpeg|webp|svg\+xml);base64,([A-Za-z0-9+/=]+)$/;
 
 // What browsers get: no emailLogo (it's only for emails), just whether there is one.
-export const publicBranding = ({ emailLogo, emailLogoUrl, ...b }) => ({ ...b, hasEmailLogo: !!emailLogo });
+export const publicBranding = ({ emailLogo, emailLogoUrl, emailLogoVersion, ...b }) => ({ ...b, hasEmailLogo: !!emailLogo });
 
 export async function getBranding() {
   const row = await one("SELECT value FROM app_settings WHERE key = 'branding'");

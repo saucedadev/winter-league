@@ -5,7 +5,7 @@ import { requireAuth, requirePasswordCurrent, requireRole } from '../middleware/
 import { ah, badRequest } from '../utils/http.js';
 import { getBranding, validateBranding, publicBranding, DEFAULT_BRANDING } from '../utils/branding.js';
 import { buildEmail, sendEmail, clearEmailBrandCache } from '../utils/email.js';
-import { makeEmailLogo, cachedEmailLogo } from '../utils/emailLogo.js';
+import { makeEmailLogo, cachedEmailLogo, EMAIL_LOGO_VERSION } from '../utils/emailLogo.js';
 import { publishEmailLogo, isCurrentLogoUrl, logoHosting, logoHash, resetBlobBackoff, blobStatus, urlKind, checkImage } from '../utils/emailLogoHost.js';
 import { emailImages } from '../utils/emailTemplate.js';
 import { logActivity } from '../utils/activityLog.js';
@@ -41,7 +41,10 @@ router.put('/branding', requireAuth, requirePasswordCurrent, requireRole('super_
   try { branding = validateBranding(req.body || {}); } catch (e) { throw badRequest(e.message); }
   const before = await getBranding();
   // The PNG copy for emails (reused if the logo didn't change).
-  branding.emailLogo = !branding.logo ? null : branding.logo === before.logo && before.emailLogo ? before.emailLogo : await makeEmailLogo(branding.logo);
+  // (A stored copy is reused only if it was made the current way.)
+  const reuse = branding.logo === before.logo && before.emailLogo && before.emailLogoVersion === EMAIL_LOGO_VERSION;
+  branding.emailLogo = !branding.logo ? null : reuse ? before.emailLogo : await makeEmailLogo(branding.logo);
+  branding.emailLogoVersion = branding.emailLogo ? EMAIL_LOGO_VERSION : null;
   // ...and its public web address, which emails load it from.
   branding.emailLogoUrl = !branding.emailLogo ? null
     : isCurrentLogoUrl(before.emailLogoUrl, branding.emailLogo) ? before.emailLogoUrl : await publishEmailLogo(branding.emailLogo);

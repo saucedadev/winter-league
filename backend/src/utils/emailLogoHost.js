@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { put } from '@vercel/blob';
+import sharp from 'sharp';
 
 // Where emails load the uploaded logo from. Brevo doesn't deliver images
 // attached inside an email, so the PNG copy of the logo needs a public web
@@ -46,7 +47,16 @@ export async function checkImage(url) {
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     const type = r.headers.get('content-type') || '';
-    return { ok: r.ok && type.startsWith('image/'), status: r.status, type };
+    const ok = r.ok && type.startsWith('image/');
+    // A copy that loads but is one flat color (e.g. made blank) is as bad as none.
+    let blank = false;
+    if (ok) {
+      try {
+        const { channels } = await sharp(Buffer.from(await r.arrayBuffer())).stats();
+        blank = channels.every((c) => c.stdev < 2);
+      } catch { /* not an image sharp can read: leave it */ }
+    }
+    return { ok: ok && !blank, status: r.status, type, blank };
   } catch (err) {
     return { ok: false, status: 0, error: err.message };
   }

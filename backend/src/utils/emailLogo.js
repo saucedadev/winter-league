@@ -8,6 +8,9 @@ import sharp from 'sharp';
 //
 // Returns a PNG data URL, or null if the logo can't be converted (emails then
 // use the built-in mark).
+// Bump when the way copies are made changes: older stored copies are rebuilt.
+// (Version 1 copies were made in the browser, and some came out blank.)
+export const EMAIL_LOGO_VERSION = 2;
 const HEIGHTS = [120, 90, 60];     // shown 30 px tall; extra pixels keep it sharp
 const MAX_BYTES = 150 * 1024;
 

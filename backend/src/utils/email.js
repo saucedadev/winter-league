@@ -4,7 +4,7 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { one, run } from '../db/client.js';
 import { getBranding } from './branding.js';
-import { makeEmailLogo } from './emailLogo.js';
+import { makeEmailLogo, EMAIL_LOGO_VERSION } from './emailLogo.js';
 import { publishEmailLogo, isCurrentLogoUrl } from './emailLogoHost.js';
 import { renderEmail, contactFor } from './emailTemplate.js';
 
@@ -40,7 +40,11 @@ async function emailBrand() {
   // (or one from before Vercel Blob was set up): make and publish it once.
   if (branding.logo) {
     let changed = false;
-    if (!branding.emailLogo) { branding.emailLogo = await makeEmailLogo(branding.logo); changed = !!branding.emailLogo; }
+    if (!branding.emailLogo || branding.emailLogoVersion !== EMAIL_LOGO_VERSION) {
+      // Missing, or made the old way (in the browser, sometimes blank): rebuild it.
+      const fresh = await makeEmailLogo(branding.logo);
+      if (fresh) { branding.emailLogo = fresh; branding.emailLogoVersion = EMAIL_LOGO_VERSION; changed = true; }
+    }
     if (branding.emailLogo && !isCurrentLogoUrl(branding.emailLogoUrl, branding.emailLogo)) {
       const url = await publishEmailLogo(branding.emailLogo);
       if (url && url !== branding.emailLogoUrl) { branding.emailLogoUrl = url; changed = true; }
