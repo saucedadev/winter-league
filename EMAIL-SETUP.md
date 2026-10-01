@@ -68,6 +68,7 @@ This step proves to Gmail and Microsoft that Brevo may send mail for your domain
    | `EMAIL_FROM` | `Winter League <no-reply@winterleague.org>`. The address must be exactly the sender from Step 3. The name in front is only a fallback: emails go out under the app name from Branding. |
    | `BREVO_SMTP_USER` | the **Login** from Step 4 (e.g. `8a1b2c001@smtp-brevo.com`) |
    | `BREVO_SMTP_PASS` | the **SMTP key** from Step 4 |
+   | `BREVO_SMTP_PORT` | optional; leave it out. The app uses port **2525**, because Render's free plan blocks the usual email ports (25, 465 and 587). Set `587` only if you move to a paid plan and want the standard port. |
 
 3. Click **Save, rebuild, and deploy** (or Save, then **Manual Deploy** → **Deploy latest commit**). The variables take effect after the restart.
 4. Check that `APP_URL` lists your real site first. Links in emails (e.g. "Reset your password") are built from it.
@@ -100,12 +101,15 @@ Logos: email apps don't show SVG, so the server makes a small PNG copy of the lo
 
 ## The demo environment
 
-The demo site loads people with placeholder emails (e.g. `@example.com`), so it's safest to leave the **demo** API on `EMAIL_PROVIDER=console`. If you switch the demo to Brevo, emails to the placeholders bounce, and repeated bounces can hurt your sender reputation. If the demo does need to send (to show a reset email live), use only accounts you've edited to your own address.
+The demo loads everyone with placeholder emails (`@example.com`), so password resets and notifications triggered on the demo are "sent" to addresses nobody reads, and they bounce. Repeated bounces can hurt your sender reputation with Brevo, so it's safest to leave the **demo** API on `EMAIL_PROVIDER=console`.
+
+If the demo does need to send (to show an email live), put your own address on your admin account (Users) and use **Send me a test email** on Branding & Theme, or edit one test account to your own address and trigger emails only for it.
 
 ## Troubleshooting
 
 | What you see | Likely cause | Fix |
 |---|---|---|
+| Test email says the server *couldn't reach Brevo*, or the Render log shows `Connection timeout` | The port is blocked (Render's free plan blocks 25, 465 and 587) | Remove `BREVO_SMTP_PORT` or set it to `2525`, and redeploy |
 | No email; Render log shows `📧 [email:console]` | `EMAIL_PROVIDER` is still `console`, or the service wasn't redeployed | Set it to `brevo` and redeploy |
 | Render log shows `Invalid login` / `535 Authentication failed` | Wrong `BREVO_SMTP_USER` or key; key expired or deactivated | Use the **Login** exactly as the SMTP tab shows it; generate a new key |
 | Email arrives from `…@brevosend.com` | The domain isn't authenticated | Finish Step 2 and wait for **Authenticated** |

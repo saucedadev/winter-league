@@ -147,6 +147,7 @@ Under **Environment** add:
 | `EMAIL_FROM` | `Winter League <no-reply@yourdomain.com>` (the address is used; emails go out under the app name from Branding) |
 | `BREVO_SMTP_USER` | only if `EMAIL_PROVIDER=brevo` |
 | `BREVO_SMTP_PASS` | only if `EMAIL_PROVIDER=brevo` |
+| `BREVO_SMTP_PORT` | optional; defaults to `2525` (Render's free plan blocks port 587) |
 
 Don't set `PORT`; Render provides it. The server refuses to start in production if `JWT_SECRET` is still the development placeholder, which protects you from a common mistake.
 

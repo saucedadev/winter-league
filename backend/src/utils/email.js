@@ -12,8 +12,11 @@ function getTransport() {
   if (!transport) {
     transport = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
-      port: 587,
+      port: config.email.brevoPort,
+      requireTLS: true, // upgrade to an encrypted connection before signing in, or don't send
       auth: { user: config.email.brevoUser, pass: config.email.brevoPass },
+      // Fail in seconds, not minutes, when the connection is blocked.
+      connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
     });
   }
   return transport;

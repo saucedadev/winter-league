@@ -126,6 +126,7 @@ function discard() { form.value = { appName: branding.appName, logo: branding.lo
       <div class="flex flex-wrap items-center gap-2 pt-3 border-t border-border">
         <button v-if="!isDefault" type="button" class="btn btn-ghost" @click="resetDefaults">Reset to defaults</button>
         <span class="flex-1" />
+        <span v-if="!dirty" class="text-xs text-text-muted">Everything is saved. Change the name or logo to save again.</span>
         <button v-if="dirty" type="button" class="btn btn-secondary" @click="discard">Discard changes</button>
         <button type="submit" class="btn btn-primary" :disabled="!dirty || saving || form.appName.trim().length < 2">{{ saving ? 'Saving…' : 'Save branding' }}</button>
       </div>

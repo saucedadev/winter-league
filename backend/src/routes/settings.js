@@ -82,7 +82,18 @@ router.post('/email-test', requireAuth, requirePasswordCurrent, requireRole('sup
   try {
     await sendEmail({ to: me.email, subject: `Test email from ${appName}`, text: SAMPLE_TEXT(me.firstName), action: SAMPLE_ACTION });
   } catch (err) {
-    throw badRequest(`The email couldn’t be sent: ${err.message}. Check the email settings on the server (see EMAIL-SETUP.md).`);
+    const msg = String(err.message || err);
+    const hint = /timeout|ETIMEDOUT|ECONNREFUSED|ENETUNREACH/i.test(msg)
+      ? (config.email.brevoPort === 2525
+        ? 'The server couldn’t reach Brevo on port 2525. Check the Render log; if the host blocks that port too, try BREVO_SMTP_PORT=587 (works on Render’s paid plans).'
+        : `The server couldn’t reach Brevo on port ${config.email.brevoPort}. Render’s free plan blocks it: remove BREVO_SMTP_PORT (the app then uses 2525).`)
+      : /auth|535|login/i.test(msg)
+        ? 'Brevo rejected the sign-in: check BREVO_SMTP_USER (the SMTP login) and BREVO_SMTP_PASS (the SMTP key).'
+        : /sender|from/i.test(msg)
+          ? 'Brevo rejected the sender: the address in EMAIL_FROM must be a verified sender in Brevo.'
+          : 'Check the email settings on the server (see EMAIL-SETUP.md).';
+    console.error('test email failed:', msg);
+    throw badRequest(`The email couldn’t be sent (${msg}). ${hint}`);
   }
   await logActivity({ category: 'user', action: 'test email', actor: req.user, details: `Sent a test email to ${me.email}` });
   res.json({ sentTo: me.email, provider: config.email.provider === 'brevo' ? 'brevo' : 'console' });

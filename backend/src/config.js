@@ -38,6 +38,9 @@ export const config = {
     from: process.env.EMAIL_FROM || 'Winter League <no-reply@example.com>',
     brevoUser: process.env.BREVO_SMTP_USER,
     brevoPass: process.env.BREVO_SMTP_PASS,
+    // 2525 by default: Render's free plan blocks the usual SMTP ports (25, 465,
+    // 587), and Brevo accepts 2525 as well. Set 587 if your host prefers it.
+    brevoPort: Number(process.env.BREVO_SMTP_PORT) || 2525,
   },
 };
 
