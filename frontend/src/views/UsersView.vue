@@ -1,6 +1,7 @@
 <script setup>
 import PhoneInput from '../components/PhoneInput.vue';
 import TempPasswordField from '../components/TempPasswordField.vue';
+import UsernameField from '../components/UsernameField.vue';
 import { useBrandingStore } from '../stores/branding';
 const branding = useBrandingStore();
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
@@ -111,8 +112,9 @@ const credentials = ref(null); // { name, username, password }
 function open(u) {
   formError.value = '';
   editor.value = u
-    ? { id: u.id, self: u.id === auth.user.id, form: { firstName: u.firstName, lastName: u.lastName, email: u.email, phone: u.phone || '', role: u.role, programId: u.programId || '', isActive: u.isActive } }
-    : { id: null, form: { firstName: '', lastName: '', email: '', phone: '', role: 'program_director', programId: ctx.programId || '' }, temp: blankTemp() };
+    ? { id: u.id, self: u.id === auth.user.id, original: u.username, username: u.username, usernameUnlocked: false,
+      form: { firstName: u.firstName, lastName: u.lastName, email: u.email, phone: u.phone || '', role: u.role, programId: u.programId || '', isActive: u.isActive } }
+    : { id: null, username: '', usernameUnlocked: false, form: { firstName: '', lastName: '', email: '', phone: '', role: 'program_director', programId: ctx.programId || '' }, temp: blankTemp() };
 }
 // Temporary password: generated, or set by the System Admin.
 const blankTemp = () => ({ mode: 'generate', password: '' });
@@ -124,9 +126,11 @@ async function save() {
   try {
     const f = { ...editor.value.form };
     if (f.role === 'super_admin') f.programId = '';
+    // The username is only sent when the admin unlocked it on purpose.
+    if (editor.value.usernameUnlocked && editor.value.username.trim()) f.username = editor.value.username.trim();
     if (editor.value.id) {
-      await api.put(`/users/${editor.value.id}`, f);
-      toast.success('Account saved.');
+      const { data } = await api.put(`/users/${editor.value.id}`, f);
+      toast.success(data.user.username !== editor.value.original ? `Account saved. The username is now ${data.user.username}; they’ve been emailed it.` : 'Account saved.');
     } else {
       const { data } = await api.post('/users', { ...f, ...tempBody(editor.value.temp) });
       credentials.value = { name: `${data.user.firstName} ${data.user.lastName}`, username: data.user.username, password: data.temporaryPassword, isNew: true, chosen: editor.value.temp.mode === 'set' };
@@ -218,6 +222,8 @@ async function copyCredentials() {
       <form id="user-form" class="grid gap-4 grid-cols-2" @submit.prevent="save">
         <div><label class="label" for="uf-first">First name</label><input id="uf-first" v-model="editor.form.firstName" class="input" required autocomplete="off" /></div>
         <div><label class="label" for="uf-last">Last name</label><input id="uf-last" v-model="editor.form.lastName" class="input" required autocomplete="off" /></div>
+        <UsernameField v-model="editor.username" v-model:unlocked="editor.usernameUnlocked" v-model:invalid="editor.usernameInvalid" class="col-span-2" :is-new="!editor.id"
+          :first-name="editor.form.firstName" :last-name="editor.form.lastName" :original="editor.original || ''" :exclude-id="editor.id || ''" />
         <div class="col-span-2 sm:col-span-1"><label class="label" for="uf-email">Email</label><input id="uf-email" v-model="editor.form.email" type="email" class="input" required autocomplete="off" /></div>
         <div class="col-span-2 sm:col-span-1"><label class="label" for="uf-phone">Phone <span class="font-normal text-text-muted">(optional)</span></label><PhoneInput id="uf-phone" v-model="editor.form.phone" /></div>
         <div class="col-span-2">
@@ -237,14 +243,14 @@ async function copyCredentials() {
         <label v-if="editor.id && !editor.self" class="col-span-2 flex items-center gap-2 text-sm"><input v-model="editor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Active (inactive accounts can’t sign in)</label>
         <div v-if="!editor.id" class="col-span-2 rounded-lg border border-border p-3">
           <TempPasswordField v-model="editor.temp" id-prefix="uf-temp" />
-          <p class="text-xs text-text-muted mt-1">A username is created for them. You’ll see both on the next screen, ready to share.</p>
+          <p class="text-xs text-text-muted mt-1">You’ll see the username and password on the next screen, ready to share.</p>
         </div>
         <p v-if="formError" class="col-span-2 text-sm text-danger" role="alert">{{ formError }}</p>
       </form>
       <template #footer>
         <button v-if="editor.id" class="btn btn-ghost mr-auto" @click="openIssue">Issue temporary password…</button>
         <button class="btn btn-secondary" @click="editor = null">Cancel</button>
-        <button class="btn btn-primary" type="submit" form="user-form" :disabled="saving || (!editor.id && !tempValid(editor.temp))">{{ saving ? 'Saving…' : editor.id ? 'Save account' : 'Create account' }}</button>
+        <button class="btn btn-primary" type="submit" form="user-form" :disabled="saving || editor.usernameInvalid || (!editor.id && !tempValid(editor.temp))">{{ saving ? 'Saving…' : editor.id ? 'Save account' : 'Create account' }}</button>
       </template>
     </Modal>
 

@@ -10,7 +10,7 @@ const items = computed(() => [
     detail: props.setup.venuesMissingCoords ? `${props.setup.venuesMissingCoords} gym${props.setup.venuesMissingCoords === 1 ? ' is' : 's are'} missing them. The scheduler uses them to keep travel reasonable.` : 'Used to keep travel reasonable.', to: '/venues' },
   { done: props.setup.teams > 0, label: 'Add your teams', detail: 'One per division you’re entering.', to: '/teams' },
   { done: props.setup.teams > 0 && props.setup.teamsWithoutCoach === 0, label: 'Assign a coach to each team',
-    detail: props.setup.teamsWithoutCoach ? `${props.setup.teamsWithoutCoach} team${props.setup.teamsWithoutCoach === 1 ? ' has' : 's have'} no coach yet. Pick one on the Teams page; if your coach has no account yet, ask the league admin to create one.` : 'Coaches see their schedule and can request changes.', to: '/teams' },
+    detail: props.setup.teamsWithoutCoach ? `${props.setup.teamsWithoutCoach} team${props.setup.teamsWithoutCoach === 1 ? ' has' : 's have'} no coach yet. Pick one on the Teams page: a Coach account, or a coach from your Directory until the league admin creates their account.` : 'Coaches see their schedule and can request changes.', to: '/teams' },
   { done: props.setup.gameSlots > 0, label: 'Enter weeknight and weekend game slots', detail: 'The scheduler only uses these for games.', to: '/slots' },
   { done: props.setup.blackouts > 0, label: 'Mark blackout dates', detail: 'Holidays and building closures.', to: '/blackouts' },
 ]);

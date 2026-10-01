@@ -42,6 +42,7 @@ check('forced change blocks other routes', (await call('GET', '/programs', { tok
 const admin = await login('gkim');
 const pd = await login('dwhitfield');   // Northfield (NFH)
 const coach = await login('tgreene');   // Northfield coach
+const mbell = await login('mbell');       // Riverbend (RYB) director
 const ref = await login('obrooks');
 
 const programs = (await call('GET', '/programs', { token: admin })).data.programs;
@@ -161,13 +162,70 @@ check('leaving it blank still generates one', regenPw.status === 200 && /^[A-Z][
 check('the password itself is never written to Activity', !JSON.stringify((await call('GET', '/activity?category=user', { token: admin })).data).includes('Rebound-7788-Court')
   && (await call('GET', '/activity?category=user', { token: admin })).data.entries.some((e) => e.details.includes('(set by the admin)')));
 const me = (await call('GET', '/auth/me', { token: admin })).data.user;
+
+// ---- Usernames: live suggestion, and editable on purpose ----
+check('the username suggestion matches what the app generates', (await call('GET', '/users/username-suggestion?firstName=Jamie&lastName=O%27Neil', { token: admin })).data.username === 'joneil');
+check('the username check flags a taken name', (await call('GET', '/users/username-check?username=gkim', { token: admin })).data.ok === false);
+check('the username check accepts a free one', (await call('GET', '/users/username-check?username=Jamie.ONeil', { token: admin })).data.username === 'jamie.oneil');
+check('a badly formed username is refused', (await call('POST', '/users', { token: admin, body: { firstName: 'Jamie', lastName: 'ONeil', email: 'jo@example.com', role: 'referee', username: 'j!' } })).status === 400);
+check('a taken username is refused', (await call('POST', '/users', { token: admin, body: { firstName: 'Jamie', lastName: 'ONeil', email: 'jo@example.com', role: 'referee', username: 'GKIM' } })).status === 409);
+const typedUser = await call('POST', '/users', { token: admin, body: { firstName: 'Jamie', lastName: 'ONeil', email: 'jo@example.com', role: 'referee', username: 'Jamie.ONeil' } });
+check('the admin can set the username when creating an account', typedUser.status === 201 && typedUser.data.user.username === 'jamie.oneil');
+check('only the System Admin can change usernames', (await call('PUT', `/users/${typedUser.data.user.id}`, { token: pd, body: { username: 'jo2' } })).status === 403);
+check('changing to a taken username is refused', (await call('PUT', `/users/${typedUser.data.user.id}`, { token: admin, body: { username: 'dwhitfield' } })).status === 409);
+const renamed = await call('PUT', `/users/${typedUser.data.user.id}`, { token: admin, body: { username: 'joneil' } });
+check('the admin can fix a username', renamed.status === 200 && renamed.data.user.username === 'joneil');
+check('they sign in with the new username, not the old one', (await call('POST', '/auth/login', { body: { username: 'joneil', password: typedUser.data.temporaryPassword } })).status === 200
+  && (await call('POST', '/auth/login', { body: { username: 'jamie.oneil', password: typedUser.data.temporaryPassword } })).status === 401);
+check('the change is in Activity', (await call('GET', '/activity?category=user', { token: admin })).data.entries.some((e) => e.details === 'Changed the username jamie.oneil to joneil'));
+check('saving without a username keeps it', (await call('PUT', `/users/${typedUser.data.user.id}`, { token: admin, body: { phone: '5035550100' } })).data.user.username === 'joneil');
+
+// ---- Directory: a program's contact list (not app accounts) ----
+check('coaches can’t use the directory', (await call('GET', '/directory', { token: coach })).status === 403);
+check('first and last name are required', (await call('POST', '/directory', { token: pd, body: { firstName: 'Kim' } })).status === 400);
+check('a bad email is refused', (await call('POST', '/directory', { token: pd, body: { firstName: 'Kim', lastName: 'Lee', email: 'nope' } })).status === 400);
+check('a typed-in role needs a name', (await call('POST', '/directory', { token: pd, body: { firstName: 'Kim', lastName: 'Lee', role: 'other' } })).status === 400);
+const dCoach = await call('POST', '/directory', { token: pd, body: { firstName: 'Morgan', lastName: 'Diaz', email: 'mdiaz@example.com', phone: '(503) 555-0142', role: 'coach' } });
+check('a director adds a coach to the directory', dCoach.status === 201 && dCoach.data.contact.roleLabel === 'Coach' && dCoach.data.contact.programId === nfh.id && dCoach.data.contact.phone === '5035550142');
+const dOther = await call('POST', '/directory', { token: pd, body: { firstName: 'Pat', lastName: 'Quinn', role: 'other', roleOther: 'Team manager' } });
+check('a director adds someone with a typed-in role', dOther.data.contact?.roleLabel === 'Team manager');
+check('typing “Referee” as the role uses the built-in one', (await call('POST', '/directory', { token: pd, body: { firstName: 'Lee', lastName: 'Park', role: 'other', roleOther: 'referee' } })).data.contact?.role === 'referee');
+check('email and phone are optional', (await call('POST', '/directory', { token: pd, body: { firstName: 'Sam', lastName: 'Ruiz' } })).status === 201);
+check('a director sees only their own program’s directory', (await call('GET', '/directory', { token: mbell })).data.contacts.every((c) => c.programId === ryb.id)
+  && (await call('GET', '/directory', { token: pd })).data.contacts.length === 4);
+check('another program’s director can’t edit it', (await call('PUT', `/directory/${dCoach.data.contact.id}`, { token: mbell, body: { firstName: 'X' } })).status === 403);
+check('the System Admin sees every program’s directory', (await call('GET', '/directory', { token: admin })).data.contacts.some((c) => c.id === dCoach.data.contact.id));
+check('the System Admin must say which program', (await call('POST', '/directory', { token: admin, body: { firstName: 'A', lastName: 'B' } })).status === 400);
+check('adding a contact doesn’t create an account', !(await call('GET', '/users', { token: admin })).data.users.some((u) => u.lastName === 'Diaz'));
+// A Directory coach as a team's head coach, until a Coach account replaces them.
+const nfhTeams = (await call('GET', '/teams', { token: pd })).data.teams;
+const dTeam = nfhTeams.find((t) => !t.headCoachUserId) || nfhTeams[0];
+const dTeamCoachBefore = dTeam.headCoachUserId || null;
+const setDc = await call('PUT', `/teams/${dTeam.id}`, { token: pd, body: { headCoachUserId: null, headCoachContactId: dCoach.data.contact.id } });
+check('a Directory coach can be a team’s head coach', setDc.status === 200 && setDc.data.team.headCoachName === 'Morgan Diaz' && !!setDc.data.team.headCoachIsContact);
+check('the teams list marks them as from the Directory', (await call('GET', '/teams', { token: pd })).data.teams.find((t) => t.id === dTeam.id).headCoachIsContact === true);
+check('only Directory contacts with the Coach role can coach', (await call('PUT', `/teams/${dTeam.id}`, { token: pd, body: { headCoachUserId: null, headCoachContactId: dOther.data.contact.id } })).status === 400);
+check('a team can’t have both kinds of coach', (await call('PUT', `/teams/${dTeam.id}`, { token: pd, body: { headCoachUserId: (await call('GET', '/auth/me', { token: coach })).data.user.id, headCoachContactId: dCoach.data.contact.id } })).status === 400);
+check('their role can’t be changed while they coach a team', (await call('PUT', `/directory/${dCoach.data.contact.id}`, { token: pd, body: { role: 'referee' } })).status === 409);
+check('the coach picker offers Directory coaches', (await call('GET', `/teams/coaches?programId=${nfh.id}`, { token: pd })).data.contacts.some((c) => c.id === dCoach.data.contact.id));
+// The league admin creates their real account; the director switches the team over.
+const realCoach = await call('POST', '/users', { token: admin, body: { firstName: 'Morgan', lastName: 'Diaz', email: 'mdiaz@example.com', role: 'league_coach', programId: nfh.id } });
+const withMatch = (await call('GET', '/directory', { token: pd })).data.contacts.find((c) => c.id === dCoach.data.contact.id);
+check('the directory spots that they now have a Coach account', withMatch.matchingUserId === realCoach.data.user.id);
+const switched = await call('POST', `/directory/${dCoach.data.contact.id}/switch-to-account`, { token: pd, body: { userId: realCoach.data.user.id } });
+const afterSwitch = (await call('GET', '/teams', { token: pd })).data.teams.find((t) => t.id === dTeam.id);
+check('switching moves their teams to the real account', switched.data.teamsUpdated === 1 && afterSwitch.headCoachUserId === realCoach.data.user.id && !afterSwitch.headCoachContactId);
+await call('PUT', `/teams/${dTeam.id}`, { token: pd, body: { headCoachUserId: null, headCoachContactId: dCoach.data.contact.id } });
+const delDc = await call('DELETE', `/directory/${dCoach.data.contact.id}`, { token: pd });
+check('removing a contact who coaches a team leaves it without a coach', delDc.data.teamsCleared === 1 && !(await call('GET', '/teams', { token: pd })).data.teams.find((t) => t.id === dTeam.id).headCoachName);
+await call('PUT', `/teams/${dTeam.id}`, { token: pd, body: { headCoachUserId: dTeamCoachBefore, headCoachContactId: null } }); // put things back for later checks
+await call('PUT', `/users/${realCoach.data.user.id}`, { token: admin, body: { isActive: false } });
 check('admin cannot demote self', (await call('PUT', `/users/${me.id}`, { token: admin, body: { role: 'referee' } })).status === 400);
 check('16-program cap is enforced setting', (await call('GET', '/programs', { token: admin })).data.maxPrograms === 16);
 
 // =====================================================================
 // Phase 2 — scheduling (Module B) and change requests (Module D)
 // =====================================================================
-const mbell = await login('mbell');       // Riverbend (RYB) director
 const teamsAll = (await call('GET', '/teams', { token: admin })).data.teams;
 const teamDiv = Object.fromEntries(teamsAll.map((t) => [t.id, t.divisionId]));
 const teamProg = Object.fromEntries(teamsAll.map((t) => [t.id, t.programId]));

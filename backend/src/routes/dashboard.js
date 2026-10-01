@@ -106,7 +106,7 @@ router.get('/', ah(async (req, res) => {
         (SELECT COUNT(*) FROM venues WHERE program_id = ? AND is_active = 1) AS venues,
         (SELECT COUNT(*) FROM venues WHERE program_id = ? AND is_active = 1 AND (latitude IS NULL OR longitude IS NULL)) AS venues_missing_coords,
         (SELECT COUNT(*) FROM teams WHERE program_id = ? AND is_active = 1) AS teams,
-        (SELECT COUNT(*) FROM teams WHERE program_id = ? AND is_active = 1 AND head_coach_user_id IS NULL) AS teams_without_coach,
+        (SELECT COUNT(*) FROM teams WHERE program_id = ? AND is_active = 1 AND head_coach_user_id IS NULL AND head_coach_contact_id IS NULL) AS teams_without_coach,
         (SELECT COUNT(*) FROM gym_slots WHERE program_id = ? AND category IN ('WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK') ${season ? 'AND season_id = ?' : ''}) AS game_slots,
         (SELECT COUNT(*) FROM blackout_dates WHERE program_id = ?) AS blackouts`,
     [programId, programId, programId, programId, programId, ...(season ? [season.id] : []), programId]);

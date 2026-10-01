@@ -31,7 +31,13 @@ Do these in order before programs start entering gym time.
 Outside clubs the league plays now and then are **guest programs**, set up further down the same page. See [Guest (non-conference) teams](#guest-non-conference-teams).
 
 ### 3. Accounts
-**Menu → League admin → Users → Add user.** Choose the person's role and, for Program Directors and Coaches, their program. The app creates their username. Under **Temporary password**, choose:
+**Menu → League admin → Users → Add user.** Choose the person's role and, for Program Directors and Coaches, their program.
+
+**Username.** As you type the first and last name, the **Username** box fills in with the username the app will create (first initial and last name, e.g. *mdiaz*, with a number added if it's taken). It's locked so it can't be changed by accident. To use a different one (say, to fix a typo in the name), click **🔒 Edit username**, then type it. It's checked as you type: 3–30 characters (lowercase letters, numbers, and `.` `_` `-`), and not already taken. **Create account** stays greyed out until it's fine. **Use the suggested username** locks it again and goes back to the generated one.
+
+![The username, filled in from the name](/help/img/sa-username-preview.png)
+
+Under **Temporary password**, choose:
 - **Generate one for me** (the default): the app makes a readable one, e.g. *Cedar-4821-Pivot*.
 - **Set it myself**: type the password you want to give them, or click **Suggest one** and adjust it. It must be at least 10 characters with a letter and a number, and the box tells you what's missing. Click **Show** to check what you typed and note it down (**Hide** masks it again).
 
@@ -43,8 +49,12 @@ The next screen shows the username and temporary password **once**. The password
 
 - **Sorting and searching:** click **Name**, **Role**, **Program**, or **Last sign-in** to sort; search by name, username, or email; filter by role.
 - **Someone locked out?** Open their account and choose **Issue temporary password…**. Pick **Generate one for me** or **Set it myself** (with **Show** and **Suggest one**, as above), then **Issue password**. Their old password stops working straight away, and the new one is shown once for you to share. Activity records that a temporary password was issued, and whether you set it, but never the password itself.
+- **Fixing a username:** open the account and click **🔒 Change username**, then type the corrected one (checked as you type, as above) and **Save account**. They sign in with the new username from then on. Their password doesn't change, they're emailed the new username, and Activity records the change. **Keep the current username** cancels it.
+
+  ![Changing a username](/help/img/sa-username-change.png)
 - **Someone leaving?** Untick **Active** in their account. They can no longer sign in, but their history stays.
 - Referees can also be added by the Referee Assignor on the **Referees** page.
+- **Program directories:** Program Directors keep a contact list under **Directory** (coaches without an account yet, referees, team managers, and so on). Those contacts aren't accounts and can't sign in. You can see every program's directory under **Programs & gyms → Directory** (pick a program in the header to see just one). A Directory coach can be a team's head coach until you create their Coach account; the director then switches the team over in one click.
 
 | Role | What they do |
 |---|---|

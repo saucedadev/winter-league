@@ -20,11 +20,35 @@ Each venue has one or more **courts**. Type a name in **New court name** and cho
 
 ## Teams
 
-**Menu → My program → Teams.** Add a team for each division your program enters, and choose its **coach**. Coaches see their team's schedule and can ask for changes. If a coach doesn't have an account yet, ask your league's System Admin to create one.
+**Menu → My program → Teams.** Add a team for each division your program enters, and choose its **coach**. Coaches see their team's schedule and can ask for changes. If a coach doesn't have an account yet, ask your league's System Admin to create one. Meanwhile you can pick them from your [Directory](#directory).
 
 ![Teams](/help/img/pd-teams.png)
 
 A team that has games on the schedule can't be deleted. Untick **Active** instead.
+
+## Directory
+
+Your program's contact list: coaches, referees, team managers, gym contacts, anyone you need to reach quickly. **Menu → My program → Directory.**
+
+![Directory](/help/img/pd-directory.png)
+
+**Add contact** and enter:
+- **First name** and **Last name** (required)
+- **Email** and **Phone** (optional). In the list they're links, so you can email or call in one tap.
+- **Role** (optional): **Coach**, **Referee**, or **Other (type it in)…** for anything else, e.g. *Team manager* or *Scorekeeper*. Roles you've typed before are suggested as you type, and you can filter the list by role.
+
+![Adding a contact](/help/img/pd-directory-add.png)
+
+A contact is **not an app account**. They can't sign in, and adding someone here doesn't create one. Only the league's System Admin creates accounts. Search finds a contact by name, email, phone, or role. The System Admin can see every program's directory.
+
+### A coach without an account yet
+Add them to the Directory with the role **Coach**. On **Teams**, open the team and choose them under **Head coach → From the Directory (no account yet)**. The team shows them with a **Directory** tag.
+
+![A Directory coach on a team](/help/img/pd-team-directory-coach.png)
+
+Because a Directory coach can't sign in, they won't see the schedule or be able to request changes. Ask the System Admin to create their Coach account. When it exists (same email, or same first and last name), their Directory entry says *"Now has a Coach account"*. Click **Use the account for their team(s)** to move every team they coach over to the real account in one step. The Directory entry stays, and you can remove it.
+
+While a contact is the head coach of a team, you can't change their role away from Coach. Removing them from the Directory leaves their teams with no head coach (you're warned first).
 
 ## Gym slots
 

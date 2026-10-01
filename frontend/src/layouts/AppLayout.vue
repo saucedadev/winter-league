@@ -57,6 +57,7 @@ const menuGroups = computed(() => {
       { to: '/blackouts', label: 'Blackouts', show: auth.canManage },
       { to: '/venues', label: 'Venues', show: coachOrDirector },
       { to: '/teams', label: 'Teams', show: coachOrDirector },
+      { to: '/directory', label: 'Directory', show: auth.canManage },
       { to: '/payouts', label: 'Referee payouts', show: role.value === 'program_director' },
       { to: '/activity', label: 'Activity', show: auth.canManage && !sa },
     ] },

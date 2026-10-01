@@ -44,27 +44,33 @@ const grouped = computed(() => {
 
 const editor = ref(null);
 const coaches = ref([]);
+const contactCoaches = ref([]); // coaches from the program's Directory (no account yet)
 const saving = ref(false);
 const formError = ref('');
 async function loadCoaches(programId) {
-  coaches.value = programId ? (await api.get('/teams/coaches', { params: { programId } })).data.coaches : [];
+  const data = programId ? (await api.get('/teams/coaches', { params: { programId } })).data : { coaches: [], contacts: [] };
+  coaches.value = data.coaches;
+  contactCoaches.value = data.contacts || [];
 }
 async function open(t) {
   formError.value = '';
   const programId = t?.programId || ctx.programId || '';
   await loadCoaches(programId);
   editor.value = t
-    ? { id: t.id, form: { programId, name: t.name, divisionId: t.divisionId, headCoachUserId: t.headCoachUserId || '', isActive: t.isActive } }
-    : { id: null, form: { programId, name: '', divisionId: divisionFilter.value || '', headCoachUserId: '' } };
+    ? { id: t.id, form: { programId, name: t.name, divisionId: t.divisionId, coach: t.headCoachUserId ? `user:${t.headCoachUserId}` : t.headCoachContactId ? `contact:${t.headCoachContactId}` : '', isActive: t.isActive } }
+    : { id: null, form: { programId, name: '', divisionId: divisionFilter.value || '', coach: '' } };
 }
 watch(() => editor.value?.form.programId, async (pid, old) => {
-  if (editor.value && !editor.value.id && pid !== old) { await loadCoaches(pid); editor.value.form.headCoachUserId = ''; }
+  if (editor.value && !editor.value.id && pid !== old) { await loadCoaches(pid); editor.value.form.coach = ''; }
 });
 async function save() {
   formError.value = '';
   saving.value = true;
   try {
-    const f = editor.value.form;
+    const { coach, ...f } = editor.value.form;
+    // One picker, two kinds of coach: a Coach account or a Directory coach.
+    f.headCoachUserId = coach.startsWith('user:') ? coach.slice(5) : null;
+    f.headCoachContactId = coach.startsWith('contact:') ? coach.slice(8) : null;
     if (editor.value.id) await api.put(`/teams/${editor.value.id}`, f);
     else await api.post('/teams', f);
     toast.success(editor.value.id ? 'Team saved.' : `Added ${f.name}.`);
@@ -109,7 +115,10 @@ async function doDelete() {
               <p class="font-medium text-sm">{{ t.name }} <span v-if="!t.isActive" class="text-xs text-text-muted">(inactive)</span></p>
               <p v-if="showProgram" class="text-xs text-text-muted">{{ t.programName }}{{ t.programIsGuest ? ' (guest)' : '' }}</p>
             </div>
-            <p class="text-sm" :class="t.headCoachName ? '' : 'text-text-muted'">{{ t.headCoachName ? `Coach ${t.headCoachName}` : 'No head coach assigned' }}</p>
+            <p class="text-sm" :class="t.headCoachName ? '' : 'text-text-muted'">
+              {{ t.headCoachName ? `Coach ${t.headCoachName}` : 'No head coach assigned' }}
+              <span v-if="t.headCoachIsContact" class="badge badge-outline ml-1" title="From the program’s Directory: no app account yet">Directory</span>
+            </p>
             <div v-if="canEdit" class="flex">
               <button class="btn btn-ghost" @click="open(t)">Edit</button>
               <button class="btn btn-ghost hover:!text-danger" @click="deleting = t">Delete</button>
@@ -132,11 +141,19 @@ async function doDelete() {
         </div>
         <div>
           <label class="label" for="tf-coach">Head coach <span class="font-normal text-text-muted">(optional)</span></label>
-          <select id="tf-coach" v-model="editor.form.headCoachUserId" class="input">
+          <select id="tf-coach" v-model="editor.form.coach" class="input">
             <option value="">Not assigned yet</option>
-            <option v-for="c in coaches" :key="c.id" :value="c.id">{{ c.firstName }} {{ c.lastName }}</option>
+            <optgroup v-if="coaches.length" label="Coach accounts">
+              <option v-for="c in coaches" :key="c.id" :value="`user:${c.id}`">{{ c.firstName }} {{ c.lastName }}</option>
+            </optgroup>
+            <optgroup v-if="contactCoaches.length" label="From the Directory (no account yet)">
+              <option v-for="c in contactCoaches" :key="c.id" :value="`contact:${c.id}`">{{ c.firstName }} {{ c.lastName }}</option>
+            </optgroup>
           </select>
-          <p v-if="!coaches.length" class="text-xs text-text-muted mt-1">No Coach accounts in this program yet. A System Admin can add them under Users.</p>
+          <p class="text-xs text-text-muted mt-1">
+            <template v-if="editor.form.coach.startsWith('contact:')">A Directory coach can’t sign in, so they won’t see the schedule or request changes. When the league admin creates their Coach account, switch the team to it.</template>
+            <template v-else-if="!coaches.length">No Coach accounts in this program yet. You can pick a coach from your Directory until the league admin creates their account.</template>
+          </p>
         </div>
         <label v-if="editor.id" class="flex items-center gap-2 text-sm"><input v-model="editor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Active this season</label>
         <p v-if="formError" class="text-sm text-danger" role="alert">{{ formError }}</p>

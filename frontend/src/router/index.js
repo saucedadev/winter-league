@@ -22,6 +22,7 @@ const routes = [
       { path: 'blackouts', component: () => import('../views/BlackoutsView.vue'), meta: { roles: MANAGERS, title: 'Blackout dates' } },
       { path: 'venues', component: () => import('../views/VenuesView.vue'), meta: { roles: TEAM_VIEWERS, title: 'Venues' } },
       { path: 'teams', component: () => import('../views/TeamsView.vue'), meta: { roles: TEAM_VIEWERS, title: 'Teams' } },
+      { path: 'directory', component: () => import('../views/DirectoryView.vue'), meta: { roles: MANAGERS, title: 'Directory' } },
       { path: 'branding', component: () => import('../views/BrandingView.vue'), meta: { roles: SA, title: 'Branding & Theme' } },
       { path: 'programs', component: () => import('../views/ProgramsView.vue'), meta: { roles: SA, title: 'Programs' } },
       { path: 'league', component: () => import('../views/LeagueSetupView.vue'), meta: { roles: SA, title: 'League setup' } },
