@@ -28,6 +28,8 @@ Do these in order before programs start entering gym time.
 
 ![Programs](/help/img/sa-programs.png)
 
+**Deactivating a program:** edit it and untick **Active in the league**. It stays on this page (greyed out, marked *inactive*) with all its history, but it disappears from the drop-down lists: the program menu in the top bar, and the Program list when you add a user, team, venue, or gym slot. Its teams are left out of new drafts. Tick **Active in the league** again and it comes straight back. People already in an inactive program keep it when you edit their account (shown as *inactive*), but nobody new can be added to it.
+
 Outside clubs the league plays now and then are **guest programs**, set up further down the same page. See [Guest (non-conference) teams](#guest-non-conference-teams).
 
 ### 3. Accounts
@@ -131,6 +133,8 @@ Click **Generate draft** (or **Regenerate draft** to start over). It takes a few
 **Day preferences.** Directors can keep game slots for any mix of divisions (e.g. *4th–6th grade boys and girls on Mondays and Wednesdays*, or *girls on Mondays*) under **Gym slots → Tag game slots**, and you can too for any program. A **Priority** tag means those games take the slot first, before an untagged slot in the same week, and other games use it only if nothing else fits anywhere. An **Only** tag means no other game is ever placed there. The notes report how tagged slots were used, e.g. *"Girls priority slots: 7 of 14 game times used by Girls games; 2 went to other games because nothing else fit"* or *"Girls-only slots: 7 of 14 used; 7 left open (other games can't use them)."* When you move or place a game by hand, a slot kept **only** for other games isn't offered (and is refused), and a **priority** slot for other games is marked so you can avoid it.
 
 ![A draft schedule](/help/img/sa-builder-draft.png)
+
+**Back-to-back games.** Referees work two games in a row at a gym, and a single game at a gym is hard to staff. So the matchmaker stacks games: when it picks a time, one right next to a game already at that gym that day beats an earlier time on another day, and a game that's on its own gets a partner before a gym that already has a pair gets a third. After the draft is built, it also tries to move any game still on its own next to another game at the home program's gyms (the same week first, then up to three weeks either side), or to bring another game in beside it. All of this is best effort: it never breaks a rule (rest days, games per week, travel caps, tagged slots, overrides, blackouts), and it doesn't change who is home or away. The notes report the result, e.g. *"Back-to-back games: 83 of 90 games have another game right before or after them at the same gym. 7 are on their own…"*, naming the single games. If a gym slot only has room for one game that day, the notes say so: ask the director for a longer slot there.
 
 Read the summary cards (games placed, home/away balance, longest trip, season span, anything needing attention) and **Notes from the matchmaker**, which explain in plain words anything it couldn't do, such as a team left short of games and which setting would fix it.
 

@@ -29,7 +29,9 @@ export const useProgramContext = defineStore('programContext', {
       this.guestPrograms = data.programs.filter((p) => p.isGuest);
       this.maxPrograms = data.maxPrograms;
       this.loaded = true;
-      if (this.selectedId && !this.programs.some((p) => p.id === this.selectedId)) this.select('');
+      // Inactive programs aren't offered in any drop-down list, so a selection
+      // left on one (it was just deactivated) goes back to "All programs".
+      if (this.selectedId && !this.programs.some((p) => p.id === this.selectedId && p.isActive)) this.select('');
     },
     select(id) {
       this.selectedId = id || '';

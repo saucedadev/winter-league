@@ -26,8 +26,12 @@
 // slot tagged "priority" for other games is used only if nothing else fits
 // anywhere; a slot tagged "only" for other games is never used.
 // Soft goals: every team reaches rules.gamesPerTeam, home/away near 50/50,
-// games spread evenly across the season.
-import { milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride, reservationFit, isReserved, reservationLabel } from './core.js';
+// games spread evenly across the season, and games STACKED back to back at a
+// gym (referees work two games in a row; a single game at a gym is hard to
+// staff): within a week a game takes a time right next to a game already at
+// that venue that day when it can, and a final pass moves leftover single
+// games next to another game. Stacking never breaks a hard constraint.
+import { toMinutes, milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride, reservationFit, isReserved, reservationLabel } from './core.js';
 
 export function buildSchedule({ teams, windows, homes, programBlackouts, rules, programNames = {} }) {
   const warnings = [];
@@ -253,6 +257,48 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   matches.sort((m, n) => m.targetWeek - n.targetWeek || m.round - n.round || m.divisionId.localeCompare(n.divisionId));
   const used = new Set();
   const teamGames = new Map(teams.map((t) => [t.id, []]));
+
+  // ---- stacking: games back to back at the same venue on the same day ----
+  // Two times are "back to back" when one starts as the other ends, allowing
+  // for the buffer (and a little slack between different courts at a venue).
+  const venueDayKey = (w) => `${w.venueId}|${w.date}`;
+  const STACK_SLACK = (rules.bufferMinutes || 0) + 30;
+  const backToBack = (a, b) => {
+    const g1 = toMinutes(b.startTime) - toMinutes(a.endTime);
+    const g2 = toMinutes(a.startTime) - toMinutes(b.endTime);
+    return (g1 >= 0 && g1 <= STACK_SLACK) || (g2 >= 0 && g2 <= STACK_SLACK);
+  };
+  const windowsAt = new Map(); // venue|date -> every window there
+  for (const w of windows) { const k = venueDayKey(w); if (!windowsAt.has(k)) windowsAt.set(k, []); windowsAt.get(k).push(w); }
+  const gamesAt = new Map();   // venue|date -> windows that have a game
+  const occupy = (w) => { used.add(windowKey(w)); const k = venueDayKey(w); if (!gamesAt.has(k)) gamesAt.set(k, []); gamesAt.get(k).push(w); };
+  const release = (w) => { used.delete(windowKey(w)); const list = gamesAt.get(venueDayKey(w)) || []; const i = list.indexOf(w); if (i >= 0) list.splice(i, 1); };
+  // Is the game in window w on its own (no game right before or after it there)?
+  const isSingle = (w) => !(gamesAt.get(venueDayKey(w)) || []).some((o) => o !== w && backToBack(o, w));
+  // How good a time is for stacking:
+  //   4 = right next to a game that is on its own (gives it a partner)
+  //   3 = right next to a game that already has a partner (extends a run)
+  //   2 = nothing there yet, but a free time next to it could take a later game
+  //   1 = a time with no neighbor at all (it can only ever be a single game)
+  const stackScore = (w) => {
+    const next = (gamesAt.get(venueDayKey(w)) || []).filter((o) => backToBack(o, w));
+    if (next.length) return next.some(isSingle) ? 4 : 3;
+    return (windowsAt.get(venueDayKey(w)) || []).some((o) => o !== w && !used.has(windowKey(o)) && backToBack(o, w)) ? 2 : 1;
+  };
+  // The best of a week's usable times: highest stack score, then earliest.
+  const pickBest = (list, usable, minScore = 1) => {
+    let best = null;
+    for (const w of list) {
+      const r = usable(w);
+      if (!r) continue;
+      const score = stackScore(w);
+      if (score < minScore) continue;
+      if (!best || score > best.score) best = { ...r, score };
+      if (score === 4) break;
+    }
+    return best;
+  };
+
   const homeCount = new Map(teams.map((t) => [t.id, 0]));
   const awayCount = new Map(teams.map((t) => [t.id, 0]));
   const games = [];
@@ -283,21 +329,16 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     };
     for (const wi of weekOrder(targetWeek)) {
       // Within a week: slots tagged for this game first, then untagged ones.
+      // In each group, a time back to back with another game beats an earlier one.
       for (const pass of ['match', 'open']) {
-        for (const w of perWeek[wi]) {
-          if (fit(w) !== pass) continue;
-          const r = usable(w);
-          if (r) return r;
-        }
+        const r = pickBest(perWeek[wi].filter((w) => fit(w) === pass), usable);
+        if (r) return r;
       }
     }
     if (allowOthers) {
       for (const wi of weekOrder(targetWeek)) {
-        for (const w of perWeek[wi]) {
-          if (fit(w) !== 'prefer-other') continue;
-          const r = usable(w);
-          if (r) return r;
-        }
+        const r = pickBest(perWeek[wi].filter((w) => fit(w) === 'prefer-other'), usable);
+        if (r) return r;
       }
     }
     return null;
@@ -322,7 +363,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
         note: 'No open game window at either program’s gyms fits both teams’ schedules and the travel cap.' });
       continue;
     }
-    used.add(windowKey(placed.w));
+    occupy(placed.w);
     teamGames.get(home.id).push({ date: placed.w.date });
     teamGames.get(away.id).push({ date: placed.w.date });
     homeCount.set(home.id, homeCount.get(home.id) + 1);
@@ -352,14 +393,90 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       ag.splice(ag.indexOf(aEntry), 1);
       const placed = tryPlace(newHome, newAway, weekIndex.get(weekOf(g.window.date)));
       if (!placed) { hg.push(hEntry); ag.push(aEntry); continue; }
-      used.delete(windowKey(g.window));
-      used.add(windowKey(placed.w));
+      release(g.window);
+      occupy(placed.w);
       hg.push({ date: placed.w.date });
       ag.push({ date: placed.w.date });
       homeCount.set(newHome.id, homeCount.get(newHome.id) + 1); awayCount.set(newHome.id, awayCount.get(newHome.id) - 1);
       homeCount.set(newAway.id, homeCount.get(newAway.id) - 1); awayCount.set(newAway.id, awayCount.get(newAway.id) + 1);
       Object.assign(g, { homeTeamId: newHome.id, awayTeamId: newAway.id, window: placed.w, travelMiles: placed.miles });
       moved++;
+    }
+    if (!moved) break;
+  }
+
+  // ---- 2c. stacking repair ----
+  // A game left on its own at a gym gets a neighbor when the rules allow:
+  //   (a) it moves next to another game at one of its home program's gyms, or
+  //   (b) another of that program's home games moves in next to it, as long as
+  //       that doesn't leave a different game on its own.
+  // The same week is tried first, then up to three weeks either side. Home and
+  // away stay as they are, and every hard constraint is re-checked.
+  const STACK_WEEK_REACH = 3;
+  const weekOfGame = (g) => weekIndex.get(weekOf(g.window.date));
+  // Could game g be played in window w instead? Returns { w, miles } or null.
+  const canMove = (g, w) => {
+    if (w === g.window || used.has(windowKey(w))) return null;
+    const home = teamById.get(g.homeTeamId);
+    const away = teamById.get(g.awayTeamId);
+    if (w.programId !== home.programId) return null;
+    const f = reservationFit(w, home.divisionId);
+    // Never into a slot kept for other games, and never out of a slot kept for this one.
+    if (f === 'only-other' || f === 'prefer-other' || (reservationFit(g.window, home.divisionId) === 'match' && f !== 'match')) return null;
+    if (programBlackouts.has(`${home.programId}|${w.date}`) || programBlackouts.has(`${away.programId}|${w.date}`)) return null;
+    const without = (teamId) => { const list = [...teamGames.get(teamId)]; list.splice(list.findIndex((x) => x.date === g.window.date), 1); return list; };
+    if (teamProblems(home.name, without(home.id), w.date, rules).length || teamProblems(away.name, without(away.id), w.date, rules).length) return null;
+    const miles = milesBetween(w, homes[away.programId]);
+    if (miles != null && miles > capOf(away.programId)) return null;
+    return { w, miles };
+  };
+  const doMove = (g, to) => {
+    for (const id of [g.homeTeamId, g.awayTeamId]) {
+      const list = teamGames.get(id);
+      list.splice(list.findIndex((x) => x.date === g.window.date), 1);
+      list.push({ date: to.w.date });
+    }
+    release(g.window);
+    occupy(to.w);
+    Object.assign(g, { window: to.w, travelMiles: to.miles });
+  };
+  // Would taking game g away leave one of its neighbors on its own?
+  const leavesSingle = (g) => (gamesAt.get(venueDayKey(g.window)) || [])
+    .filter((o) => o !== g.window && backToBack(o, g.window))
+    .some((n) => !(gamesAt.get(venueDayKey(n)) || []).some((o) => o !== n && o !== g.window && backToBack(o, n)));
+
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = 0;
+    for (const g of games) {
+      if (!g.window || !isSingle(g.window)) continue;
+      const home = teamById.get(g.homeTeamId);
+      const perWeek = byProgramWeek.get(home.programId);
+      if (!perWeek) continue;
+      const here = weekOfGame(g);
+      // (a) move this game next to another one.
+      let done = false;
+      const old = g.window;
+      release(old); // so its own time doesn't count as a neighbor
+      for (const wi of weekOrder(here)) {
+        if (Math.abs(wi - here) > STACK_WEEK_REACH) continue;
+        const found = pickBest(perWeek[wi], (w) => canMove(g, w), 3); // only times right next to another game
+        if (found) { occupy(old); doMove(g, found); done = true; break; }
+      }
+      if (!done) occupy(old);
+      // (b) bring another game in next to this one.
+      if (!done) {
+        const beside = (windowsAt.get(venueDayKey(g.window)) || []).filter((w) => !used.has(windowKey(w)) && backToBack(w, g.window));
+        const others = games.filter((o) => o !== g && o.window && teamById.get(o.homeTeamId).programId === home.programId
+          && Math.abs(weekOfGame(o) - here) <= STACK_WEEK_REACH && (isSingle(o.window) || !leavesSingle(o)))
+          .sort((x, y) => Math.abs(weekOfGame(x) - here) - Math.abs(weekOfGame(y) - here));
+        search: for (const o of others) {
+          for (const w of beside) {
+            const to = canMove(o, w);
+            if (to) { doMove(o, to); done = true; break search; }
+          }
+        }
+      }
+      if (done) moved++;
     }
     if (!moved) break;
   }
@@ -419,6 +536,20 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
       }
     }
   }
+  // Stacking: how many games ended up on their own at a gym.
+  const singles = scheduled.filter((g) => isSingle(g.window));
+  if (scheduled.length) {
+    const fmt = (g) => {
+      const d = new Date(`${g.window.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+      return `${teamById.get(g.homeTeamId).name} vs ${teamById.get(g.awayTeamId).name} (${d}, ${g.window.venueName})`;
+    };
+    if (!singles.length) warnings.push(`Back-to-back games: every game has another game right before or after it at the same gym.`);
+    else {
+      // Why a single game couldn't be stacked: usually the slot only holds one game.
+      const oneGameSlots = singles.filter((g) => !(windowsAt.get(venueDayKey(g.window)) || []).some((o) => o !== g.window && backToBack(o, g.window))).length;
+      warnings.push(`Back-to-back games: ${scheduled.length - singles.length} of ${scheduled.length} games have another game right before or after them at the same gym. ${singles.length} ${singles.length === 1 ? 'is' : 'are'} on ${singles.length === 1 ? 'its' : 'their'} own, which referees may not be able to cover: ${singles.slice(0, 4).map(fmt).join('; ')}${singles.length > 4 ? `; and ${singles.length - 4} more` : ''}.${oneGameSlots ? ` ${oneGameSlots === singles.length ? (singles.length === 1 ? 'It is' : 'All are') : `${oneGameSlots} are`} in a gym slot with room for only one game that day: a longer slot there would let games stack.` : ''}`);
+    }
+  }
   const unplaced = games.length - scheduled.length;
   if (unplaced) warnings.push(`${unplaced} pairing${unplaced > 1 ? 's' : ''} couldn’t be placed. They’re listed under Unplaced so you can place them by hand.`);
 
@@ -431,6 +562,8 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     teams: teams.length,
     windowsAvailable: windows.length,
     windowsUsed: used.size,
+    stackedGames: scheduled.length - singles.length, // have a game right before/after at the same gym
+    singleGames: singles.length,
     maxHomeAwayGap: imbalance.length ? Math.max(...imbalance) : 0,
     balancedTeams: imbalance.filter((x) => x <= 1).length,
     maxTravelMiles: miles.length ? Math.max(...miles) : null,

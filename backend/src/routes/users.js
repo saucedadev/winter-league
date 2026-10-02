@@ -35,11 +35,16 @@ const ROLE_LABELS = {
   referee: 'Referee',
 };
 
-async function validateRoleProgram(role, programId) {
+// currentProgramId: the account's program before this change. Someone already
+// in a program that was later deactivated can still be edited; nobody new can
+// be put into an inactive program.
+async function validateRoleProgram(role, programId, currentProgramId = null) {
   if (!ROLES.includes(role)) throw badRequest('Choose a valid role.');
   if (PROGRAM_REQUIRED.includes(role) && !programId) throw badRequest(`A ${ROLE_LABELS[role]} must belong to a program.`);
   if (PROGRAM_FORBIDDEN.includes(role) && programId) throw badRequest('System Admins are league-wide and can’t belong to a program.');
-  if (programId && !(await one('SELECT 1 FROM programs WHERE id = ?', [programId]))) throw badRequest('That program doesn’t exist.');
+  const program = programId ? await one('SELECT name, is_active FROM programs WHERE id = ?', [programId]) : null;
+  if (programId && !program) throw badRequest('That program doesn’t exist.');
+  if (program && !program.isActive && programId !== currentProgramId) throw badRequest(`${program.name} is inactive. Reactivate it under Programs before adding people to it.`);
   await assertLeagueProgram(programId, 'directors or coaches', 'The league team’s coach and director handle guest games.');
 }
 
@@ -119,7 +124,7 @@ router.put('/:id', ah(async (req, res) => {
     isActive: req.body.isActive !== undefined ? (req.body.isActive ? 1 : 0) : existing.isActive,
   };
   assertEmail(next.email);
-  await validateRoleProgram(next.role, next.programId);
+  await validateRoleProgram(next.role, next.programId, existing.programId);
   // Changing the username (e.g. fixing a typo): they sign in with the new one.
   let newUsername = null;
   if (typeof req.body.username === 'string' && req.body.username.trim()) {

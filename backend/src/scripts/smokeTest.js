@@ -493,6 +493,68 @@ console.log('\nBuffer between games');
   await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
 }
 
+console.log('\nInactive programs');
+{
+  const progs = (await call('GET', '/programs', { token: admin })).data.programs.filter((p) => !p.isGuest);
+  const target = progs.find((p) => p.shortCode === 'WGA') || progs.at(-1);
+  const body = (isActive) => ({ name: target.name, shortCode: target.shortCode, city: target.city, contactEmail: target.contactEmail, contactPhone: target.contactPhone, isActive });
+  const off = await call('PUT', `/programs/${target.id}`, { token: admin, body: body(false) });
+  check('a program can be deactivated', off.status === 200 && !(await call('GET', '/programs', { token: admin })).data.programs.find((p) => p.id === target.id).isActive, JSON.stringify(off.data).slice(0, 200));
+  const newUser = { firstName: 'Ina', lastName: 'Ctive', email: 'ina@example.com', role: 'league_coach', programId: target.id };
+  const refused = await call('POST', '/users', { token: admin, body: newUser });
+  check('nobody new can be added to an inactive program', refused.status === 400 && refused.data.error.includes('is inactive'), JSON.stringify(refused.data));
+  const member = (await call('GET', '/users', { token: admin })).data.users.find((u) => u.programId === target.id);
+  if (member) check('someone already in it can still be edited', (await call('PUT', `/users/${member.id}`, { token: admin, body: { phone: member.phone || '' } })).status === 200);
+  await call('PUT', `/programs/${target.id}`, { token: admin, body: body(true) });
+  const ok = await call('POST', '/users', { token: admin, body: newUser });
+  check('once reactivated, people can be added again', ok.status === 201, JSON.stringify(ok.data).slice(0, 200));
+  if (ok.data.user) await call('PUT', `/users/${ok.data.user.id}`, { token: admin, body: { isActive: false } });
+}
+
+console.log('\nBack-to-back games (stacking)');
+{
+  const { buildSchedule } = await import('../scheduling/matchmaker.js');
+  const { carveWindows, normalizeRules } = await import('../scheduling/core.js');
+  const slot = (id, date, start, end, venue = 'v1') => ({ id, courtId: `c-${venue}`, courtName: 'Main Gym', venueId: venue, venueName: venue === 'v1' ? 'Orenco Elementary School' : 'Second Gym', programId: 'lib', date, startTime: start, endTime: end });
+  const T = (id, name, p, d) => ({ id, name, programId: p, divisionId: d, divisionName: d, divisionGender: 'boys', programName: p });
+  const four = [T('l4', 'Liberty 4th Boys', 'lib', 'd4'), T('m4', 'Mountainside 4th Boys', 'mtn', 'd4'), T('l6', 'Liberty 6th Boys', 'lib', 'd6'), T('m6', 'Mountainside 6th Boys', 'mtn', 'd6')];
+  const run = (slots, teams = four, rules = {}) => buildSchedule({ teams, windows: carveWindows(slots, 60, rules.bufferMinutes || 0), homes: {}, programBlackouts: new Set(),
+    rules: normalizeRules({ gamesPerTeam: 1, maxVsSameOpponent: 1, ...rules }), programNames: { lib: 'Liberty', mtn: 'Mountainside' } });
+  // The directors' example: the same gym is open Monday and Tuesday evening.
+  const ex = run([slot('s1', '2026-11-16', '18:00', '20:00'), slot('s2', '2026-11-17', '18:00', '20:00')]);
+  const at = (r) => r.games.map((g) => `${g.window.date} ${g.window.startTime}`).sort().join(' | ');
+  check('two games at one gym are played back to back, not on separate days', at(ex) === '2026-11-16 18:00 | 2026-11-16 19:00', at(ex));
+  check('the summary counts stacked and single games', ex.summary.stackedGames === 2 && ex.summary.singleGames === 0);
+  check('the notes say every game is back to back', ex.warnings.some((w) => w.startsWith('Back-to-back games: every game')));
+  // A later game joins a game that is on its own rather than starting a new day.
+  const three = run([slot('s0', '2026-11-16', '17:00', '18:00', 'v2'), slot('s1', '2026-11-16', '18:00', '20:00'), slot('s2', '2026-11-17', '18:00', '20:00')]);
+  check('games stack at the gym with room for two, not at a one-game slot', at(three) === '2026-11-16 18:00 | 2026-11-16 19:00', at(three));
+  // With a buffer, "back to back" allows for it.
+  const buf = run([slot('s1', '2026-11-16', '18:00', '20:30'), slot('s2', '2026-11-17', '18:00', '20:30')], four, { bufferMinutes: 15 });
+  check('stacking respects the buffer between games', at(buf) === '2026-11-16 18:00 | 2026-11-16 19:15', at(buf));
+  // One-hour slots can't hold two games: the notes explain why they're single.
+  const tight = run([slot('s1', '2026-11-16', '18:00', '19:00'), slot('s2', '2026-11-17', '18:00', '19:00')]);
+  check('one-game slots can’t stack, and the notes say a longer slot would help', tight.summary.singleGames === 2
+    && tight.warnings.some((w) => w.startsWith('Back-to-back games: 0 of 2') && w.includes('room for only one game')), tight.warnings.join(' | '));
+  // Stacking never breaks a rule: a team still can't play twice in a day.
+  const same = [T('a', 'A', 'lib', 'd4'), T('b', 'B', 'mtn', 'd4'), T('c', 'C', 'mtn', 'd4')];
+  const rr = run([slot('s1', '2026-11-16', '18:00', '21:00'), slot('s2', '2026-11-18', '18:00', '21:00'), slot('s3', '2026-11-23', '18:00', '21:00')], same, { gamesPerTeam: 2, minDaysBetween: 2, maxGamesPerWeek: 2 });
+  const perTeamDay = {};
+  for (const g of rr.games.filter((x) => x.window)) for (const id of [g.homeTeamId, g.awayTeamId]) perTeamDay[`${id}|${g.window.date}`] = (perTeamDay[`${id}|${g.window.date}`] || 0) + 1;
+  check('stacking never gives a team two games in a day', Object.values(perTeamDay).every((n) => n === 1), JSON.stringify(perTeamDay));
+  // The full test league: far more games stacked than single, same rules kept.
+  const dStack = await draftWith({});
+  const sum = dStack.draft.summary;
+  check('in a full draft most games are back to back', sum.stackedGames + sum.singleGames === sum.scheduledGames && sum.singleGames / sum.scheduledGames < 0.2, `${sum.singleGames} single of ${sum.scheduledGames}`);
+  check('the draft notes report back-to-back games', dStack.draft.warnings.some((w) => w.startsWith('Back-to-back games:')));
+  const sched = dStack.games.filter((g) => g.status === 'scheduled');
+  const key = new Set(sched.map((g) => `${g.courtId}|${g.date}|${g.startTime}`));
+  check('no court is used twice after stacking', key.size === sched.length);
+  const td = {};
+  for (const g of sched) for (const id of [g.homeTeamId, g.awayTeamId]) td[`${id}|${g.date}`] = (td[`${id}|${g.date}`] || 0) + 1;
+  check('no team plays twice in a day after stacking', Object.values(td).every((n) => n === 1));
+}
+
 console.log('\nMatchmaker draft');
 const gen = await call('POST', '/schedule/generate', { token: admin, body: { rules: { gamesPerTeam: 8, gameMinutes: 60, maxTravelMiles: 30, minDaysBetween: 2, maxGamesPerWeek: 2 } } });
 check('draft generated', gen.status === 201 && gen.data.draft.status === 'draft' && gen.data.draft.summary.scheduledGames > 0, JSON.stringify(gen.data).slice(0, 200));

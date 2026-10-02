@@ -68,6 +68,8 @@ Gym slots are the times your program can offer the league. **Menu → My program
 3. To repeat it, also pick an **End date**, e.g. *11/02/2026 to 1/15/2027*, and under **Repeat on** choose the days of the week, e.g. **Mon** and **Wed**, or **Tue**, **Wed** and **Thu**. The form says how many slots that makes. With **Skip blackout dates** ticked, dates that fall in a blackout are skipped, and the app lists any dates it skipped.
 4. For game slots, you can also choose who they're kept for (see *Day preferences* below).
 
+> **Make game slots long enough for two games.** Referees work games back to back, so the league's matchmaker stacks games at a gym: a second game is placed right after the first rather than on another day. A slot with room for only one game (e.g. 6:00–7:00 PM with 60-minute games) leaves that game on its own, which referees may not be able to cover. A 6:00–8:00 PM slot holds two.
+
 ![Adding gym slots](/help/img/pd-add-slots.png)
 
 Use the arrows, **This week**, or **Go to** to move between weeks, and the category buttons to show one kind of slot. Open a slot to edit or delete it. For a repeating slot, **This and later dates in the series** deletes it and every later date added with it.

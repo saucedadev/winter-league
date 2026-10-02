@@ -105,6 +105,10 @@ const SORT_COLUMNS = [
 ];
 
 const editor = ref(null);
+// Program drop-down: active programs only. When editing someone whose program
+// has been deactivated, that program stays in the list (marked inactive) so
+// saving another change doesn't silently remove them from it.
+const programChoices = computed(() => ctx.programs.filter((p) => p.isActive || (editor.value?.id && p.id === editor.value.originalProgramId)));
 const saving = ref(false);
 const formError = ref('');
 const credentials = ref(null); // { name, username, password }
@@ -112,7 +116,7 @@ const credentials = ref(null); // { name, username, password }
 function open(u) {
   formError.value = '';
   editor.value = u
-    ? { id: u.id, self: u.id === auth.user.id, original: u.username, username: u.username, usernameUnlocked: false,
+    ? { id: u.id, self: u.id === auth.user.id, originalProgramId: u.programId || '', original: u.username, username: u.username, usernameUnlocked: false,
       form: { firstName: u.firstName, lastName: u.lastName, email: u.email, phone: u.phone || '', role: u.role, programId: u.programId || '', isActive: u.isActive } }
     : { id: null, username: '', usernameUnlocked: false, form: { firstName: '', lastName: '', email: '', phone: '', role: 'program_director', programId: ctx.programId || '' }, temp: blankTemp() };
 }
@@ -237,7 +241,7 @@ async function copyCredentials() {
           <label class="label" for="uf-program">Program{{ PROGRAM_ROLES.includes(editor.form.role) ? '' : ' (optional)' }}</label>
           <select id="uf-program" v-model="editor.form.programId" class="input" :required="PROGRAM_ROLES.includes(editor.form.role)">
             <option value="">{{ PROGRAM_ROLES.includes(editor.form.role) ? 'Choose a program' : 'League-wide' }}</option>
-            <option v-for="p in ctx.programs" :key="p.id" :value="p.id">{{ p.name }}</option>
+            <option v-for="p in programChoices" :key="p.id" :value="p.id">{{ p.name }}{{ p.isActive ? '' : ' (inactive)' }}</option>
           </select>
         </div>
         <label v-if="editor.id && !editor.self" class="col-span-2 flex items-center gap-2 text-sm"><input v-model="editor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Active (inactive accounts can’t sign in)</label>
