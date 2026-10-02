@@ -1166,6 +1166,93 @@ const kept = newGames.find((g) => [g.homeTeamId, g.awayTeamId].sort().join() ===
 check('publishing a new schedule cancels open requests to add games', (await call('GET', `/requests/${pendingAdd.data.request.id}`, { token: admin })).data.request.status === 'cancelled');
 check('final scores carry over to unchanged games when republishing', !!kept && kept.hasScore && (kept.homeTeamId === keep.homeTeamId ? kept.homeScore === 51 : kept.awayScore === 51));
 
+console.log('\nRule requests');
+{
+  const RR = '/rule-requests';
+  const rulesBefore = (await call('GET', '/schedule/rules', { token: admin })).data.rules;
+  await call('PUT', '/schedule/rules', { token: admin, body: { ...rulesBefore, maxTravelMiles: 30, programOverrides: {}, divisionOverrides: {} } });
+  const g7 = (await call('GET', '/league/divisions', { token: admin })).data.divisions.find((d) => d.name === '7th Grade Boys');
+  // Who can use it.
+  check('coaches can’t file rule requests', (await call('POST', RR, { token: coach, body: { kind: 'other', requestedValue: 'x', details: 'please' } })).status === 403);
+  check('referees can’t see rule requests', (await call('GET', RR, { token: ref })).status === 403);
+  // Filing.
+  check('a request needs a reason', (await call('POST', RR, { token: pd, body: { kind: 'travel_cap', requestedValue: 15, details: ' ' } })).status === 400);
+  check('a travel cap must be lower than the league’s', (await call('POST', RR, { token: pd, body: { kind: 'travel_cap', requestedValue: 30, details: 'Long drives are hard for us.' } })).status === 400);
+  check('a rematch request needs a division', (await call('POST', RR, { token: pd, body: { kind: 'rematch_limit', requestedValue: 3, details: 'Small division.' } })).status === 400);
+  check('“something else” needs a title', (await call('POST', RR, { token: pd, body: { kind: 'other', details: 'We have little gym time.' } })).status === 400);
+  const cap = await call('POST', RR, { token: pd, body: { kind: 'travel_cap', requestedValue: 15, details: 'Most of our families can’t drive more than 20 minutes on weeknights.' } });
+  check('a director files a travel-cap request', cap.status === 201 && cap.data.request.status === 'open' && cap.data.request.summary === `A 15-mile travel cap for ${nfh.name}`
+    && cap.data.request.current.league === 30 && cap.data.request.current.own === false, JSON.stringify(cap.data).slice(0, 300));
+  check('the same request can’t be filed twice while open', (await call('POST', RR, { token: pd, body: { kind: 'travel_cap', requestedValue: 12, details: 'Again, please.' } })).status === 409);
+  const capId = cap.data.request.id;
+  // Privacy: another program's director can't see or touch it.
+  check('another program’s director doesn’t see it', !(await call('GET', RR, { token: mbell })).data.requests.some((r) => r.id === capId));
+  check('…and can’t reply to it', (await call('POST', `${RR}/${capId}/messages`, { token: mbell, body: { body: 'hello' } })).status === 404);
+  check('the admin sees every program’s requests', (await call('GET', RR, { token: admin })).data.requests.some((r) => r.id === capId && r.actions.includes('accept')));
+  check('the admin’s count shows it waiting', (await call('GET', `${RR}/count`, { token: admin })).data.needsAction >= 1);
+  check('a director can’t decide a request', (await call('POST', `${RR}/${capId}/decide`, { token: pd, body: { decision: 'accept' } })).status === 403);
+  // Question and reply.
+  const ask = await call('POST', `${RR}/${capId}/messages`, { token: admin, body: { body: 'Would 20 miles work? 15 leaves only two opponents.' } });
+  check('the admin asks a question', ask.status === 200 && ask.data.request.status === 'question' && ask.data.request.messages.length === 1 && ask.data.request.messages[0].fromLeague);
+  check('the director’s count shows the question', (await call('GET', `${RR}/count`, { token: pd })).data.needsAction === 1);
+  const reply = await call('POST', `${RR}/${capId}/messages`, { token: pd, body: { body: '20 miles is fine.' } });
+  check('the director’s reply hands it back to the league', reply.status === 200 && reply.data.request.status === 'open' && reply.data.request.messages.length === 2);
+  // Accept and apply, with the admin's adjusted value.
+  check('declining needs a note', (await call('POST', `${RR}/${capId}/decide`, { token: admin, body: { decision: 'decline' } })).status === 400);
+  check('a travel cap can’t just be “noted”', (await call('POST', `${RR}/${capId}/decide`, { token: admin, body: { decision: 'note' } })).status === 400);
+  const acc = await call('POST', `${RR}/${capId}/decide`, { token: admin, body: { decision: 'accept', apply: true, value: 20, note: 'Set to 20 as agreed.' } });
+  const rulesNow = (await call('GET', '/schedule/rules', { token: admin })).data.rules;
+  check('accepting applies the cap to the Matchmaker rules', acc.status === 200 && acc.data.applied === true && acc.data.request.status === 'accepted' && acc.data.request.appliedValue === '20'
+    && rulesNow.programOverrides[nfh.id]?.maxTravelMiles === 20, JSON.stringify(rulesNow.programOverrides));
+  check('an applied cap can’t be above the league’s', (await (async () => {
+    const x = await call('POST', RR, { token: mbell, body: { kind: 'travel_cap', requestedValue: 25, details: 'We’d like a shorter drive.' } });
+    const d = await call('POST', `${RR}/${x.data.request.id}/decide`, { token: admin, body: { decision: 'accept', apply: true, value: 45 } });
+    await call('POST', `${RR}/${x.data.request.id}/withdraw`, { token: mbell });
+    return d.status;
+  })()) === 400);
+  check('the accepted request is listed as in effect', (await call('GET', `${RR}?state=effect`, { token: pd })).data.requests.some((r) => r.id === capId && r.current.own && r.current.value === 20));
+  check('both logs record it', (await call('GET', '/activity?category=request', { token: pd })).data.entries.some((e) => e.details.includes('Accepted the rule request') && e.details.includes('applied to the rules (20 miles)'))
+    && (await call('GET', '/activity?category=schedule', { token: admin })).data.entries.some((e) => e.details.includes('travel cap to 20 miles (from a rule request)')));
+  // Rematch limit for a division.
+  const rm = await call('POST', RR, { token: pd, body: { kind: 'rematch_limit', divisionId: g7.id, requestedValue: 4, details: 'Only three teams in this division, so they need to meet more often.' } });
+  const rmAcc = await call('POST', `${RR}/${rm.data.request.id}/decide`, { token: admin, body: { decision: 'accept', apply: true } });
+  check('a rematch limit is applied as a division override', rm.status === 201 && rmAcc.data.applied && (await call('GET', '/schedule/rules', { token: admin })).data.rules.divisionOverrides[g7.id]?.maxVsSameOpponent === 4);
+  // Something the matchmaker can't do: noted.
+  const other = await call('POST', RR, { token: pd, body: { kind: 'other', requestedValue: 'No games before 10 AM on Saturdays', details: 'Our gym is used by a church group until 9:30.' } });
+  const noted = await call('POST', `${RR}/${other.data.request.id}/decide`, { token: admin, body: { decision: 'note', note: 'We’ll check this when reviewing the draft.' } });
+  check('“something else” can be marked noted', other.status === 201 && noted.data.request.status === 'noted' && noted.data.applied === false);
+  check('…but not applied to the rules', (await (async () => {
+    const o2 = await call('POST', RR, { token: pd, body: { kind: 'league_rule', requestedValue: 'Buffer between games', details: 'Could we have 10 minutes between games?' } });
+    const d = await call('POST', `${RR}/${o2.data.request.id}/decide`, { token: admin, body: { decision: 'accept', apply: true } });
+    await call('POST', `${RR}/${o2.data.request.id}/decide`, { token: admin, body: { decision: 'decline', note: 'Not this season.' } });
+    return d.status;
+  })()) === 400);
+  check('declined requests are listed as closed', (await call('GET', `${RR}?state=closed`, { token: pd })).data.requests.some((r) => r.status === 'declined' && r.decisionNote === 'Not this season.'));
+  // In effect until withdrawn or ended; re-confirmed each season.
+  check('a request in effect needs no re-confirming in the season it was accepted', noted.data.request.needsConfirm === false && (await call('GET', `${RR}/count`, { token: admin })).data.toConfirm === 0);
+  const s0 = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
+  const mkSeason = await call('POST', '/league/seasons', { token: admin, body: { name: 'Winter 2099', startDate: '2099-11-01', endDate: '2100-02-28' } });
+  if (mkSeason.status === 201) {
+    await call('PUT', `/league/seasons/${mkSeason.data.season.id}`, { token: admin, body: { isActive: true } });
+    const inNew = (await call('GET', `${RR}?state=effect`, { token: admin })).data.requests.find((r) => r.id === capId);
+    check('in a new season, requests in effect ask to be re-confirmed', inNew?.needsConfirm === true && inNew.actions.includes('confirm') && (await call('GET', `${RR}/count`, { token: admin })).data.toConfirm >= 3, JSON.stringify(inNew?.actions));
+    const conf = await call('POST', `${RR}/${capId}/confirm`, { token: admin });
+    check('the admin confirms it still applies', conf.status === 200 && conf.data.request.needsConfirm === false);
+    await call('PUT', `/league/seasons/${s0.id}`, { token: admin, body: { isActive: true } });
+    await call('DELETE', `/league/seasons/${mkSeason.data.season.id}`, { token: admin });
+  }
+  check('the admin can end a request that’s in effect, with a note', (await call('POST', `${RR}/${other.data.request.id}/decide`, { token: admin, body: { decision: 'decline', note: 'The church group has moved.' } })).data.request?.status === 'declined');
+  const wd = await call('POST', `${RR}/${capId}/withdraw`, { token: pd });
+  check('the director withdraws a request; the applied cap stays until the league removes it', wd.status === 200 && wd.data.request.status === 'withdrawn' && wd.data.overrideStillSet === true
+    && (await call('GET', '/schedule/rules', { token: admin })).data.rules.programOverrides[nfh.id]?.maxTravelMiles === 20);
+  check('a closed request can’t be answered again', (await call('POST', `${RR}/${capId}/decide`, { token: admin, body: { decision: 'accept' } })).status === 409);
+  // The admin can record a request on a program's behalf.
+  const behalf = await call('POST', RR, { token: admin, body: { programId: nfh.id, kind: 'other', requestedValue: 'Phoned in: avoid Dec 12', details: 'Told the league by phone.' } });
+  check('the admin records a request for a program', behalf.status === 201 && behalf.data.request.programId === nfh.id);
+  await call('POST', `${RR}/${behalf.data.request.id}/decide`, { token: admin, body: { decision: 'decline', note: 'Test tidy-up.' } });
+  await call('PUT', '/schedule/rules', { token: admin, body: { ...rulesBefore } });
+}
+
 console.log('\nBlock edits and scheduled games');
 {
   const season2 = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);

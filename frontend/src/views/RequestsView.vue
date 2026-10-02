@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../stores/toast';
@@ -9,10 +10,18 @@ import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import Modal from '../components/Modal.vue';
 import GameRow from '../components/GameRow.vue';
+import RuleRequestsPanel from '../components/RuleRequestsPanel.vue';
 
 const auth = useAuthStore();
 const toast = useToast();
 const badge = useRequestBadge();
+const route = useRoute();
+const router = useRouter();
+// Two kinds of request share this page: changes to games on the published
+// schedule, and (directors and the league only) requests about the Matchmaker rules.
+const tab = ref(auth.canManage && route.query.tab === 'rules' ? 'rules' : 'games');
+watch(() => route.query.tab, (t) => { tab.value = auth.canManage && t === 'rules' ? 'rules' : 'games'; });
+function showTab(t) { if (tab.value !== t) router.replace({ query: t === 'rules' ? { tab: 'rules' } : {} }); }
 const state = ref('open');
 const requests = ref([]);
 const loading = ref(true);
@@ -91,8 +100,18 @@ function openDeny(r) { denying.value = r; denyNote.value = ''; denyError.value =
 
 <template>
   <div>
-    <PageHeader title="Change requests" subtitle="Moves, swaps, cancellations, and added games on the published schedule. Coach requests go to their director first, then every other program involved agrees, then the league signs off." />
+    <PageHeader :title="auth.canManage ? 'Requests' : 'Change requests'"
+      :subtitle="tab === 'rules' ? (auth.isSuperAdmin ? 'What programs need from the Matchmaker rules. Answer each one here; a travel cap or rematch limit can go straight into the rules.' : 'Tell the league what your program needs from the schedule rules, and follow the answer here. Only your program and the league can see these.') : 'Moves, swaps, cancellations, and added games on the published schedule. Coach requests go to their director first, then every other program involved agrees, then the league signs off.'" />
 
+    <div v-if="auth.canManage" class="flex gap-1 border-b border-border mb-5" role="tablist" aria-label="Kind of request">
+      <button v-for="[k, label, n] in [['games', 'Game changes', badge.games], ['rules', 'Rule requests', badge.rules]]" :key="k" role="tab" :aria-selected="tab === k"
+        class="px-4 py-2 text-sm -mb-px border-b-2" :class="tab === k ? 'border-accent font-semibold' : 'border-transparent text-text-muted hover:text-text'" @click="showTab(k)">
+        {{ label }}<span v-if="n" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5" :aria-label="`${n} waiting on you`">{{ n }}</span>
+      </button>
+    </div>
+
+    <RuleRequestsPanel v-if="tab === 'rules'" />
+    <template v-else>
     <div class="flex flex-wrap items-center gap-3 mb-4">
       <div class="inline-flex rounded-lg border border-border overflow-hidden text-sm" role="tablist">
         <button role="tab" class="px-3 py-1.5" :aria-selected="state === 'open'" :class="state === 'open' ? 'bg-accent text-accent-contrast font-semibold' : 'text-text-muted'" @click="switchTo('open')">Open</button>
@@ -183,5 +202,6 @@ function openDeny(r) { denying.value = r; denyNote.value = ''; denyError.value =
         <button class="btn btn-danger" :disabled="denyNote.trim().length < 3 || busyId === denying.id" @click="act(denying, 'deny', denyNote.trim())">Deny request</button>
       </template>
     </Modal>
+    </template>
   </div>
 </template>

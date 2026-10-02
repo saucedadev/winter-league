@@ -208,6 +208,50 @@ Every request follows the same path:
 
 ![Requests waiting on a director](/help/img/pd-requests.png)
 
+## Rule requests
+
+Some things about the schedule only the league can set. A rule request is how you tell the league what your program needs, with the reason, and get an answer you can refer back to.
+
+**First, what you can set yourself.** You don't need to ask for these:
+- Dates your program can't play: [Blackout dates](#blackout-dates).
+- When and where your gyms are free: [Gym slots](#gym-slots).
+- Which divisions play on which days: **Keep for** on your gym slots ([Day preferences](#day-preferences-keeping-game-slots-for-certain-divisions)).
+
+**What to ask the league for:**
+
+| Choose | When |
+|---|---|
+| **A lower travel cap** | Your teams shouldn't travel as far as the league allows. Opponents beyond your cap come to your gyms instead, so you need enough game slots to host them. |
+| **A division's rematch limit** | A division is small and its teams need to meet more often to reach their games, or you'd like fewer repeats. |
+| **A league rule** | Games per team, game length, the buffer between games, days between games, games per week. These apply to every program. |
+| **Something else** | Anything else the schedule should take into account, for example *No games before 10 AM on Saturdays*. |
+
+### Sending a request
+1. **Menu → League → Requests**, then the **Rule requests** tab.
+2. Choose **New rule request**.
+3. Pick what it's about and fill in the value: the miles for a travel cap (it has to be lower than the league's), or the division and number of games for a rematch limit. For the other two, describe it in a few words.
+4. Under **Why?**, give the reason in a sentence or two. The league decides from this.
+5. Choose **Send to the league**. The System Admins are emailed.
+
+![A new rule request](/help/img/pd-rule-request-new.png)
+
+You can have one open travel-cap request at a time, and one rematch request for each division. Only your program and the league can see your requests; other programs can't. Coaches can't send rule requests, so ask them to bring these to you.
+
+### Following a request
+Each request shows where it stands:
+
+- **Waiting for the league:** nothing for you to do yet.
+- **Question for the program:** the league asked something. Choose **Reply**; the request then goes back to the league. The Requests menu item shows a number while a question is waiting on you.
+- **Accepted:** the league agrees. For a travel cap or rematch limit, the request shows the value that went into the rules (the league can adjust what you asked for) and it applies to the next draft schedule built.
+- **Noted:** the scheduler can't do this by itself, so the league keeps it on record and checks it when reviewing the schedule.
+- **Declined:** the league's note says why.
+
+You're emailed at each step. **Add a comment** adds more information while a request is open.
+
+![Rule requests for a director](/help/img/pd-rule-requests.png)
+
+Accepted and noted requests move to **In effect** and stay there season after season; the league confirms each one again when a new season starts. When you no longer need one, choose **Withdraw**. The league is told, and removes the setting from the rules. Declined and withdrawn requests are kept under **Closed**.
+
 ## Activity
 
 **Menu → My program → Activity** shows every change involving your program, newest first, including changes made by other programs and the league: who made it and which programs it involves.

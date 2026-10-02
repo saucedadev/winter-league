@@ -78,3 +78,5 @@ A game against a guest team is always at your own gym, and there's no guest dire
 ![Where a request is](/help/img/coach-requests.png)
 
 If anyone denies it, their note explains why so you can try another time. To take a request back while it's still open, choose **Withdraw request**. You'll get an email when a request is approved or denied.
+
+**Something about the season as a whole?** If your team needs something from the schedule itself, such as shorter trips to away games or no early Saturday games, tell your Program Director. They can send the league a rule request for your program.

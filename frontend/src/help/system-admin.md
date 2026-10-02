@@ -83,7 +83,7 @@ The next screen shows the username and temporary password **once**. The password
 Once programs have entered their gym slots, blackouts, and teams, the Schedule builder creates the season's games. Nothing is visible to coaches, directors, or referees until you publish.
 
 ### 1. Check the rules
-**Menu → Scheduling → Schedule builder.**
+**Menu → Scheduling → Schedule builder.** If programs have sent [rule requests](#rule-requests-from-programs) that are waiting for an answer, a line above the rules says how many.
 
 ![Matchmaker rules](/help/img/sa-builder-rules.png)
 
@@ -109,6 +109,8 @@ Every other division keeps the league value. To go back to the league value, cli
 
 **When to use one:** the matchmaker's notes say a team "got 4 of 8 games: it has 2 possible opponents in 7th Grade Boys and a limit of 2 games against each". Rather than raising the limit for the whole league, give just that division an override of 4.
 
+A director can ask for one with a [rule request](#rule-requests-from-programs); accepting it adds the override here.
+
 After you generate, a line above the notes shows the overrides the draft was built with (for example, *Built with division override: 7th Grade Boys — at most 4 games against the same opponent*). Each draft keeps its own copy of the rules, so changing an override later doesn't change a draft or published schedule already built. If an override is what leaves teams short, the note says so and tells you to raise the division override. The Activity log records override changes with the rules.
 
 #### Program overrides (travel cap)
@@ -125,7 +127,7 @@ How the matchmaker uses it:
 
 **What it costs:** the program hosts more of its own games, so home/away balance shifts (it has more home games, its opponents more away games), and its gyms need enough game slots. If its teams end up short, the notes name the override, for example: *"Northfield 5th Boys got 6 of 8 games: Northfield's own 15-mile travel cap means its teams can't travel to Riverbend, so those games have to be at Northfield's gyms. More Northfield game slots, or a higher cap, would help."*
 
-Directors can't set a cap themselves; they ask the league, and you add it here. After you generate, a line above the notes shows it (*Built with program override: Northfield Hawks — 15-mile travel cap*). When you move a game by hand, times where a team would travel past its program's cap are flagged with that cap.
+Directors can't set a cap themselves; they send a [rule request](#rule-requests-from-programs), and accepting it adds the override here for you. After you generate, a line above the notes shows it (*Built with program override: Northfield Hawks — 15-mile travel cap*). When you move a game by hand, times where a team would travel past its program's cap are flagged with that cap.
 
 ### 2. Generate a draft
 Click **Generate draft** (or **Regenerate draft** to start over). It takes a few seconds. Changed rules are saved when you generate.
@@ -238,6 +240,40 @@ Coaches and directors ask for changes from the Schedule page: moving, swapping, 
 - A request to **add a game** (marked **Add game**) creates the game when you approve it, after checking again that the time is still free and the two teams are still within the league rules. Requests can't be exceptions. If a team needs a game outside the rules, add it yourself with **+ Add game**. A request involving a guest team skips the "other program" step, since guests have no director.
 
 ![A request waiting for league sign-off](/help/img/sa-requests-signoff.png)
+
+## Rule requests from programs
+
+Program Directors use rule requests to tell you what their program needs from the Matchmaker rules: a lower travel cap, a different rematch limit for a division, a change to a league rule, or anything else the schedule should take into account. Each one comes with a reason, and your answer is kept with it. Only you and the program that sent it can see a request.
+
+**Menu → League → Requests**, then the **Rule requests** tab. The tab and the Requests menu item show how many are waiting for your answer, and the Schedule builder shows the same count above the rules, so you see them before generating a draft.
+
+![The rule request count in the Schedule builder](/help/img/sa-builder-rule-requests.png)
+
+![Rule requests waiting for an answer](/help/img/sa-rule-requests.png)
+
+### Answering a request
+- **Ask a question:** when you need more before deciding. The program is emailed, and the request waits under **Question for the program** until they reply.
+- **Accept…:** you agree.
+  - For a **travel cap** or **rematch limit**, **Apply to the Matchmaker rules now** is ticked. The value they asked for is filled in and you can change it, for example 20 miles instead of 15. Choosing **Accept and apply** adds the [program override](#program-overrides-travel-cap) or [division override](#division-overrides) for you. It applies to the next draft you generate, not to a draft or published schedule already built. Untick the box to set it yourself later in the Schedule builder.
+  - For a **league rule** or **something else**, accepting records that you agree. Change the rule yourself in the Schedule builder if one needs changing.
+- **Noted:** for a request the matchmaker can't do by itself (for example *No games before 10 AM on Saturdays*). It's kept on record for you to check when reviewing a draft.
+- **Decline:** needs a note saying why.
+
+A note for the program is optional when accepting or noting. The program's directors are emailed with your decision and note each time.
+
+![Accepting a travel cap and applying it](/help/img/sa-rule-request-accept.png)
+
+### Requests in effect
+Accepted and noted requests move to **In effect** and stay there until the program withdraws them or you end them. Read this list when you review a draft: it's the record of what each program was promised.
+
+- **Each new season:** every request in effect is marked **Confirm for this season**. Choose **Still applies this season** to keep it, or **End…** with a note if it no longer applies.
+- **End…** closes a request and tells the program why. It doesn't change the rules: if the request was applied, remove the override under **Schedule builder → Division overrides** or **Program overrides**.
+- **When a program withdraws** a request that was applied, you're emailed and the override stays in the rules until you remove it the same way.
+
+### Recording a request for a program
+If a director tells you by phone, text, or email, choose **Record a request**, pick the program, and fill it in as they would. It's then on record with the rest, and you answer it the same way.
+
+Every request, question, reply, and decision is in the **Activity** log under **Requests**. A value applied to the rules also appears under **Schedule**.
 
 ## Activity
 

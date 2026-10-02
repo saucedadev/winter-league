@@ -19,6 +19,10 @@ import DraftReviewPanel from '../components/DraftReviewPanel.vue';
 
 const toast = useToast();
 const overview = ref(null);
+// Rule requests from programs, shown above the rules so they aren't missed before generating.
+const ruleRequests = ref({ open: 0, toConfirm: 0 });
+const ruleRequestText = computed(() => `${[ruleRequests.value.open && `${ruleRequests.value.open} waiting for your answer`, ruleRequests.value.toConfirm && `${ruleRequests.value.toConfirm} to confirm for this season`].filter(Boolean).join(', ')}.`);
+api.get('/rule-requests/count').then(({ data }) => { ruleRequests.value = data; }).catch(() => {});
 const loading = ref(true);
 const rules = ref(null);
 const generating = ref(false);
@@ -341,6 +345,10 @@ const publishMessage = computed(() => {
             {{ generating ? 'Building…' : overview.draft ? 'Regenerate draft' : 'Generate draft' }}
           </button>
         </div>
+        <p v-if="ruleRequests.open || ruleRequests.toConfirm" class="text-sm rounded-lg border border-border bg-background px-3 py-2 mb-4">
+          <span class="font-medium">Rule requests from programs:</span> {{ ruleRequestText }}
+          <RouterLink :to="{ path: '/requests', query: { tab: 'rules' } }" class="underline font-medium">Open rule requests</RouterLink>
+        </p>
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div v-for="f in RULE_FIELDS" :key="f.key">
             <label class="label" :for="`rule-${f.key}`">{{ f.label }}</label>

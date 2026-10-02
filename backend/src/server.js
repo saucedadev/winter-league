@@ -20,6 +20,7 @@ import activityRoutes from './routes/activity.js';
 import settingsRoutes from './routes/settings.js';
 import scheduleRoutes from './routes/schedule.js';
 import requestRoutes from './routes/requests.js';
+import ruleRequestRoutes from './routes/ruleRequests.js';
 import refereeRoutes from './routes/referees.js';
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/activity', activityRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/requests', requestRoutes);
+app.use('/api/rule-requests', ruleRequestRoutes);
 app.use('/api/referees', refereeRoutes);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
