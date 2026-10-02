@@ -82,9 +82,30 @@ const allDivisions = () => all('SELECT id, name, grade, gender, is_active FROM d
 // Slot rows for the browser: labels, blackout state, and what the slot is kept for.
 async function shapeAll(rows) {
   const divisions = await allDivisions();
+  const blocks = await blockInfo(rows);
   return withReservations(rows, divisions).map(({ reservedDivisions, reservedFor, reservedDivisionId, ...s }) => ({
     ...s, categoryLabel: CATEGORIES[s.category], isBlackedOut: !!s.blackoutReason, reservedText: reservationText(s),
+    block: blockFor(blocks, s),
   }));
+}
+
+// A "block" is the set of slots added together over a date range (they share
+// series_id). For each slot: how many dates the block has, its first and last
+// date, its weekdays, and how many dates are on or after this one. null when
+// the slot isn't in a block (or is the only one left in it).
+async function blockInfo(rows) {
+  const ids = [...new Set(rows.map((r) => r.seriesId).filter(Boolean))];
+  const map = new Map();
+  if (!ids.length) return map;
+  const dates = await all(`SELECT series_id, date FROM gym_slots WHERE series_id IN (${ids.map(() => '?').join(',')}) ORDER BY date`, ids);
+  for (const d of dates) { if (!map.has(d.seriesId)) map.set(d.seriesId, []); map.get(d.seriesId).push(d.date); }
+  return map;
+}
+function blockFor(blocks, s) {
+  const dates = s.seriesId ? blocks.get(s.seriesId) : null;
+  if (!dates || dates.length < 2) return null;
+  const weekdays = [...new Set(dates.map((d) => new Date(`${d}T12:00:00Z`).getUTCDay()))].sort((a, b) => a - b);
+  return { count: dates.length, first: dates[0], last: dates.at(-1), weekdays, fromHere: dates.filter((d) => d >= s.date).length };
 }
 const shapeOne = async (row) => (await shapeAll([row]))[0];
 
@@ -222,34 +243,136 @@ router.post('/', ah(async (req, res) => {
 }));
 
 // ---- PUT /api/slots/:id ----
+// scope (in the body): 'one' (the default) changes this date only.
+// 'following' / 'all' change this and later dates / every date in the slot's
+// block (the slots added together over a date range). A block edit:
+//   - applies only the fields that differ from the slot that was opened, so a
+//     date that was changed on its own earlier keeps its other differences;
+//   - can change court, start/end time, type, "Keep for", and notes (not the date);
+//   - skips, and reports, any date it can't change (a published game in the
+//     slot would no longer fit, or a clash with another slot on that court)
+//     instead of failing. A slot can grow around its published games.
+// Draft games that no longer fit a changed slot go back to "unscheduled".
+const sameIds = (a, b) => JSON.stringify(JSON.parse(a || '[]').sort()) === JSON.stringify(JSON.parse(b || '[]').sort());
+const sameResv = (a, b) => sameIds(a.reservedDivisions, b.reservedDivisions) && (a.reservedDivisions ? (a.reservedMode || 'prefer') === (b.reservedMode || 'prefer') : true);
+// The scheduled games (draft or published) in these slots that would no
+// longer fit them: a different court, a practice slot, or outside its hours.
+// changes: [{ id, courtId, startTime, endTime, category }]
+async function gamesThatNoLongerFit(changes, runStatus) {
+  if (!changes.length) return [];
+  const byId = new Map(changes.map((c) => [c.id, c]));
+  const games = await all(`SELECT g.id, g.gym_slot_id, g.court_id, g.start_time, g.end_time FROM games g JOIN schedule_runs sr ON sr.id = g.run_id
+    WHERE sr.status = ? AND g.status = 'scheduled' AND g.gym_slot_id IN (${changes.map(() => '?').join(',')})`, [runStatus, ...changes.map((c) => c.id)]);
+  return games.filter((g) => {
+    const c = byId.get(g.gymSlotId);
+    return c.category === 'PRACTICE' || g.courtId !== c.courtId || g.startTime < c.startTime || g.endTime > c.endTime;
+  });
+}
+// Draft games that no longer fit go back to "unscheduled".
+const draftGamesToUnplace = async (changes) => (await gamesThatNoLongerFit(changes, 'draft')).map((g) => g.id);
+const unplaceSql = (ids) => ({
+  sql: `UPDATE games SET status = 'unscheduled', court_id = NULL, gym_slot_id = NULL, date = NULL, start_time = NULL, end_time = NULL,
+    note = 'Its gym slot changed.', updated_at = datetime('now') WHERE id IN (${ids.map(() => '?').join(',')})`, args: ids,
+});
+
 router.put('/:id', ah(async (req, res) => {
   const s = await one('SELECT * FROM gym_slots WHERE id = ?', [req.params.id]);
   if (!s) throw notFound('Gym slot');
   assertCanManageProgram(req, s.programId);
-  const next = {
-    courtId: req.body.courtId || s.courtId,
-    date: req.body.date || s.date,
-    startTime: req.body.startTime || s.startTime,
-    endTime: req.body.endTime || s.endTime,
-    category: req.body.category || s.category,
-  };
-  assertSlotBody(next);
-  await courtForProgram(next.courtId, s.programId);
-  const resv = await readReservation(req.body, next.category, { reservedDivisions: s.reservedDivisions, reservedMode: s.reservedMode });
-  const moved = next.courtId !== s.courtId || next.date !== s.date || next.startTime !== s.startTime || next.endTime !== s.endTime || next.category !== s.category;
-  if (moved) await assertNoPublishedGames([s.id], 'change this slot');
-  const season = await one('SELECT * FROM seasons WHERE id = ?', [s.seasonId]);
-  if (next.date < season.startDate || next.date > season.endDate) throw badRequest(`That date is outside the ${season.name} season (${season.startDate} to ${season.endDate}).`);
-  const o = await findOverlap(next.courtId, next.date, next.startTime, next.endTime, s.id);
-  if (o) throw conflict(`Can’t save — this slot ${overlapMsg(o)} on the same court.`);
+  const b = req.body || {};
+  if (b.scope !== undefined && !['one', 'following', 'all'].includes(b.scope)) throw badRequest('Choose what to change: this date, this and later dates, or the whole block.');
+  const scope = s.seriesId && ['following', 'all'].includes(b.scope) ? b.scope : 'one';
 
-  await run(`UPDATE gym_slots SET court_id = ?, date = ?, start_time = ?, end_time = ?, category = ?, notes = ?,
-      reserved_divisions = ?, reserved_mode = ?, updated_at = datetime('now') WHERE id = ?`,
-    [next.courtId, next.date, next.startTime, next.endTime, next.category, req.body.notes !== undefined ? trimOrNull(req.body.notes) : s.notes,
-      resv.reservedDivisions, resv.reservedMode, s.id]);
-  await logActivity({ category: 'slot', action: 'edited', actor: req.user, programId: s.programId,
-    details: `Edited a ${CATEGORIES[next.category].toLowerCase()} slot on ${next.date}, ${formatTime12(next.startTime)}–${formatTime12(next.endTime)}` });
-  res.json({ slot: await shapeOne(await one(`${SELECT} WHERE g.id = ?`, [s.id])) });
+  if (scope === 'one') {
+    const next = {
+      courtId: b.courtId || s.courtId,
+      date: b.date || s.date,
+      startTime: b.startTime || s.startTime,
+      endTime: b.endTime || s.endTime,
+      category: b.category || s.category,
+    };
+    assertSlotBody(next);
+    await courtForProgram(next.courtId, s.programId);
+    const resv = await readReservation(b, next.category, { reservedDivisions: s.reservedDivisions, reservedMode: s.reservedMode });
+    const moved = next.courtId !== s.courtId || next.date !== s.date || next.startTime !== s.startTime || next.endTime !== s.endTime || next.category !== s.category;
+    // Published games can't lose their slot: it can grow around them, not move away or shrink past them.
+    if (moved && next.date !== s.date) await assertNoPublishedGames([s.id], 'move this slot to another date');
+    else if (moved) {
+      const n = (await gamesThatNoLongerFit([{ id: s.id, ...next }], 'published')).length;
+      if (n) throw conflict(`Can’t change this slot: ${n} published game${n > 1 ? 's' : ''} scheduled in it would no longer fit. Ask the league admin to move ${n > 1 ? 'them' : 'it'} first.`);
+    }
+    const season = await one('SELECT * FROM seasons WHERE id = ?', [s.seasonId]);
+    if (next.date < season.startDate || next.date > season.endDate) throw badRequest(`That date is outside the ${season.name} season (${season.startDate} to ${season.endDate}).`);
+    const o = await findOverlap(next.courtId, next.date, next.startTime, next.endTime, s.id);
+    if (o) throw conflict(`Can’t save — this slot ${overlapMsg(o)} on the same court.`);
+    // A draft game stays only if the slot still covers it (and didn't change date).
+    const unplace = moved ? (next.date !== s.date
+      ? (await all(`SELECT g.id FROM games g JOIN schedule_runs sr ON sr.id = g.run_id WHERE sr.status = 'draft' AND g.status = 'scheduled' AND g.gym_slot_id = ?`, [s.id])).map((g) => g.id)
+      : await draftGamesToUnplace([{ id: s.id, ...next }])) : [];
+    await db.batch([
+      { sql: `UPDATE gym_slots SET court_id = ?, date = ?, start_time = ?, end_time = ?, category = ?, notes = ?,
+          reserved_divisions = ?, reserved_mode = ?, updated_at = datetime('now') WHERE id = ?`,
+      args: [next.courtId, next.date, next.startTime, next.endTime, next.category, b.notes !== undefined ? trimOrNull(b.notes) : s.notes,
+        resv.reservedDivisions, resv.reservedMode, s.id] },
+      ...(unplace.length ? [unplaceSql(unplace)] : []),
+    ], 'write');
+    await logActivity({ category: 'slot', action: 'edited', actor: req.user, programId: s.programId,
+      details: `Edited a ${CATEGORIES[next.category].toLowerCase()} slot on ${next.date}, ${formatTime12(next.startTime)}–${formatTime12(next.endTime)}${unplace.length ? ` (${unplace.length} draft game${unplace.length === 1 ? '' : 's'} went back to unplaced)` : ''}` });
+    return res.json({ slot: await shapeOne(await one(`${SELECT} WHERE g.id = ?`, [s.id])), updated: 1, skipped: [], unplacedDraftGames: unplace.length });
+  }
+
+  // ---- a block edit ----
+  if (b.date && b.date !== s.date) throw badRequest('A block edit can’t change the date. To move one date, choose “This date only”.');
+  // What changed, compared with the slot that was opened.
+  const change = {};
+  for (const k of ['courtId', 'startTime', 'endTime', 'category']) if (b[k] && b[k] !== s[k]) change[k] = b[k];
+  if (change.startTime) assertTime(change.startTime, 'Start time');
+  if (change.endTime) assertTime(change.endTime, 'End time');
+  if (change.category && !CATEGORIES[change.category]) throw badRequest('Choose a slot type: Practice, Weeknight game, or Weekend game block.');
+  if (change.courtId) await courtForProgram(change.courtId, s.programId);
+  const notesChanged = b.notes !== undefined && trimOrNull(b.notes) !== (s.notes || null);
+  const mine = { reservedDivisions: s.reservedDivisions, reservedMode: s.reservedMode };
+  const resv = await readReservation(b, change.category || s.category, mine);
+  const resvChanged = !sameResv(resv, mine);
+  const labels = [change.courtId && 'court', (change.startTime || change.endTime) && 'time', change.category && 'type', resvChanged && '“Keep for”', notesChanged && 'notes'].filter(Boolean);
+  if (!labels.length) throw badRequest('Nothing was changed. Change the time, court, type, “Keep for”, or notes first.');
+
+  const targets = await all(`SELECT * FROM gym_slots WHERE series_id = ? ${scope === 'following' ? 'AND date >= ?' : ''} ORDER BY date`,
+    scope === 'following' ? [s.seriesId, s.date] : [s.seriesId]);
+  // Published games that the changed slot would no longer cover, per slot.
+  const published = new Map();
+  for (const g of await gamesThatNoLongerFit(targets.map((t) => ({ id: t.id, courtId: change.courtId ?? t.courtId, startTime: change.startTime ?? t.startTime,
+    endTime: change.endTime ?? t.endTime, category: change.category ?? t.category })), 'published')) published.set(g.gymSlotId, (published.get(g.gymSlotId) || 0) + 1);
+
+  const stmts = [];
+  const changed = [];
+  const skipped = [];
+  for (const t of targets) {
+    const next = { id: t.id, courtId: change.courtId ?? t.courtId, startTime: change.startTime ?? t.startTime, endTime: change.endTime ?? t.endTime, category: change.category ?? t.category };
+    if (next.startTime >= next.endTime) { skipped.push({ date: t.date, reason: `its end time (${formatTime12(next.endTime)}) would not be after its start time (${formatTime12(next.startTime)})` }); continue; }
+    const structural = next.courtId !== t.courtId || next.startTime !== t.startTime || next.endTime !== t.endTime || next.category !== t.category;
+    if (structural) {
+      const n = published.get(t.id);
+      if (n) { skipped.push({ date: t.date, reason: `${n} published game${n > 1 ? 's' : ''} scheduled in it would no longer fit` }); continue; }
+      const o = await findOverlap(next.courtId, t.date, next.startTime, next.endTime, t.id);
+      if (o) { skipped.push({ date: t.date, reason: overlapMsg(o) }); continue; }
+    }
+    // "Keep for": the new value if it changed, else this date's own; practice slots have none.
+    const r = next.category === 'PRACTICE' ? NO_RESERVATION : resvChanged ? resv : { reservedDivisions: t.reservedDivisions, reservedMode: t.reservedMode };
+    const notes = notesChanged ? trimOrNull(b.notes) : t.notes;
+    if (!structural && sameResv(r, { reservedDivisions: t.reservedDivisions, reservedMode: t.reservedMode }) && (notes || null) === (t.notes || null)) continue; // already like that
+    stmts.push({ sql: `UPDATE gym_slots SET court_id = ?, start_time = ?, end_time = ?, category = ?, notes = ?, reserved_divisions = ?, reserved_mode = ?,
+        updated_at = datetime('now') WHERE id = ?`, args: [next.courtId, next.startTime, next.endTime, next.category, notes, r.reservedDivisions, r.reservedMode, t.id] });
+    changed.push({ ...next, date: t.date, structural });
+  }
+  const unplace = await draftGamesToUnplace(changed.filter((c) => c.structural));
+  if (unplace.length) stmts.push(unplaceSql(unplace));
+  if (stmts.length) await db.batch(stmts, 'write');
+  if (changed.length) {
+    await logActivity({ category: 'slot', action: 'edited', actor: req.user, programId: s.programId,
+      details: `Changed the ${labels.join(', ')} of ${changed.length} gym slot${changed.length === 1 ? '' : 's'} in a block (${changed[0].date} to ${changed.at(-1).date})${skipped.length ? `; ${skipped.length} date${skipped.length === 1 ? '' : 's'} skipped` : ''}${unplace.length ? `; ${unplace.length} draft game${unplace.length === 1 ? '' : 's'} went back to unplaced` : ''}` });
+  }
+  res.json({ slot: await shapeOne(await one(`${SELECT} WHERE g.id = ?`, [s.id])), updated: changed.length, skipped, unplacedDraftGames: unplace.length });
 }));
 
 // ---- POST /api/slots/tag ----

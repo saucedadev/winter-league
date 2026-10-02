@@ -110,6 +110,51 @@ check('delete "this and following" in series', del.data.deleted === repeat.data.
   check('deleting the series removes every date in the range', cleared.data.deleted === made.length);
 }
 
+console.log('\nEditing gym slots in blocks');
+{
+  // A block: Tuesdays and Thursdays in November, 4:00–4:45 AM game slots.
+  const mk = await call('POST', '/slots', { token: pd, body: { courtId: court.id, category: 'WEEKNIGHT_GAME', startTime: '04:00', endTime: '04:45', startDate: '2026-11-03', endDate: '2026-11-24', weekdays: [2, 4], skipBlackouts: false } });
+  const blk = mk.data.slots;
+  const list = async () => (await call('GET', '/slots?from=2026-11-01&to=2026-11-30', { token: pd })).data.slots.filter((x) => x.seriesId === blk[0].seriesId).sort((a, b) => a.date.localeCompare(b.date));
+  const first = (await list())[0];
+  check('a slot knows its block', blk.length === 7 && first.block?.count === 7 && first.block.first === '2026-11-03' && first.block.last === '2026-11-24'
+    && first.block.weekdays.join() === '2,4' && first.block.fromHere === 7, JSON.stringify(first.block));
+  check('a slot added on its own has no block', single.data.slots[0].block === null);
+  // One date changed on its own: only that date.
+  const body = (x, extra) => ({ courtId: x.courtId, category: x.category, date: x.date, startTime: x.startTime, endTime: x.endTime, notes: x.notes || '', reservedDivisionIds: x.reservedDivisionIds, reservedMode: x.reservedMode, ...extra });
+  const third = blk[2];
+  const one = await call('PUT', `/slots/${third.id}`, { token: pd, body: body(third, { scope: 'one', startTime: '04:15', notes: 'Side door' }) });
+  let now = await list();
+  check('“this date only” changes just that date', one.status === 200 && one.data.updated === 1 && now.filter((x) => x.startTime === '04:15').length === 1 && now.filter((x) => x.notes === 'Side door').length === 1);
+  // The whole block: only the changed field (end time) is applied.
+  const all = await call('PUT', `/slots/${first.id}`, { token: pd, body: body(first, { scope: 'all', endTime: '05:00' }) });
+  now = await list();
+  check('a block edit changes every date', all.status === 200 && all.data.updated === 7 && all.data.skipped.length === 0 && now.every((x) => x.endTime === '05:00'), JSON.stringify(all.data).slice(0, 200));
+  check('and leaves a date’s own differences alone', now[2].startTime === '04:15' && now[2].notes === 'Side door' && now.filter((x) => x.startTime === '04:00').length === 6 && now.filter((x) => x.notes).length === 1);
+  // This and later dates.
+  const fifth = now[4];
+  check('a later date counts the dates from it', fifth.block.fromHere === 3);
+  const lowerDivs = (await call('GET', '/league/divisions', { token: pd })).data.divisions.filter((d) => ['4', '5'].includes(String(d.grade))).map((d) => d.id);
+  const fol = await call('PUT', `/slots/${fifth.id}`, { token: pd, body: body(fifth, { scope: 'following', reservedDivisionIds: lowerDivs, reservedMode: 'only' }) });
+  now = await list();
+  check('“this and later dates” leaves earlier dates alone', fol.status === 200 && fol.data.updated === 3 && now.slice(0, 4).every((x) => !x.reservedText) && now.slice(4).every((x) => x.reservedText === '4th, 5th Grade Boys & Girls only'), now.map((x) => x.reservedText).join('|'));
+  check('times are untouched when only “Keep for” changes', now.every((x) => x.endTime === '05:00') && now[2].startTime === '04:15');
+  // A date that would clash is skipped and reported; the rest still change.
+  await call('POST', '/slots', { token: pd, body: { courtId: court.id, category: 'PRACTICE', date: now[1].date, startTime: '05:00', endTime: '05:30' } });
+  const clash = await call('PUT', `/slots/${first.id}`, { token: pd, body: body(now[0], { scope: 'all', endTime: '05:15' }) });
+  now = await list();
+  const nSkip = clash.data.skipped?.length;
+  check('a date that would clash is skipped and reported', clash.status === 200 && nSkip >= 1 && clash.data.updated === 7 - nSkip && clash.data.skipped.some((x) => x.date === now[1].date)
+    && clash.data.skipped.every((x) => x.reason.startsWith('overlaps')) && now[1].endTime === '05:00' && now[0].endTime === '05:15', JSON.stringify(clash.data.skipped));
+  check('a block edit can’t change the date', (await call('PUT', `/slots/${first.id}`, { token: pd, body: body(now[0], { scope: 'all', date: '2026-11-04' }) })).status === 400);
+  check('a block edit with nothing changed says so', (await call('PUT', `/slots/${first.id}`, { token: pd, body: body(now[0], { scope: 'all' }) })).status === 400);
+  check('the scope must be one, following or all', (await call('PUT', `/slots/${first.id}`, { token: pd, body: body(now[0], { scope: 'everything' }) })).status === 400);
+  check('another program’s director can’t edit the block', (await call('PUT', `/slots/${first.id}`, { token: mbell, body: body(now[0], { scope: 'all', endTime: '05:20' }) })).status === 403);
+  check('the activity log records the block edit', (await call('GET', '/activity?category=slot', { token: pd })).data.entries.some((e) => /Changed the time of \d gym slots in a block .*\d dates? skipped/.test(e.details)));
+  // Tidy up so these early-morning slots don't feed the matchmaker later.
+  await call('DELETE', `/slots/${first.id}?scope=following`, { token: pd });
+}
+
 console.log('\nHealth check');
 {
   const h = (await call('GET', '/health')).data;
@@ -1120,6 +1165,52 @@ const newGames = (await call('GET', `/schedule/games?programId=${nfh.id}`, { tok
 const kept = newGames.find((g) => [g.homeTeamId, g.awayTeamId].sort().join() === [keep.homeTeamId, keep.awayTeamId].sort().join() && g.date === keep.date && g.startTime === keep.startTime);
 check('publishing a new schedule cancels open requests to add games', (await call('GET', `/requests/${pendingAdd.data.request.id}`, { token: admin })).data.request.status === 'cancelled');
 check('final scores carry over to unchanged games when republishing', !!kept && kept.hasScore && (kept.homeTeamId === keep.homeTeamId ? kept.homeScore === 51 : kept.awayScore === 51));
+
+console.log('\nBlock edits and scheduled games');
+{
+  const season2 = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
+  const slotsNow = (await call('GET', `/slots?from=${season2.startDate}&to=${season2.endDate}`, { token: admin })).data.slots;
+  const busy = slotsNow.find((x) => x.gameCount > 0 && x.block);
+  if (busy) {
+    const b = { scope: 'all', courtId: busy.courtId, category: busy.category, date: busy.date, startTime: busy.startTime, notes: busy.notes || '', reservedDivisionIds: busy.reservedDivisionIds, reservedMode: busy.reservedMode };
+    // Shrinking the slot to 30 minutes can't hold its published games: skipped.
+    const shorter = `${busy.startTime.slice(0, 2)}:${busy.startTime.slice(3, 5) === '00' ? '30' : '59'}`;
+    const r = await call('PUT', `/slots/${busy.id}`, { token: admin, body: { ...b, endTime: shorter } });
+    check('a block edit skips dates whose published games would no longer fit', r.status === 200 && r.data.skipped.some((x) => x.date === busy.date && x.reason.includes('published game')), JSON.stringify(r.data).slice(0, 300));
+    const after = (await call('GET', `/slots?from=${busy.date}&to=${busy.date}`, { token: admin })).data.slots.find((x) => x.id === busy.id);
+    check('the slot with published games is left as it was', after.endTime === busy.endTime);
+    // Growing the slot keeps its games, so it's allowed (unless it clashes with another slot).
+    const longer = `${String(Number(busy.endTime.slice(0, 2)) + 1).padStart(2, '0')}${busy.endTime.slice(2)}`;
+    const grow = await call('PUT', `/slots/${busy.id}`, { token: admin, body: { ...b, scope: 'one', endTime: longer } });
+    check('a slot can grow around its published games', grow.status === 200 || (grow.status === 409 && grow.data.error.includes('overlaps')), JSON.stringify(grow.data).slice(0, 200));
+    if (grow.status === 200) await call('PUT', `/slots/${busy.id}`, { token: admin, body: { ...b, scope: 'one', endTime: busy.endTime } });
+    const n = await call('PUT', `/slots/${busy.id}`, { token: admin, body: { ...b, endTime: after.endTime, notes: 'Park behind the gym' } });
+    check('notes can change across a block even where games are published', n.status === 200 && n.data.skipped.length === 0 && n.data.updated === busy.block.count, JSON.stringify(n.data).slice(0, 200));
+  }
+  // A draft game goes back to Unplaced when its slot no longer covers it.
+  const d2 = await call('POST', '/schedule/generate', { token: admin, body: { rules: { ...defaultRules } } });
+  const dGames = (await call('GET', `/schedule/runs/${d2.data.draft.id}/games`, { token: admin })).data.games.filter((g) => g.status === 'scheduled');
+  // A new slot with only a draft game in it: Friday Dec 4, 6:00–8:00 PM.
+  const nfhCourt = pdVenues[0].courts[0];
+  const mkSlot = await call('POST', '/slots', { token: pd, body: { courtId: nfhCourt.id, category: 'WEEKNIGHT_GAME', date: '2026-12-04', startTime: '18:00', endTime: '20:00' } });
+  const slot2 = mkSlot.data.slots?.[0];
+  let placedGame = null;
+  for (const g of dGames.filter((x) => x.homeProgramId === nfh.id)) {
+    const mv = await call('PUT', `/schedule/games/${g.id}`, { token: admin, body: { courtId: nfhCourt.id, date: '2026-12-04', startTime: '18:00', endTime: '19:00' } });
+    if (mv.status === 200) { placedGame = g; break; }
+  }
+  check('a draft game can be placed in the new slot', !!slot2 && !!placedGame);
+  if (slot2 && placedGame) {
+    const edit = (extra) => call('PUT', `/slots/${slot2.id}`, { token: pd, body: { scope: 'one', courtId: slot2.courtId, category: slot2.category, date: slot2.date, startTime: slot2.startTime, endTime: slot2.endTime, notes: '', reservedDivisionIds: [], ...extra } });
+    const status = async () => (await call('GET', `/schedule/games/${placedGame.id}`, { token: admin })).data.game;
+    const keepIt = await edit({ endTime: '21:00' });
+    check('a draft game stays put when its slot still covers it', keepIt.status === 200 && keepIt.data.unplacedDraftGames === 0 && (await status()).status === 'scheduled');
+    const shrink = await edit({ startTime: '19:00', endTime: '21:00' });
+    const after = await status();
+    check('a draft game goes back to Unplaced when its slot no longer covers it', shrink.status === 200 && shrink.data.unplacedDraftGames === 1 && after.status === 'unscheduled' && after.note === 'Its gym slot changed.',
+      JSON.stringify({ s: shrink.status, n: shrink.data.unplacedDraftGames, st: after.status }));
+  }
+}
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);

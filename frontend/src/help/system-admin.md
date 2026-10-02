@@ -130,6 +130,8 @@ Directors can't set a cap themselves; they ask the league, and you add it here. 
 ### 2. Generate a draft
 Click **Generate draft** (or **Regenerate draft** to start over). It takes a few seconds. Changed rules are saved when you generate.
 
+**Gym slots in blocks.** Slots added together over a date range can be edited together: open one under **Gym slots**, change the time, court, type, *Keep for* or notes, and apply it to **this date only**, **this and later dates**, or **every date in the block**. Dates where a published game would no longer fit, or that would clash with another slot, are skipped and listed. Draft games that no longer fit a changed slot go back to **Unplaced**. The steps are in the [Program Director guide](/help/program-director#editing-a-block-of-gym-slots).
+
 **Day preferences.** Directors can keep game slots for any mix of divisions (e.g. *4th–6th grade boys and girls on Mondays and Wednesdays*, or *girls on Mondays*) under **Gym slots → Tag game slots**, and you can too for any program. A **Priority** tag means those games take the slot first, before an untagged slot in the same week, and other games use it only if nothing else fits anywhere. An **Only** tag means no other game is ever placed there. The notes report how tagged slots were used, e.g. *"Girls priority slots: 7 of 14 game times used by Girls games; 2 went to other games because nothing else fit"* or *"Girls-only slots: 7 of 14 used; 7 left open (other games can't use them)."* When you move or place a game by hand, a slot kept **only** for other games isn't offered (and is refused), and a **priority** slot for other games is marked so you can avoid it.
 
 ![A draft schedule](/help/img/sa-builder-draft.png)

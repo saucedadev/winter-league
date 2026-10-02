@@ -72,9 +72,26 @@ Gym slots are the times your program can offer the league. **Menu → My program
 
 ![Adding gym slots](/help/img/pd-add-slots.png)
 
-Use the arrows, **This week**, or **Go to** to move between weeks, and the category buttons to show one kind of slot. Open a slot to edit or delete it. For a repeating slot, **This and later dates in the series** deletes it and every later date added with it.
+Use the arrows, **This week**, or **Go to** to move between weeks, and the category buttons to show one kind of slot. Open a slot to edit or delete it.
 
-> A slot that already has published games in it can't be changed or deleted, and its card says how many games are scheduled. Ask the league admin to move those games first.
+### Editing a block of gym slots
+Slots you added together over a date range are a **block**. Open any one of them and the form says so, e.g. *"This slot is part of a block: Thursdays, Nov 5 – Jan 7 (10 dates)"*. Make your change, then choose what it applies to:
+
+- **This date only:** just the slot you opened. The rest of the block stays as it is.
+- **This and later dates:** this slot and every later date in the block.
+- **Every date in the block.**
+
+![Editing a block of gym slots](/help/img/pd-edit-block.png)
+
+A block edit can change the **time**, **court**, **slot type**, **Keep for**, and **notes**. Only what you change is applied to the other dates: if you move the end time from 9:00 to 9:30, every date gets the new end time, and a date you gave a different court earlier keeps its court. To move a slot to another **date**, use **This date only**.
+
+Some dates can't always change. They're skipped, and the app lists them with the reason, while the rest of the block is updated:
+- a **published game** in the slot would no longer fit (you can make a slot longer around its games, but not shorter than them or onto another court; ask the league admin to move those games first);
+- the new time would **overlap another slot** on the same court.
+
+If the league has a **draft** schedule and a draft game no longer fits a changed slot, that game goes back to the league's Unplaced list, and the app tells you how many.
+
+Deleting works the same way: **Delete this slot**, or **This and later dates in the block**. A slot with published games in it can't be deleted; its card says how many games are scheduled.
 
 ### Day preferences: keeping game slots for certain divisions
 If, for example, your 4th to 6th grade teams play on Mondays and Wednesdays, keep those game slots for them. The league's matchmaker then gives those slots to their games first.

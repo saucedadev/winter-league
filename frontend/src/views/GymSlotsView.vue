@@ -166,6 +166,7 @@ async function openEdit(slot) {
   editorVenues.value = ctx.programId ? venues.value : await loadVenues(slot.programId);
   editor.value = {
     mode: 'edit',
+    scope: 'one', // 'one' | 'following' | 'all' (block edits)
     slot,
     form: { programId: slot.programId, venueId: slot.venueId, courtId: slot.courtId, category: slot.category, date: slot.date,
       startTime: slot.startTime, endTime: slot.endTime, notes: slot.notes || '',
@@ -211,6 +212,13 @@ const rangePreview = computed(() => {
   return `Up to ${n} slot${n === 1 ? '' : 's'}: ${dayList(f.weekdays)}, ${monthDay(f.date)} through ${monthDay(f.endDate)}. Dates that conflict are skipped and listed afterward.`;
 });
 
+// ---- blocks: slots added together over a date range ----
+// "Mondays and Wednesdays, Nov 2 – Jan 15 (22 dates)"
+const blockText = (b) => (b ? `${dayList(b.weekdays)}, ${monthDay(b.first)} – ${monthDay(b.last)} (${b.count} dates)` : '');
+// A block edit can't move the date, so changing it means "this date only".
+const dateChanged = computed(() => editor.value?.mode === 'edit' && editor.value.form.date !== editor.value.slot.date);
+watch(dateChanged, (changed) => { if (changed && editor.value) editor.value.scope = 'one'; });
+
 async function save() {
   const f = editor.value.form;
   formError.value = '';
@@ -229,9 +237,13 @@ async function save() {
       else editor.value = null;
       weekStart.value = startOfWeek(f.date);
     } else {
-      await api.put(`/slots/${editor.value.slot.id}`, { courtId: f.courtId, category: f.category, date: f.date, startTime: f.startTime, endTime: f.endTime, notes: f.notes, ...tagBody(f.tag, f.category) });
-      toast.success('Gym slot saved.');
-      editor.value = null;
+      const scope = editor.value.slot.block ? editor.value.scope : 'one';
+      const { data } = await api.put(`/slots/${editor.value.slot.id}`, { scope, courtId: f.courtId, category: f.category, date: f.date, startTime: f.startTime, endTime: f.endTime, notes: f.notes, ...tagBody(f.tag, f.category) });
+      const moved = data.unplacedDraftGames ? ` ${data.unplacedDraftGames} draft game${data.unplacedDraftGames === 1 ? '' : 's'} no longer fit and went back to Unplaced.` : '';
+      if (scope === 'one') toast.success(`Gym slot saved.${moved}`);
+      else toast.success(`${data.updated ? `Updated ${data.updated} gym slot${data.updated === 1 ? '' : 's'} in the block.` : 'No slots needed changing.'}${moved}`);
+      if (data.skipped?.length) result.value = { verb: 'Updated', created: data.updated, skipped: data.skipped };
+      else editor.value = null;
     }
     await load();
   } catch (err) {
@@ -345,7 +357,7 @@ watch(editor, () => { confirmDelete.value = false; });
     <!-- Editor -->
     <Modal v-if="editor" :title="result ? 'Some dates were skipped' : editor.mode === 'create' ? 'Add gym slots' : 'Edit gym slot'" wide @close="editor = null">
       <div v-if="result" class="space-y-3 text-sm">
-        <p>{{ result.created ? `Added ${result.created} slot${result.created === 1 ? '' : 's'}.` : 'No slots were added.' }}
+        <p>{{ result.created ? `${result.verb || 'Added'} ${result.created} slot${result.created === 1 ? '' : 's'}.` : `No slots were ${(result.verb || 'Added').toLowerCase()}.` }}
           These {{ result.skipped.length }} date{{ result.skipped.length === 1 ? ' was' : 's were' }} skipped:</p>
         <ul class="card card-blocky divide-y divide-border">
           <li v-for="s in result.skipped" :key="s.date" class="px-3 py-2 flex flex-wrap gap-x-3">
@@ -431,6 +443,27 @@ watch(editor, () => { confirmDelete.value = false; });
           <input id="sf-notes" v-model="editor.form.notes" class="input" maxlength="200" placeholder="e.g. Use the north entrance after 6pm" />
         </div>
 
+        <fieldset v-if="editor.mode === 'edit' && editor.slot.block" class="sm:col-span-2 rounded-lg border border-border p-3">
+          <legend class="label px-1">Apply changes to</legend>
+          <p class="text-xs text-text-muted mb-2">This slot is part of a block: {{ blockText(editor.slot.block) }}.</p>
+          <div class="flex flex-col gap-1.5 text-sm">
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input v-model="editor.scope" type="radio" value="one" name="sf-scope" class="mt-1 accent-[var(--color-accent)]" />
+              <span><strong>This date only</strong> <span class="text-text-muted">— {{ longDate(editor.slot.date) }}. The rest of the block stays as it is.</span></span>
+            </label>
+            <label v-if="editor.slot.block.fromHere < editor.slot.block.count" class="flex items-start gap-2" :class="dateChanged ? 'opacity-50' : 'cursor-pointer'">
+              <input v-model="editor.scope" type="radio" value="following" name="sf-scope" class="mt-1 accent-[var(--color-accent)]" :disabled="dateChanged" />
+              <span><strong>This and later dates</strong> <span class="text-text-muted">— {{ editor.slot.block.fromHere }} date{{ editor.slot.block.fromHere === 1 ? '' : 's' }}, through {{ monthDay(editor.slot.block.last) }}.</span></span>
+            </label>
+            <label class="flex items-start gap-2" :class="dateChanged ? 'opacity-50' : 'cursor-pointer'">
+              <input v-model="editor.scope" type="radio" value="all" name="sf-scope" class="mt-1 accent-[var(--color-accent)]" :disabled="dateChanged" />
+              <span><strong>Every date in the block</strong> <span class="text-text-muted">— all {{ editor.slot.block.count }} dates.</span></span>
+            </label>
+          </div>
+          <p v-if="dateChanged" class="text-xs mt-2">You changed the date, which only applies to this one slot.</p>
+          <p v-else-if="editor.scope !== 'one'" class="text-xs text-text-muted mt-2">Only what you change here (time, court, type, “Keep for”, notes) is applied to the other dates; anything else they have stays. Dates that can’t change (a published game would no longer fit, or the time clashes with another slot) are skipped and listed.</p>
+        </fieldset>
+
         <p v-if="editor.mode === 'edit' && editor.slot.isBlackedOut" class="sm:col-span-2 text-sm rounded-lg bg-unavailable text-white px-3 py-2">
           This date is blacked out ({{ editor.slot.blackoutReason }}). The slot is kept and becomes usable again if the blackout is removed.
         </p>
@@ -448,12 +481,13 @@ watch(editor, () => { confirmDelete.value = false; });
             </template>
             <template v-else>
               <button class="btn btn-danger" :disabled="deleting" @click="remove('one')">Delete this slot</button>
-              <button v-if="editor.slot.seriesId" class="btn btn-secondary !text-danger" :disabled="deleting" @click="remove('following')">This and later dates in the series</button>
+              <button v-if="editor.slot.seriesId" class="btn btn-secondary !text-danger" :disabled="deleting" @click="remove('following')">This and later dates in the block</button>
             </template>
           </div>
           <button class="btn btn-secondary" @click="editor = null">Cancel</button>
           <button class="btn btn-primary" type="submit" form="slot-form" :disabled="saving">
-            {{ saving ? 'Saving…' : editor.mode === 'create' ? (isRange ? `Add ${rangeDates.length} slot${rangeDates.length === 1 ? '' : 's'}` : 'Add slot') : 'Save changes' }}
+            {{ saving ? 'Saving…' : editor.mode === 'create' ? (isRange ? `Add ${rangeDates.length} slot${rangeDates.length === 1 ? '' : 's'}` : 'Add slot')
+              : editor.slot.block && editor.scope === 'all' ? `Save for all ${editor.slot.block.count} dates` : editor.slot.block && editor.scope === 'following' ? `Save for ${editor.slot.block.fromHere} dates` : 'Save changes' }}
           </button>
         </template>
       </template>
