@@ -43,6 +43,7 @@ export function scheduleRows(games, { withTravel = false } = {}) {
   const rows = games.map((g) => {
     const notes = [
       g.isGuestGame && 'Guest game',
+      g.isSingle && 'On its own at the gym',
       g.status === 'cancelled' && g.cancelReason && `Cancelled: ${g.cancelReason}`,
       g.status === 'unscheduled' && (g.note || 'Waiting to be placed'),
       g.isAdded && `Added${g.addedReason ? `: ${g.addedReason}` : ''}`,

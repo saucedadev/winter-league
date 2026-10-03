@@ -10,6 +10,8 @@ defineProps({
   showTravel: { type: Boolean, default: false },
   showReferees: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
+  // Schedule builder: no other game right before or after this one at the gym.
+  single: { type: Boolean, default: false },
 });
 </script>
 
@@ -52,6 +54,7 @@ defineProps({
       <span v-if="game.isGuestGame" class="badge badge-outline" title="Non-conference game against a guest team. It doesn’t count toward games per team or home/away balance.">Guest game</span>
       <span v-if="game.isException" class="badge badge-outline" :title="`Exception to the league rules: ${game.exceptionNote}${game.addedReason ? ` Reason: ${game.addedReason}` : ''}`">Exception</span>
       <span v-else-if="game.isAdded" class="badge badge-outline" :title="`Added by hand${game.addedByName ? ` by ${game.addedByName}` : ''}${game.addedReason ? `: ${game.addedReason}` : ''}`">Added</span>
+      <span v-if="single" class="badge bg-warning text-black" title="No other game right before or after this one at the same gym that day, so referees would come out for a single game. Move it next to another game, or move another game next to it.">On its own</span>
       <span v-if="game.hasBlackoutConflict" class="badge bg-unavailable text-white" :title="game.blackoutReason">Blackout conflict</span>
       <span v-if="game.hasOpenRequest" class="badge bg-pending text-black">Change requested</span>
       <slot name="actions" />

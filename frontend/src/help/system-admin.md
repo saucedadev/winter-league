@@ -146,7 +146,12 @@ Read the summary cards (games placed, home/away balance, longest trip, season sp
 - **By date:** every game. **Move** picks a new time from a list that already passes every rule; **Flip** swaps home and away; **Unplace** takes a game off the calendar but keeps the pairing; **Remove** deletes the pairing from the draft.
 - **Unplaced:** pairings the matchmaker couldn't fit. Use **Place game** to put them somewhere by hand, or **Remove** to drop one.
 - **Team balance:** each team's games and home/away count. Bold rows are more than one game off 50/50 or short of the target.
-- **Download CSV** saves the games you're looking at (the draft, or the published schedule, for all divisions or the one chosen) as a spreadsheet file, including unplaced games and each game's travel distance. The **Schedule** page has the same button for the published schedule, with its filters.
+- **One program's games:** choose a program in the drop-down at the top of the page (where it says **All programs**) and the three lists show only that program's games, home and away. Combine it with the division filter. The summary cards and the matchmaker's notes stay league-wide; a line above the list says which program you're looking at, with **Show all programs** to go back.
+- **On its own:** a game with no other game right before or after it at the same gym that day has an **On its own** badge, because referees may not be able to cover a single game. Tick **On their own (N)** next to the division filter to list only those games, then **Move** each one next to another game (or move another game next to it). The badge follows your edits: it disappears as soon as the game has a neighbor, and appears on a game you leave by itself. These are the games the matchmaker's *Back-to-back games* note counts.
+
+![Games on their own, flagged in the draft](/help/img/sa-builder-singles.png)
+
+- **Download CSV** saves the games you're looking at (the draft, or the published schedule, for all divisions or the one chosen, and for one program if one is chosen) as a spreadsheet file, including unplaced games and each game's travel distance. Games on their own say so in the **Notes** column. The **Schedule** page has the same button for the published schedule, with its filters.
 
 ![Moving a game](/help/img/sa-builder-move.png)
 

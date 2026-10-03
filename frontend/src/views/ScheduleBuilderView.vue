@@ -6,6 +6,7 @@ import { useToast } from '../stores/toast';
 import { dateRange, longDate, timestamp } from '../utils/format';
 import { downloadSchedule, slug } from '../utils/scheduleCsv';
 import { useBrandingStore } from '../stores/branding';
+import { useProgramContext } from '../stores/programContext';
 import { todayISO } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -18,6 +19,7 @@ import AddGameModal from '../components/AddGameModal.vue';
 import DraftReviewPanel from '../components/DraftReviewPanel.vue';
 
 const toast = useToast();
+const ctx = useProgramContext();
 const overview = ref(null);
 // Rule requests from programs, shown above the rules so they aren't missed before generating.
 const ruleRequests = ref({ open: 0, toConfirm: 0 });
@@ -210,23 +212,54 @@ const divisionFilter = ref('');
 const divisions = computed(() => [...new Map(games.value.map((g) => [g.divisionId, g.divisionName])).entries()]);
 const LIMIT_STEP = 150;
 const limit = ref(LIMIT_STEP);
-watch([tab, divisionFilter, view], () => { limit.value = LIMIT_STEP; });
-const scoped = computed(() => games.value.filter((g) => !divisionFilter.value || g.divisionId === divisionFilter.value));
+// Games "on their own": no other game right before or after at the same gym
+// that day, so referees would travel for one game. Worked out from the games
+// as they are now (the same test the matchmaker uses), so it follows every edit.
+const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+const singleIds = computed(() => {
+  const slack = (run.value?.rules?.bufferMinutes || 0) + 30;
+  const byGym = new Map();
+  for (const g of games.value) {
+    if (g.status !== 'scheduled' || !g.venueId || !g.date) continue;
+    const k = `${g.venueId}|${g.date}`;
+    if (!byGym.has(k)) byGym.set(k, []);
+    byGym.get(k).push({ id: g.id, start: toMin(g.startTime), end: toMin(g.endTime) });
+  }
+  const ids = new Set();
+  for (const list of byGym.values()) {
+    for (const a of list) {
+      const near = list.some((b) => b !== a && ((b.start - a.end >= 0 && b.start - a.end <= slack) || (a.start - b.end >= 0 && a.start - b.end <= slack)));
+      if (!near) ids.add(a.id);
+    }
+  }
+  return ids;
+});
+const singlesOnly = ref(false);
+// The program chosen in the header narrows the lists to that program's games.
+const programFilter = computed(() => ctx.programId || '');
+const inProgram = (g) => !programFilter.value || g.homeProgramId === programFilter.value || g.awayProgramId === programFilter.value;
+watch([tab, divisionFilter, view, programFilter, singlesOnly], () => { limit.value = LIMIT_STEP; });
+const scoped = computed(() => games.value.filter((g) => (!divisionFilter.value || g.divisionId === divisionFilter.value) && inProgram(g)));
+const singleCount = computed(() => scoped.value.filter((g) => singleIds.value.has(g.id)).length);
+watch(singleCount, (n) => { if (!n) singlesOnly.value = false; });
 // Download the draft (or published) games, for the chosen division, as a CSV file.
 const branding = useBrandingStore();
 function downloadCsv() {
   const div = divisionFilter.value ? `-${slug(divisions.value.find(([id]) => id === divisionFilter.value)?.[1])}` : '';
-  downloadSchedule(`${slug(branding.appName)}-${view.value === 'draft' ? 'draft' : 'published'}-schedule${div}-${todayISO()}.csv`, scoped.value, { withTravel: true });
+  const prog = programFilter.value && ctx.current ? `-${slug(ctx.current.name)}` : '';
+  downloadSchedule(`${slug(branding.appName)}-${view.value === 'draft' ? 'draft' : 'published'}-schedule${prog}${div}-${todayISO()}.csv`,
+    scoped.value.map((g) => ({ ...g, isSingle: singleIds.value.has(g.id) })), { withTravel: true });
 }
 const unplacedList = computed(() => scoped.value.filter((g) => g.status === 'unscheduled'));
-const placedList = computed(() => scoped.value.filter((g) => g.status !== 'unscheduled'));
+const placedList = computed(() => scoped.value.filter((g) => g.status !== 'unscheduled' && (!singlesOnly.value || singleIds.value.has(g.id))));
 const byDate = computed(() => {
   const m = new Map();
   for (const g of placedList.value.slice(0, limit.value)) { if (!m.has(g.date)) m.set(g.date, []); m.get(g.date).push(g); }
   return [...m.entries()];
 });
 const balanceRows = computed(() => stats.value.teams
-  .filter((x) => !divisionFilter.value || games.value.some((g) => g.divisionId === divisionFilter.value && (g.homeTeamId === x.id || g.awayTeamId === x.id)))
+  .filter((x) => (!divisionFilter.value && !programFilter.value) || games.value.some((g) => (!divisionFilter.value || g.divisionId === divisionFilter.value)
+    && ((g.homeTeamId === x.id && (!programFilter.value || g.homeProgramId === programFilter.value)) || (g.awayTeamId === x.id && (!programFilter.value || g.awayProgramId === programFilter.value)))))
   .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap) || a.games - b.games || a.name.localeCompare(b.name)));
 
 // ---- edits ----
@@ -482,25 +515,33 @@ const publishMessage = computed(() => {
         <div class="flex flex-wrap items-center gap-2 mb-3">
           <div class="inline-flex rounded-lg border border-border overflow-hidden text-sm" role="tablist">
             <button role="tab" class="px-3 py-1.5" :aria-selected="tab === 'date'" :class="tab === 'date' ? 'bg-accent text-accent-contrast font-semibold' : 'text-text-muted'" @click="tab = 'date'">By date</button>
-            <button role="tab" class="px-3 py-1.5" :aria-selected="tab === 'unplaced'" :class="tab === 'unplaced' ? 'bg-accent text-accent-contrast font-semibold' : 'text-text-muted'" @click="tab = 'unplaced'">Unplaced ({{ stats.unplaced }})</button>
+            <button role="tab" class="px-3 py-1.5" :aria-selected="tab === 'unplaced'" :class="tab === 'unplaced' ? 'bg-accent text-accent-contrast font-semibold' : 'text-text-muted'" @click="tab = 'unplaced'">Unplaced ({{ unplacedList.length }})</button>
             <button role="tab" class="px-3 py-1.5" :aria-selected="tab === 'balance'" :class="tab === 'balance' ? 'bg-accent text-accent-contrast font-semibold' : 'text-text-muted'" @click="tab = 'balance'">Team balance</button>
           </div>
           <select v-model="divisionFilter" class="input !w-auto" aria-label="Division">
             <option value="">All divisions</option>
             <option v-for="[id, name] in divisions" :key="id" :value="id">{{ name }}</option>
           </select>
-          <button class="btn btn-secondary ml-auto" :disabled="!scoped.length" :title="`Download the ${scoped.length} ${view === 'draft' ? 'draft' : 'published'} game${scoped.length === 1 ? '' : 's'}${divisionFilter ? ' in this division' : ''} as a spreadsheet file`" @click="downloadCsv">Download CSV</button>
+          <label v-if="tab === 'date' && (singleCount || singlesOnly)" class="flex items-center gap-2 text-sm cursor-pointer" title="Games with no other game right before or after them at the same gym that day. Referees may not be able to cover a single game.">
+            <input v-model="singlesOnly" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" />
+            On their own ({{ singleCount }})
+          </label>
+          <button class="btn btn-secondary ml-auto" :disabled="!scoped.length" :title="`Download the ${scoped.length} ${view === 'draft' ? 'draft' : 'published'} game${scoped.length === 1 ? '' : 's'}${programFilter ? ' for this program' : ''}${divisionFilter ? ' in this division' : ''} as a spreadsheet file`" @click="downloadCsv">Download CSV</button>
           <button class="btn btn-secondary" @click="adding = true">+ Add game</button>
         </div>
+        <p v-if="programFilter && ctx.current" class="text-sm rounded-lg border border-border bg-background px-3 py-2 mb-3">
+          Showing only <strong>{{ ctx.current.name }}</strong> games ({{ scoped.length }} of {{ games.length }}). The summary and notes above are for the whole league.
+          <button class="underline font-medium ml-1" @click="ctx.select('')">Show all programs</button>
+        </p>
         <p v-if="gamesLoading" class="text-sm text-text-muted">Loading games…</p>
 
         <template v-else-if="tab === 'date'">
-          <EmptyState v-if="!placedList.length" title="No placed games" body="Nothing in this division has been placed yet." />
+          <EmptyState v-if="!placedList.length" title="No placed games" :body="programFilter ? 'Nothing for this program has been placed here yet.' : 'Nothing in this division has been placed yet.'" />
           <section v-for="[date, list] in byDate" :key="date" class="mb-4">
             <h3 class="text-sm font-semibold mb-1.5">{{ longDate(date) }}</h3>
             <ul class="card card-blocky divide-y divide-border">
               <li v-for="g in list" :key="g.id" class="px-4 py-2.5">
-                <GameRow :game="g" show-travel>
+                <GameRow :game="g" show-travel :single="singleIds.has(g.id)">
                   <template #actions>
                     <button v-if="g.status === 'scheduled'" class="btn btn-ghost text-xs" @click="openEdit(g)">Move</button>
                     <button v-if="g.status === 'scheduled'" class="btn btn-ghost text-xs" :disabled="saving" title="Swap home and away" @click="update(g, { action: 'flip' }, 'Home and away swapped.')">Flip</button>
