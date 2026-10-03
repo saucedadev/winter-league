@@ -57,13 +57,26 @@ Referees check in from their phones at the gym. If someone couldn't check in, op
 
 ## Payouts
 
+Programs pay the referees, one referee each per game. The app works out who pays whom from the position you assign:
+
+| Game | Who pays |
+|---|---|
+| Two referees worked | The **home** program pays **Referee 1**; the **away** program pays **Referee 2** |
+| Only one referee worked (the other slot was empty or a no-show) | The two programs pay **half each** |
+| Guest game | The same: the league team's program (home) pays Referee 1 and the **guest program** pays Referee 2, or half each for a lone referee |
+| Two teams from the same program | That program pays every referee |
+
+So **Referee 1 is paid by the home program and Referee 2 by the away program**. Keep that in mind when you put referees on a game. Each referee is owed once, and the two programs' reports never list the same payment.
+
 **Menu → Referees → Payouts.**
 1. Choose **From** and **To** dates and **Update**.
-2. Check the totals, and expand a referee to see each game. If some assigned referees never checked in, a warning tells you, so you can confirm attendance first.
-3. **Download summary (CSV)** gives one row per referee: name, email, username, games worked, and total.
-4. **Download game detail (CSV)** gives one row per game worked, each detail in its own column so you can sort or filter: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (in Pacific Time, where the games are played), **Confirmed by** (their own check-in or your confirmation), and **Amount**. Guest teams have *(guest)* after their name, so non-conference games are easy to pick out.
+2. Check the totals. **What each program owes** lists every program with its number of referee payments and total. Guest programs are listed too, marked *(guest)*; they have no director or login, so the league collects their share from the club directly; the program totals add up to **Total owed**.
+3. Expand a referee to see each game, with **Paid by** and the other referee on that game. If some assigned referees never checked in, a warning tells you, so you can confirm attendance first. Marking the second referee as worked or a no-show can change a game from *half each* to *one referee each*, or back.
+4. **Download summary (CSV)** gives one row per referee: name, email, username, games worked, and total.
+5. **Download game detail (CSV)** gives one row per payment, each detail in its own column so you can sort or filter: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (in Pacific Time, where the games are played), **Confirmed by** (their own check-in or your confirmation), **Paid by**, **Share** (Full or Half), and **Amount**. A referee split between two programs has two rows of half. Guest teams have *(guest)* after their name, so non-conference games are easy to pick out.
+6. **Download by program (CSV)** gives one row per program: referee payments and total.
 
-Both open in Excel or Google Sheets. **Program Directors can export the same detail for their own program's games**, so they can check who officiated without asking you.
+All three open in Excel or Google Sheets. **Program Directors see and export only the referees their own program pays**, so they can check what they owe without asking you.
 
 ![Payouts](/help/img/as-payouts.png)
 

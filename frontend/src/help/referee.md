@@ -37,4 +37,6 @@ Under **Dates I can't work**, choose **Add dates**, pick the first and last day,
 
 ## Past games and pay
 
-**Past games** lists the games you've worked, each marked **Worked**, **No-show**, or **Not confirmed**, with the pay for each worked game. Payments are made by the league outside the app.
+**Past games** lists the games you've worked, each marked **Worked**, **No-show**, or **Not confirmed**, with the pay for each worked game.
+
+**Who pays you.** The programs pay the referees, one each: the home team's program pays Referee 1 and the away team's program pays Referee 2. Each game, upcoming or past, shows **Paid by** with the program to expect payment from. If you were the only referee on a game, it shows both programs, *half each*. A guest team's club pays its referee the same way, and is marked *(guest)*. Payments are made outside the app.

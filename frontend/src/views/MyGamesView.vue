@@ -113,6 +113,7 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
               <p class="text-sm">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }}</p>
               <p class="text-sm text-text-muted">{{ a.game.venueName }} – {{ a.game.courtName }} · <a :href="directions(a.game)" target="_blank" rel="noopener" class="underline">Directions</a></p>
               <p class="text-xs text-text-muted mt-1">Working with: {{ a.partners.join(', ') || 'nobody else' }}</p>
+              <p v-if="a.paidBy" class="text-xs text-text-muted">Paid by: {{ a.paidBy }}</p>
             </div>
             <span v-if="a.status === 'checked_in'" class="badge bg-success text-black">Checked in</span>
           </div>
@@ -144,7 +145,7 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
         <ul class="card card-blocky divide-y divide-border">
           <li v-for="a in past" :key="a.id" class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <span class="w-24 font-medium">{{ weekday(a.game.date) }} {{ monthDay(a.game.date) }}</span>
-            <span class="flex-1 min-w-[12rem]">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }}</span>
+            <span class="flex-1 min-w-[12rem]">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }}<span v-if="a.status === 'checked_in' && a.paidBy" class="block text-xs text-text-muted">Paid by {{ a.paidBy }}</span></span>
             <span class="text-xs" :class="a.status === 'assigned' && 'text-text-muted'">{{ STATUS[a.status] }}</span>
             <span class="tabular-nums w-16 text-right">{{ a.status === 'checked_in' ? money(a.payCents) : '—' }}</span>
           </li>

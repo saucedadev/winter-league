@@ -216,7 +216,7 @@ The matchmaker never schedules guests. Add guest games by hand with **+ Add game
 - **Where:** only open game slots at the league team's gyms are offered, so the league team always hosts. Two guest teams can't play each other.
 - **Rules:** the usual opponent rules apply. A guest team in another division, or over the rematch limit, is an exception that needs a reason.
 - **Counting:** guest games don't count toward **Games per team** or home/away balance. The **Team balance** tab shows them in a separate **Guest games** column, and adding one never triggers the "over the target" note.
-- **Marked everywhere:** guest teams show *(guest)* after their name and the game has a **Guest game** badge, on every schedule, the assignor's board, and the payout export.
+- **Marked everywhere:** guest teams show *(guest)* after their name and the game has a **Guest game** badge, on every schedule, the assignor's board, and the payout export. The guest program pays one of the referees (Referee 2), like any away program; its total is under **Referee payouts → What each program owes**.
 
 ![A guest game on the schedule](/help/img/common-guest-game.png)
 
@@ -283,4 +283,4 @@ Every request, question, reply, and decision is in the **Activity** log under **
 
 ## Referees and everything else
 
-Program Directors can export referee payouts for their own program's games; you and the Referee Assignor see the whole league. As a System Admin you can also do everything a Program Director and the Referee Assignor can. For step-by-step instructions, see the [Program Director guide](/help/program-director) (gym slots, blackouts, venues, teams), the [Referee Assignor guide](/help/referee-assignor) (assignments and payouts), the [Coach guide](/help/coach), and the [Referee guide](/help/referee).
+Programs pay the referees, one each per game: the home program pays Referee 1, the away program pays Referee 2, and a lone referee is split half each (a game between two of a program's own teams is paid by that one program). Guest programs pay their referee like any other program: they're the away side, so Referee 2. A guest has no director or login, so its total appears only in your and the assignor's report, marked *(guest)*, and the league collects it from the club. Program Directors see and export only the referees their own program pays; you and the Referee Assignor see the whole league under **Referee payouts**, with **What each program owes** and a **Paid by** on every game. The rule applies to every game, including ones already played. As a System Admin you can also do everything a Program Director and the Referee Assignor can. For step-by-step instructions, see the [Program Director guide](/help/program-director) (gym slots, blackouts, venues, teams), the [Referee Assignor guide](/help/referee-assignor) (assignments and payouts), the [Coach guide](/help/coach), and the [Referee guide](/help/referee).

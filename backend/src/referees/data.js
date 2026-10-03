@@ -154,8 +154,45 @@ export async function gamesWithAssignments(where, args) {
     WHERE a.game_id IN (${ids.map(() => '?').join(',')}) ORDER BY a.position`, ids);
   const byGame = new Map(ids.map((id) => [id, []]));
   for (const r of rows) byGame.get(r.gameId)?.push(r);
-  return games.map((g) => ({ ...g, assignments: byGame.get(g.id) }));
+  return games.map((g) => {
+    const list = byGame.get(g.id);
+    const payers = payersFor(g, list);
+    return { ...g, assignments: list.map((a) => ({ ...a, paidBy: a.refereeId && a.status !== 'no_show' ? paidByLabel(payers.get(a.id)) : null })) };
+  });
 }
+
+// ---------------------------------------------------------------------
+// Who pays each referee
+// ---------------------------------------------------------------------
+// Programs pay the referees, one each: the home program pays Referee 1 and the
+// away program pays Referee 2. When only one referee works the game (the other
+// slot is open or a no-show), the two programs split that referee. Guest
+// programs pay their referee like any other program (they're always the away
+// side, so Referee 2); they have no director, so the league collects from them.
+// Two teams from one program share a payer, which pays every referee in full.
+// game: { homeProgramId, homeProgramName, homeIsGuest, away… }
+// assignments: [{ id, position, refereeId, status }] — every slot on the game.
+// Returns Map(assignmentId -> [{ programId, programName, fraction }]).
+export function payersFor(game, assignments) {
+  const side = (id, name, guest) => ({ programId: id, programName: `${name}${guest ? ' (guest)' : ''}`, isGuest: !!guest });
+  const payers = [side(game.homeProgramId, game.homeProgramName, game.homeIsGuest), side(game.awayProgramId, game.awayProgramName, game.awayIsGuest)]
+    .filter((x, i, list) => list.findIndex((y) => y.programId === x.programId) === i);
+  const working = assignments.filter((a) => a.refereeId && a.status !== 'no_show').sort((a, b) => a.position - b.position);
+  const out = new Map();
+  working.forEach((a, i) => {
+    if (payers.length < 2) out.set(a.id, payers.map((x) => ({ ...x, fraction: 1 })));
+    else if (working.length === 1 || i > 1) out.set(a.id, payers.map((x) => ({ ...x, fraction: 0.5 })));
+    else out.set(a.id, [{ ...payers[i], fraction: 1 }]);
+  });
+  return out;
+}
+// Cents each payer owes for one referee; an odd cent goes to the first (home) program.
+export function splitCents(cents, shares) {
+  if (shares.length < 2) return shares.map((x) => ({ ...x, cents }));
+  const half = Math.floor(cents / 2);
+  return shares.map((x, i) => ({ ...x, cents: i === 0 ? cents - half : half }));
+}
+export const paidByLabel = (shares) => (!shares?.length ? null : shares.length === 1 ? shares[0].programName : `${shares.map((x) => x.programName).join(' and ')} (half each)`);
 
 // ---------------------------------------------------------------------
 // Notifications

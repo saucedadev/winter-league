@@ -1041,6 +1041,24 @@ await call('PUT', `/schedule/games/${covered.id}`, { token: admin, body: { actio
 const restored = (await call('GET', `/referees/games?from=${mv2.data.game.date}&to=${mv2.data.game.date}`, { token: assignor })).data.games.find((g) => g.id === covered.id);
 check('restored game has open referee slots again', restored && restored.assignments.length === 2 && restored.assignments.every((a) => !a.refereeId));
 
+// Guest programs pay a referee too: the league team hosts (pays Referee 1), the guest pays Referee 2.
+{
+  const gg = (await call('GET', `/referees/games?from=${guestGame.date}&to=${guestGame.date}`, { token: assignor })).data.games.find((g) => g.id === guestGame.id && g.status === 'scheduled');
+  if (gg) {
+    for (const a of gg.assignments) if (a.refereeId) await call('PUT', `/referees/assignments/${a.id}`, { token: assignor, body: { refereeId: null } });
+    const free = roster.referees.filter((r) => r.isActive);
+    let one = null; let two = null;
+    for (const r of free) { const x = await call('PUT', `/referees/assignments/${gg.assignments[0].id}`, { token: assignor, body: { refereeId: r.id } }); if (x.status === 200) { one = r; break; } }
+    const lone = (await call('GET', `/referees/games?from=${guestGame.date}&to=${guestGame.date}`, { token: assignor })).data.games.find((g) => g.id === guestGame.id);
+    check('a lone referee on a guest game is split with the guest program', !!one && lone.assignments[0].paidBy === `${gg.homeProgramName} and Sherwood Youth Basketball (guest) (half each)`, lone.assignments[0].paidBy);
+    for (const r of free) { if (r.id === one?.id) continue; const x = await call('PUT', `/referees/assignments/${gg.assignments[1].id}`, { token: assignor, body: { refereeId: r.id } }); if (x.status === 200) { two = r; break; } }
+    const pair = (await call('GET', `/referees/games?from=${guestGame.date}&to=${guestGame.date}`, { token: assignor })).data.games.find((g) => g.id === guestGame.id);
+    check('on a guest game the league team pays Referee 1 and the guest program pays Referee 2', !!two && pair.assignments[0].paidBy === gg.homeProgramName && pair.assignments[1].paidBy === 'Sherwood Youth Basketball (guest)',
+      JSON.stringify(pair.assignments.map((a) => a.paidBy)));
+    for (const a of pair.assignments) await call('PUT', `/referees/assignments/${a.id}`, { token: assignor, body: { refereeId: null } });
+  }
+}
+
 console.log('\nCheck-in and payouts (a game today)');
 const leagueTz = (await call('GET', '/settings/branding')).data.timezone;
 const tz = new Intl.DateTimeFormat('en-CA', { timeZone: leagueTz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
@@ -1093,9 +1111,45 @@ const otherPd = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${to
 const nfhInvolved = [pdPay.detail[0]?.homeProgramName, pdPay.detail[0]?.awayProgramName].includes('Riverbend Youth Basketball');
 check('another program’s director sees only their own games', nfhInvolved ? otherPd.totals.games === 1 : otherPd.totals.games === 0);
 check('the league still sees every program’s games', (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: admin })).data.scope === 'league');
+// Who pays: with the second referee a no-show, the two programs split the one who worked.
+const half = Math.floor(rateA / 2);
+const leaguePay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: admin })).data;
+const sameProgram = tg.homeProgramId === tg.awayProgramId;
+if (!sameProgram && !tg.isGuestGame) {
+  const otherId = tg.homeProgramId === nfh.id ? tg.awayProgramId : tg.homeProgramId;
+  check('a lone referee is split between the two programs', leaguePay.detail.length === 2 && leaguePay.detail.every((d) => d.isSplit) && leaguePay.programs.length === 2);
+  check('the two halves add up to the referee’s pay', leaguePay.totals.totalCents === rateA && leaguePay.totals.games === 1 && leaguePay.summary[0].games === 1
+    && leaguePay.detail.reduce((n, d) => n + d.amountCents, 0) === rateA && leaguePay.detail.find((d) => d.paidByProgramId === tg.awayProgramId).amountCents === half);
+  check('a director’s report shows only their program’s half', pdPay.totals.totalCents === (tg.homeProgramId === nfh.id ? rateA - half : half) && pdPay.detail.length === 1
+    && pdPay.detail[0].paidByProgramId === nfh.id && pdPay.detail[0].splitWith && pdPay.detail[0].fullCents === rateA);
+  // Both referees worked: one each, home pays Referee 1 and away pays Referee 2.
+  const worked = await call('PUT', `/referees/assignments/${tg.assignments[1].id}/status`, { token: assignor, body: { status: 'checked_in' } });
+  check('assignor confirms the second referee worked', worked.status === 200, JSON.stringify(worked.data).slice(0, 160));
+  const both = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: admin })).data;
+  const p1 = both.detail.find((d) => d.position === 1); const p2 = both.detail.find((d) => d.position === 2);
+  check('home pays Referee 1 and away pays Referee 2, in full', both.detail.length === 2 && !p1.isSplit && !p2.isSplit
+    && p1.paidByProgramId === tg.homeProgramId && p2.paidByProgramId === tg.awayProgramId && p1.amountCents === p1.fullCents, JSON.stringify(both.detail.map((d) => [d.position, d.paidByName, d.amountCents])));
+  check('each referee is owed once across the league', both.totals.games === 2 && both.totals.totalCents === p1.fullCents + p2.fullCents
+    && both.programs.reduce((n, p) => n + p.totalCents, 0) === both.totals.totalCents && both.programs.every((p) => p.payments === 1));
+  const pdBoth = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: pd })).data;
+  const mine = tg.homeProgramId === nfh.id ? p1 : p2;
+  check('each program’s report lists only the referee it pays', pdBoth.detail.length === 1 && pdBoth.detail[0].assignmentId === mine.assignmentId && pdBoth.totals.totalCents === mine.amountCents);
+  check('…and names the other referee and who pays them', pdBoth.detail[0].others.length === 1 && pdBoth.detail[0].others[0].paidBy === (mine === p1 ? tg.awayProgramName : tg.homeProgramName));
+  const otherDir = (await call('GET', '/users', { token: admin })).data.users.find((u) => u.role === 'program_director' && u.programId === otherId && u.isActive);
+  const otherTok = (await call('POST', '/auth/login', { body: { username: otherDir.username, password: 'WinterDemo2026' } })).data.token;
+  const otherPay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: otherTok })).data;
+  check('the two programs’ reports don’t overlap', otherPay.detail.length === 1 && otherPay.detail[0].assignmentId !== mine.assignmentId
+    && otherPay.totals.totalCents + pdBoth.totals.totalCents === both.totals.totalCents);
+  const mineB = (await call('GET', '/referees/me/assignments', { token: refA })).data.assignments.find((m) => m.game.id === nfhGame.id);
+  check('a referee sees who pays them', mineB.paidBy === tg.homeProgramName, mineB.paidBy);
+  const progCsv = await (await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${todayLocal}&format=csv&type=programs`, { headers: { Authorization: `Bearer ${admin}` } })).text();
+  check('the by-program export lists both programs', progCsv.includes('Program,Referee payments,Total ($)') && progCsv.includes(tg.homeProgramName) && progCsv.includes(tg.awayProgramName));
+  // Back to one referee, for the checks below.
+  await call('PUT', `/referees/assignments/${tg.assignments[1].id}/status`, { token: assignor, body: { status: 'no_show' } });
+}
 const detailCsv = await (await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${todayLocal}&format=csv&type=detail`, { headers: { Authorization: `Bearer ${pd}` } })).text();
 const header = detailCsv.split('\r\n')[0].replace('\uFEFF', '');
-check('the export has just the agreed columns', header === 'Referee,Email,Date,Home team,Away team,Checked in (Pacific Time),Confirmed by,Amount ($)', header);
+check('the export has just the agreed columns', header === 'Referee,Email,Date,Home team,Away team,Checked in (Pacific Time),Confirmed by,Paid by,Share,Amount ($)', header);
 const row = detailCsv.split('\r\n')[1];
 check('an exported row carries that game’s details', /Owen Brooks/.test(row) && /\d{4}-\d{2}-\d{2}/.test(row) && /Referee check-in|Assignor/.test(row));
 check('check-in times are exported in league time, not UTC', /\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM)/.test(row), row);

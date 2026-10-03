@@ -97,7 +97,7 @@ Email addresses are safe placeholders (`…@demo.example` for directors, `…@ex
 - **Tasha (`tgreene`) → Schedule:** choose **Enter score** on one of her games, enter both teams' points, and **Save score**. The score replaces "vs" on everyone's schedule with a **Final** badge. *Talking point:* either team's coach or director can enter it, the other side is emailed, and every entry or correction shows in both programs' Activity.
 
 ### 7. Paying referees (`pnair`) — 1 min
-- **Payouts.** Set the dates to cover the game just checked in. Expand Avery to see the game, then **Download summary (CSV)**.
+- **Payouts.** Set the dates to cover the game just checked in. Expand Avery to see the game and **Paid by**: programs pay one referee each (home pays Referee 1, away pays Referee 2), and **What each program owes** adds it up. Then **Download summary (CSV)**.
 
 *Talking point:* the league pays from the CSV in its own system; no money moves through this app. Assigned games that nobody confirmed are flagged so nothing is paid by accident.
 

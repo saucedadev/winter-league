@@ -156,15 +156,25 @@ The league publishes once every program has signed off. If the deadline passes w
 
 ## Referee payouts for your program
 
-**Menu → My program → Referee payouts** shows the referees who worked **your program's games**, and what each is owed for them. Other programs' games aren't included.
+Programs pay the referees, **one referee each per game**. **Menu → My program → Referee payouts** lists the referees **your program pays** and what each is owed. A referee the other program pays isn't in your list or your total, so nobody is paid twice.
+
+| Game | Who pays |
+|---|---|
+| Two referees worked | The **home** program pays **Referee 1**; the **away** program pays **Referee 2** |
+| Only one referee worked (the other slot was empty or a no-show) | The two programs pay **half each** |
+| Guest game | The same: your program (home) pays Referee 1 and the guest program pays Referee 2, or half each for a lone referee. The league collects the guest's share, since a guest has no director |
+| Two teams from the same program | That program pays every referee |
+
+Home and away games are balanced across the season, so each program ends up paying for about the same number of referees. Referees can have different pay rates, so the two programs in a game may owe slightly different amounts.
 
 1. Choose **From** and **To** dates and **Update**.
-2. Expand a referee to see each game they worked for you.
-3. **Download game detail (CSV)** gives one row per game, each detail in its own column so you can sort or filter in Excel or Google Sheets: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (Pacific Time), **Confirmed by**, and **Amount**. **Download summary (CSV)** gives one row per referee.
+2. **Your program owes** is the total for those dates. Expand a referee to see each game you pay them for.
+3. Under each game, a line names the other referee and the program that pays them, for example *Referee 2, Morgan Hayes: paid by Oak Hollow Owls*. When you're paying half, it says so and names the program paying the other half.
+4. **Download game detail (CSV)** gives one row per payment, each detail in its own column so you can sort or filter in Excel or Google Sheets: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (Pacific Time), **Confirmed by**, **Paid by**, **Share** (Full or Half), and **Amount**. **Download summary (CSV)** gives one row per referee.
 
 ![Referee payouts for a program](/help/img/pd-payouts.png)
 
-Referees are paid by the league, not by your program; this is for checking and for your own records. If a warning says some assigned referees never checked in, the Referee Assignor confirms attendance for those games.
+No money moves through the app; pay your referees the way your program usually does. If a warning says some assigned referees never checked in, the Referee Assignor confirms attendance for those games. That can change who pays: a game with one confirmed referee is split, and becomes one referee each once the second is confirmed.
 
 ## Final scores
 
