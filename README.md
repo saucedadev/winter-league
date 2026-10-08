@@ -112,13 +112,15 @@ The demo league's **programs, venues, and Program Directors** come from `backend
 |-------------------------|--------------|
 | `npm run dev`           | Start the API with auto-restart on file changes. |
 | `npm run migrate`       | Apply any new migrations in `src/db/migrations/`. Safe to run repeatedly. |
-| `npm run seed`          | Create the first System Admin, starter divisions and default theme. Idempotent and production-safe. |
+| `npm run seed`          | Create only the first System Admin (League Admin) from `SEED_ADMIN_*`. `-- --with-divisions` also adds the 10 starter divisions. Idempotent and production-safe; on Turso it refuses placeholder values (`admin@example.com`, `ChangeMe123!`). |
 | `npm run seed:demo`     | Demo league from the demo spreadsheet, including a published schedule and sample requests. `-- --no-schedule`: nothing published; `-- --draft`: a draft waiting in the Schedule builder; `-- --draft --share`: that draft already shared with the directors for sign-off. Refuses to run against Turso unless `--force`. |
 | `npm run demo:signoff`  | Demos only: signs off the shared draft for every program still waiting (recorded as done by the demo script). Local only unless `--force`. |
 | `npm run db:reset`      | Check the demo spreadsheet, then delete the local database file and rebuild it (migrate + seed + demo). Local only. **Restart `npm run dev` afterwards.** |
 | `npm run db:reset:test` | The same, but with the built-in test league the smoke tests need. |
+| `npm run db:reset:empty` | Rebuild the local database with only the System Admin (`ladmin`): no demo league. The same starting point as a new production database. |
 | `npm run migrate:prod`  | Run migrations against Turso using `.env.production.local`. |
-| `npm run seed:prod`     | Seed the production Turso database using `.env.production.local`. |
+| `npm run seed:prod`     | Seed the production Turso database using `.env.production.local` (System Admin only). |
+| `npm run db:reset:prod` | **Empties** the database in `.env.production.local` (all league data, tables kept), then creates only the System Admin. Without `-- --confirm=<database name>` it only shows what's there. `--keep-branding`, `--with-divisions` optional. For go-live from a UAT database; see [DEPLOYMENT.md](./DEPLOYMENT.md#going-live-from-your-uat-database). |
 | `npm run start:render`  | What Render runs. The server applies any pending database updates itself at startup, and stops with the reason if one fails. |
 | `npm run test:smoke`    | 148 API checks (auth, program isolation, slot rules, matchmaker and opponent rules, approval chain, referee assignment, check-in, payouts, branding, phone numbers). Run after `npm run db:reset:test`, with the API up in normal mode (not demo check-in mode). |
 | `npm run test:demo-data` | 18 checks that the demo spreadsheet loads correctly and that broken files are rejected with clear messages. Needs no API or database. |

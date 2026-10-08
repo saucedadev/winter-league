@@ -27,6 +27,7 @@ import { db, one, all, newId } from '../db/client.js';
 import { hashPassword } from '../utils/security.js';
 import { addDays } from '../utils/validate.js';
 import { seedBase } from './seed.js';
+import { clearAllData } from '../db/wipe.js';
 import { generateDraft, getRules, getGame, placementOptions } from '../scheduling/data.js';
 import { shareDraft } from '../scheduling/review.js';
 import { leagueToday } from '../utils/leagueTime.js';
@@ -67,22 +68,20 @@ async function loadDataset() {
   });
 }
 
-// Every table the demo fills, children before parents.
-const DEMO_TABLES = ['activity_log_programs', 'activity_log', 'change_request_steps', 'change_requests', 'referee_assignments',
-  'referee_unavailability', 'referee_profiles', 'games', 'schedule_runs', 'gym_slots', 'blackout_dates', 'teams', 'courts', 'venues',
-  'password_reset_tokens', 'users', 'divisions', 'seasons', 'programs', 'app_settings'];
-
 // --replace: clear the demo database and start over. Everything entered since
 // the last load is deleted, which is the point: it's how a demo is refreshed.
+// Every data table is emptied (read from the database, so tables added by later
+// updates are included too).
 async function wipe() {
   const where = config.databaseUrl.startsWith('file:') ? config.databaseUrl : new URL(config.databaseUrl).host;
   console.log(`🧹 Replacing everything in ${where}…`);
-  await db.batch(DEMO_TABLES.map((t) => ({ sql: `DELETE FROM ${t}`, args: [] })), 'write');
+  await clearAllData();
 }
 
 async function main() {
   if (process.argv.includes('--replace')) await wipe();
-  await seedBase({ quiet: true });
+  // The demo league uses the starter divisions.
+  await seedBase({ quiet: true, divisions: true });
   if (await one('SELECT 1 FROM programs LIMIT 1')) {
     console.log(config.databaseUrl.startsWith('file:')
       ? 'ℹ️  Demo data already present — nothing to do. (npm run db:reset starts fresh.)'

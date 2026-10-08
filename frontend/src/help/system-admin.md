@@ -19,7 +19,7 @@ Do these in order before programs start entering gym time.
 ### 1. The season and divisions
 **Menu → League admin → League setup.**
 - **Season:** **Add season** with its first and last day, and use **Make active** if it isn't already the active season. Only one season is active at a time; gym slots, blackouts, and the schedule all belong to it.
-- **Divisions:** the grade and gender groups teams play in (e.g. *6th Grade Girls*). The league starts with ten; rename, add, or deactivate them to match your league. Teams only ever play teams in their own division.
+- **Divisions:** the grade and gender groups teams play in (e.g. *6th Grade Girls*). A new league starts with none (or with ten starter divisions, if they were added when the database was set up); add, rename, or deactivate them to match your league. Teams only ever play teams in their own division.
 
 ![League setup](/help/img/sa-league-setup.png)
 

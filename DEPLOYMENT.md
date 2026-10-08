@@ -87,7 +87,11 @@ Then run:
 npm run migrate:prod
 npm run seed:prod
 ```
-The seed prints the admin's **username** (generated from the name, e.g. first initial + last name). Write it down. You'll be made to change the temporary password on first sign-in.
+The seed creates **only the System Admin (League Admin)**: no season, divisions, programs, or demo data. It prints the admin's **username** (generated from the name, e.g. first initial + last name). Write it down. You'll be made to change the temporary password on first sign-in.
+
+On a Turso database the seed refuses to run with the placeholder values: `SEED_ADMIN_EMAIL` must be a real address, `SEED_ADMIN_PASSWORD` must be at least 10 characters (not `ChangeMe123!`), and the first and last name must be set. Nothing is created until they are. If a System Admin already exists, the seed leaves it alone, so running it twice is harmless.
+
+Want the ten starter divisions too (4th–8th grade boys and girls)? Run `npm run seed:prod -- --with-divisions` instead. Otherwise you add divisions yourself under **League setup**.
 
 `.env.production.local` is gitignored. Keep it only on your machine, or delete it after this step.
 
@@ -98,7 +102,7 @@ The seed prints the admin's **username** (generated from the name, e.g. first in
 turso db shell winter-league "SELECT version FROM schema_migrations;"
 turso db shell winter-league "SELECT username, role FROM users;"
 ```
-You should see migration `1` and your one `super_admin`.
+You should see every migration (up to `014_rule_requests.sql`) and your one `super_admin`.
 
 ---
 
@@ -222,13 +226,48 @@ The API only accepts browser requests from origins listed in `APP_URL`, and uses
 1. Open the Site URL. The login page should load in the default theme.
 2. Sign in with the username printed in step 1.5 and your temporary password.
 3. You should be sent to **Change password**. Set a permanent one.
-4. **League setup:** create the season (e.g. Winter 2026–27 with real start/end dates) and adjust the 10 starter divisions.
+4. **League setup:** create the season (e.g. Winter 2026–27 with real start/end dates) and add the divisions (or adjust the 10 starter divisions, if you seeded them with `--with-divisions`).
 5. **Programs:** add each participating program (up to 16).
 6. **Users:** create a Program Director for each program. Each gets a generated username and temporary password to hand over.
 7. Have one Program Director sign in and confirm they only see their own program, then add a venue and a few gym slots.
 8. Optional: on **Branding & Theme** (avatar menu → League admin), pick the sitewide theme and set the conference's name and logo. On wide screens there's also a quick theme picker in the header.
 
 ---
+
+## Going live from your UAT database
+
+If the database you tested on (UAT) is the one going live, empty it first: production should start with nothing but the League Admin, not test programs, accounts, schedules, and activity. `db:reset:prod` does that against the database in `backend/.env.production.local`.
+
+**What it does:** deletes every row of league data (users, programs, teams, venues, gym slots, blackouts, seasons, divisions, schedules, referees and assignments, change and rule requests, activity, settings), keeps the tables so nothing needs re-migrating, applies any pending database updates, and then creates only the System Admin from the `SEED_ADMIN_*` values, exactly like `seed:prod`.
+
+1. **Back up the UAT data** in case you need anything from it later:
+   ```bash
+   turso db shell winter-league .dump > winter-league-uat-backup.sql
+   ```
+2. In `backend/.env.production.local`, check `DATABASE_URL` is the database you mean to empty, and set the real admin: `SEED_ADMIN_FIRST_NAME`, `SEED_ADMIN_LAST_NAME`, `SEED_ADMIN_EMAIL`, and a temporary `SEED_ADMIN_PASSWORD`.
+3. See what's there, without changing anything:
+   ```bash
+   cd backend
+   npm run db:reset:prod
+   ```
+   It lists how many users, programs, games, and so on the database holds, warns about any `SEED_ADMIN_*` problem, and prints the exact command for the next step.
+4. Run that command. The `--confirm` value is the database's name, the first part of its URL (`winter-league-<your-org>` for `libsql://winter-league-<your-org>.turso.io`), so it can only ever empty the database you named:
+   ```bash
+   npm run db:reset:prod -- --confirm=winter-league-<your-org>
+   ```
+   Options, added to the same command:
+   - `--keep-branding` keeps the app name, logo and sitewide theme you set up during UAT. Everything else still goes.
+   - `--with-divisions` also adds the ten starter divisions.
+5. It prints the new admin's **username**. Sign in and follow the [First sign-in checklist](#5-first-sign-in-checklist).
+
+Notes:
+- If a `SEED_ADMIN_*` value is missing or still a placeholder, it stops **before** deleting anything.
+- Every UAT account is gone, including test directors, coaches, referees and the UAT admin. Sign-in tokens issued during UAT stop working, because their users no longer exist.
+- Rotating `JWT_SECRET` on Render as well is optional. It signs everyone out immediately.
+- The logo copy in Vercel Blob is not deleted. It's a few kilobytes, and it's reused if you upload the same logo again.
+- Run it **before** you hand out any production accounts. Afterwards it would delete real data.
+
+To rehearse it first, run `npm run db:reset:empty` locally. It rebuilds your local database with only the System Admin (`ladmin` / `ChangeMe123!`), the same starting point as production.
 
 ## Troubleshooting
 
@@ -275,4 +314,5 @@ The code is the same for every conference, so fixes and new features ship to all
 - **Ship a change:** push to `main`. Render and Vercel both redeploy; Render applies new migrations first.
 - **Rotate the Turso token:** create a new one, update Render, redeploy, then revoke the old one (`turso db tokens invalidate winter-league` revokes **all** tokens for the DB, so update Render first).
 - **Back up the database:** `turso db shell winter-league .dump > winter-league-backup.sql`.
+- **Start over with an empty database** (before go-live only): see [Going live from your UAT database](#going-live-from-your-uat-database).
 - **Local development is unaffected by all of this.** `backend/.env` keeps pointing at the local SQLite file.
