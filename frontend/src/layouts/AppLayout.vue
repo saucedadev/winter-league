@@ -203,7 +203,7 @@ function signOut() {
               <ul v-show="groupOpen(g)" :id="`menu-group-${g.id}`">
                 <li v-for="n in g.items" :key="n.to" :class="n.inHeader && 'xl:hidden'">
                   <RouterLink :to="n.to" class="flex items-center px-4 py-3 sm:py-2 text-sm hover:bg-background"
-                    :class="isActive(n.to) && 'font-semibold text-accent'" :aria-current="isActive(n.to) ? 'page' : undefined">
+                    :class="isActive(n.to) && 'font-semibold text-accent-text'" :aria-current="isActive(n.to) ? 'page' : undefined">
                     {{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5">{{ badge.count }}</span>
                   </RouterLink>
                 </li>
@@ -213,7 +213,7 @@ function signOut() {
 
           <!-- Always visible, however long the list above. -->
           <div class="shrink-0 border-t border-border py-1 bg-surface pb-[max(0.25rem,env(safe-area-inset-bottom))] shadow-[0_-6px_10px_-8px_rgba(0,0,0,0.25)]">
-            <RouterLink to="/help" class="block px-4 py-3 sm:py-2 text-sm hover:bg-background" :class="route.path.startsWith('/help') && 'font-semibold text-accent'">Help &amp; user guide</RouterLink>
+            <RouterLink to="/help" class="block px-4 py-3 sm:py-2 text-sm hover:bg-background" :class="route.path.startsWith('/help') && 'font-semibold text-accent-text'">Help &amp; user guide</RouterLink>
             <RouterLink to="/change-password" class="block px-4 py-3 sm:py-2 text-sm hover:bg-background">Change password</RouterLink>
             <button type="button" class="block w-full text-left px-4 py-3 sm:py-2 text-sm hover:bg-background" @click="signOut">Sign out</button>
           </div>

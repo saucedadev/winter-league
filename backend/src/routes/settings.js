@@ -13,7 +13,7 @@ import { logActivity } from '../utils/activityLog.js';
 const router = Router();
 // Gym Hive's four themes (so the two apps look like siblings), plus the
 // league's own Pacific Energy and Midnight Pacific themes.
-const VALID_THEMES = ['light', 'dark', 'regalOpulence', 'pacificEnergy', 'midnightPacific', 'midnightNoir'];
+const VALID_THEMES = ['light', 'dark', 'regalOpulence', 'pacificEnergy', 'midnightPacific', 'midnightNoir', 'concreteSage'];
 
 // Public: the login page renders in the sitewide theme before sign-in.
 router.get('/theme', ah(async (req, res) => {

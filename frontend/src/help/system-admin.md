@@ -67,7 +67,7 @@ The next screen shows the username and temporary password **once**. The password
 | Referee | Sees their games, checks in, and marks dates they can't work |
 
 ### 4. Branding & Theme
-**Menu → League admin → Branding & Theme.** Set the name shown across the app and in emails, upload a logo (PNG, JPEG, WebP, or SVG under 300 KB), and pick the sitewide color theme. The theme is chosen only here (it's no longer in the top bar), and applies to everyone as soon as you pick it. The preview shows your name and logo changes before you save.
+**Menu → League admin → Branding & Theme.** Set the name shown across the app and in emails, upload a logo (PNG, JPEG, WebP, or SVG under 300 KB), and pick the sitewide color theme: **Light**, **Dark**, **Regal Opulence**, **Midnight Noir**, **Pacific Energy**, **Midnight Pacific**, or **Concrete Sage** (calm and architectural: graphite top bar, sage panels, an oat background, and a warm clay for buttons). The theme is chosen only here (it's no longer in the top bar), and applies to everyone as soon as you pick it. The preview shows your name and logo changes before you save.
 
 ![Branding & Theme](/help/img/sa-branding.png)
 

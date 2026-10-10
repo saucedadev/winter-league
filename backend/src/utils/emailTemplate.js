@@ -24,6 +24,7 @@ export const EMAIL_THEMES = {
   pacificEnergy: { accent: '#007A7A', accentContrast: '#FFFFFF' },
   midnightPacific: { accent: '#64FFDA', accentContrast: '#0A192F' },
   midnightNoir: { accent: '#B22222', accentContrast: '#F5F5F7' },
+  concreteSage: { accent: '#C97C5D', accentContrast: '#1F2328' },
 };
 
 // ---- color helpers ----

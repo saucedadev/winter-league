@@ -1,5 +1,5 @@
 // Color palettes. The first four match Gym Hive's so the two apps read as
-// siblings; Pacific Energy and Midnight Pacific are Winter League's own. (theme.css holds
+// siblings; Pacific Energy, Midnight Pacific and Concrete Sage are Winter League's own. (theme.css holds
 // the actual CSS variables; keep the two in step.) Structural roles per theme: header,
 // background, surface, text/textMuted, border, accent/accentContrast.
 //
@@ -35,6 +35,15 @@ export const palette = {
       label: 'Midnight Pacific', header: '#112240', headerText: '#E6F1FF', background: '#0A192F', surface: '#112240',
       text: '#E6F1FF', textMuted: '#8892B0', border: '#233554', accent: '#64FFDA', accentContrast: '#0A192F',
       headerAccent: '#FF7E5F', headerAccentContrast: '#0A192F', headerBorder: '#233554', highlight: '#00FFFF', isDark: true,
+    },
+    // Calm, architectural, grounded: graphite navigation, sage panels, oat page,
+    // and a warm clay accent kept to buttons and selected states (under ~10% of
+    // the screen). Text on clay is graphite; clay as text uses a deep clay.
+    concreteSage: {
+      label: 'Concrete Sage', header: '#1F2328', headerText: '#E7E2D9', background: '#E7E2D9', surface: '#A9B7A6',
+      text: '#1F2328', textMuted: '#34413A', border: '#8A9887', accent: '#C97C5D', accentContrast: '#1F2328',
+      headerAccent: '#C97C5D', headerAccentContrast: '#1F2328', headerBorder: '#3C4A3F', accentText: '#6E3520',
+      input: '#F3F0EA', signinPanel: '#3C4A3F', isDark: false,
     },
     midnightNoir: {
       label: 'Midnight Noir', header: '#B22222', headerText: '#F5F5F7', background: '#1C1C1C', surface: '#2A2A2A',

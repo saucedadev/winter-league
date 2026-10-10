@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* Theme variables mirror src/theme/palette.js. Light, Dark, Regal Opulence, and
-   Midnight Noir match Gym Hive; Pacific Energy and Midnight Pacific are this app's own. */
+   Midnight Noir match Gym Hive; Pacific Energy, Midnight Pacific and Concrete Sage are this app's own. */
 :root {
   --color-header: #FFFFFF;
   --color-header-text: #36454F;
@@ -17,6 +17,17 @@
   --color-header-accent-contrast: var(--color-accent-contrast);
   /* Line under the header. Same as other borders unless a theme sets it. */
   --color-header-border: var(--color-border);
+  /* Accent used as TEXT (active menu item, small links). Same as accent unless a
+     theme's accent is too light to read as text on its panels. */
+  --color-accent-text: var(--color-accent);
+  /* Keyboard-focus ring and focused inputs. */
+  --color-focus: var(--color-accent);
+  /* Form fields. Same as panels unless a theme sets lighter fields. */
+  --color-input: var(--color-surface);
+  --color-input-text: var(--color-text);
+  --color-input-muted: var(--color-text-muted);
+  /* The sign-in / password card. Same as panels unless a theme gives it its own color. */
+  --color-signin-panel: var(--color-surface);
 
   --color-success: #10B981;
   --color-danger: #E63946;
@@ -70,6 +81,29 @@ html[data-theme="midnightPacific"] {
   /* Bioluminescent Blue, used sparingly: only the "waiting on you" badge and dot. */
   --color-highlight: #00FFFF;
 }
+html[data-theme="concreteSage"] {
+  /* Calm, architectural: graphite navigation, sage panels, oat page, clay accent.
+     Clay is for buttons and selected states only (keep it under ~10% of the
+     screen); text on clay is graphite (4.9:1, white would be 3.2:1). */
+  --color-header: #1F2328; --color-header-text: #E7E2D9; --color-background: #E7E2D9; --color-surface: #A9B7A6;
+  --color-text: #1F2328; --color-text-muted: #34413A; --color-border: #8A9887;
+  --color-accent: #C97C5D; --color-accent-contrast: #1F2328;
+  --color-header-accent: #C97C5D; --color-header-accent-contrast: #1F2328;
+  --color-header-border: #3C4A3F;
+  /* Clay is too light to read as text on sage, so accent text is a deep clay (4.6:1 on sage). */
+  --color-accent-text: #6E3520;
+  --color-focus: #1F2328;
+  /* Oat-white fields on the sage panels, graphite text. */
+  --color-input: #F3F0EA; --color-input-text: #1F2328;
+  /* Deep sage sign-in card (light text is set on .signin-panel below). */
+  --color-signin-panel: #3C4A3F;
+  --color-slot-border: rgba(31, 35, 40, 0.2);
+}
+/* On the deep sage sign-in card: oat text, and lighter muted and error colors
+   so they still read (5:1 and more). Fields keep their own graphite text. */
+html[data-theme="concreteSage"] .signin-panel {
+  --color-text: #E7E2D9; --color-text-muted: #C9D1C6; --color-danger: #FFB4A8; --color-border: #5A685D;
+}
 /* color-scheme: dark makes native controls (date-picker icons, dropdown lists,
    scrollbars) render light-on-dark in every dark theme. */
 html.dark { --color-slot-border: rgba(255, 255, 255, 0.18); color-scheme: dark; }
@@ -95,12 +129,12 @@ html.dark .card { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px -
   width: 100%;
   border-radius: 0.5rem;
   border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--color-input);
+  color: var(--color-input-text);
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
 }
-.input:focus { outline: none; box-shadow: 0 0 0 2px var(--color-accent); border-color: transparent; }
+.input:focus { outline: none; box-shadow: 0 0 0 2px var(--color-focus); border-color: transparent; }
 .label { display: block; font-size: 0.8125rem; font-weight: 500; margin-bottom: 0.25rem; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem; border-radius: 0.5rem;
@@ -118,7 +152,13 @@ html.dark .card { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px -
 .badge { display: inline-flex; align-items: center; border-radius: 9999px; padding: 0.125rem 0.5rem; font-size: 0.6875rem; font-weight: 600; line-height: 1.2rem; white-space: nowrap; }
 .badge-outline { border: 1px solid var(--color-border); color: var(--color-text-muted); }
 
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* Small controls drawn inside a field (e.g. Show/Hide password). */
+.input-adornment { color: var(--color-input-muted); }
+
+/* The sign-in / password card (AuthShell). */
+.signin-panel { background-color: var(--color-signin-panel); color: var(--color-text); }
 
 /* Blackout overlay: charcoal diagonal hatch so a blacked-out slot still shows its color underneath. */
 .hatch-blackout {
@@ -142,6 +182,7 @@ html.dark .card { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 24px -
   --color-header-accent: var(--color-header-accent);
   --color-header-accent-contrast: var(--color-header-accent-contrast);
   --color-header-border: var(--color-header-border);
+  --color-accent-text: var(--color-accent-text);
   --color-success: var(--color-success);
   --color-danger: var(--color-danger);
   --color-warning: var(--color-warning);

@@ -44,7 +44,7 @@ function jump(id) {
         <nav aria-label="Guides">
           <RouterLink v-for="g in available" :key="g.id" :to="`/help/${g.id}`"
             class="block rounded-lg px-3 py-2 text-sm hover:bg-background"
-            :class="g.id === guide.id && 'bg-background font-semibold text-accent'" :aria-current="g.id === guide.id ? 'page' : undefined">
+            :class="g.id === guide.id && 'bg-background font-semibold text-accent-text'" :aria-current="g.id === guide.id ? 'page' : undefined">
             {{ g.title }}<span v-if="g.id === ownId" class="text-xs text-text-muted font-normal"> · yours</span>
           </RouterLink>
         </nav>

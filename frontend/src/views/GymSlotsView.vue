@@ -292,7 +292,7 @@ watch(editor, () => { confirmDelete.value = false; });
         <p class="font-semibold text-sm min-w-[9.5rem] text-center" aria-live="polite">{{ dateRange(weekStart, weekEnd) }}, {{ weekEnd.slice(0, 4) }}</p>
         <button class="btn btn-ghost" aria-label="Next week" @click="shiftWeek(1)">›</button>
       </div>
-      <button class="text-sm text-accent font-medium hover:underline" @click="weekStart = startOfWeek(today)">This week</button>
+      <button class="text-sm text-accent-text font-medium hover:underline" @click="weekStart = startOfWeek(today)">This week</button>
       <label class="text-sm flex items-center gap-2">
         <span class="text-text-muted">Go to</span>
         <input type="date" class="input !w-auto !py-1" :min="season?.startDate" :max="season?.endDate" @change="jumpTo" />

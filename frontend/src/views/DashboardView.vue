@@ -65,7 +65,7 @@ const greeting = computed(() => {
             <p class="text-lg font-semibold">{{ data.season.name }}</p>
           </div>
           <p class="text-sm">{{ dateRange(data.season.startDate, data.season.endDate) }}</p>
-          <p class="text-sm font-medium text-accent">{{ seasonStatus }}</p>
+          <p class="text-sm font-medium text-accent-text">{{ seasonStatus }}</p>
         </template>
         <template v-else>
           <div class="flex-1">
@@ -97,7 +97,7 @@ const greeting = computed(() => {
         <section class="card p-5 lg:col-span-3">
           <div class="flex items-baseline justify-between mb-4">
             <h2 class="font-semibold">Gym time entered this season</h2>
-            <RouterLink to="/slots" class="text-sm text-accent font-medium hover:underline">Open gym slots</RouterLink>
+            <RouterLink to="/slots" class="text-sm text-accent-text font-medium hover:underline">Open gym slots</RouterLink>
           </div>
           <div v-if="totalSlots" class="space-y-4">
             <div v-for="r in categoryRows" :key="r.key">
@@ -124,7 +124,7 @@ const greeting = computed(() => {
         <section class="card p-5 lg:col-span-2">
           <div class="flex items-baseline justify-between mb-3">
             <h2 class="font-semibold">Upcoming blackouts</h2>
-            <RouterLink to="/blackouts" class="text-sm text-accent font-medium hover:underline">Manage</RouterLink>
+            <RouterLink to="/blackouts" class="text-sm text-accent-text font-medium hover:underline">Manage</RouterLink>
           </div>
           <ul v-if="data.upcomingBlackouts.length" class="divide-y divide-border">
             <li v-for="b in data.upcomingBlackouts" :key="b.id" class="py-2.5 flex gap-3 items-start">

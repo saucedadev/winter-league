@@ -9,7 +9,7 @@
 .guide ul { list-style: disc; }
 .guide ol { list-style: decimal; }
 .guide li { margin: 0.3rem 0; }
-.guide a { color: var(--color-accent); text-decoration: underline; }
+.guide a { color: var(--color-accent-text); text-decoration: underline; }
 .guide strong { font-weight: 650; }
 .guide code { font-size: 0.9em; background: var(--color-background); border: 1px solid var(--color-border); border-radius: 0.3rem; padding: 0 0.3rem; }
 .guide blockquote { margin: 1rem 0; padding: 0.75rem 1rem; border-left: 4px solid var(--color-accent); background: var(--color-background); border-radius: 0 0.5rem 0.5rem 0; }
