@@ -1,4 +1,5 @@
 <script setup>
+import { portalEnabled, returnToPortal } from '../utils/portal';
 import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
@@ -138,6 +139,11 @@ onBeforeUnmount(() => {
 watch(() => route.fullPath, () => { closeMenu(); badge.refresh(); });
 
 function signOut() {
+  // With the Hub Portal on, signing out of this app returns to the portal.
+  if (portalEnabled) {
+    auth.forgetStoredSession();
+    return returnToPortal();
+  }
   auth.clear();
   ctx.reset();
   router.push({ name: 'login' });

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useBrandingStore } from '../stores/branding';
+import { portalEnabled, signInThroughPortal } from '../utils/portal';
 
 const SA = ['super_admin'];
 const MANAGERS = ['super_admin', 'program_director'];
@@ -8,6 +9,7 @@ const TEAM_VIEWERS = ['super_admin', 'program_director', 'league_coach'];
 const REF_MANAGERS = ['super_admin', 'referee_assignor'];
 
 const routes = [
+  { path: '/sso', name: 'sso', component: () => import('../views/SsoView.vue'), meta: { public: true, title: 'Signing in' } },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
   { path: '/forgot-username', component: () => import('../views/ForgotUsernameView.vue'), meta: { public: true } },
   { path: '/forgot-password', component: () => import('../views/ForgotPasswordView.vue'), meta: { public: true } },
@@ -60,9 +62,23 @@ router.beforeEach(async (to) => {
   if (!auth.loaded) await auth.init();
   if (to.meta.public) {
     if (auth.isAuthenticated && to.name === 'login') return { name: 'home' };
+    // With the Hub Portal on, people sign in there. /login?local=1 still
+    // shows this app's own form, as a way in for an administrator if the
+    // portal is ever unavailable.
+    if (portalEnabled && to.name === 'login' && !to.query.local) {
+      const next = typeof to.query.next === 'string' ? to.query.next : '/';
+      signInThroughPortal(next);
+      return false;
+    }
     return true;
   }
-  if (!auth.isAuthenticated) return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} };
+  if (!auth.isAuthenticated) {
+    if (portalEnabled) {
+      signInThroughPortal(to.fullPath);
+      return false;
+    }
+    return { name: 'login', query: to.fullPath !== '/' ? { next: to.fullPath } : {} };
+  }
   if (auth.user.mustChangePassword && !to.meta.allowDuringForcedChange) return { name: 'change-password' };
   if (to.meta.roles && !to.meta.roles.includes(auth.user.role)) return { name: 'home' };
   return true;

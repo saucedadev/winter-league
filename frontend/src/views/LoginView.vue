@@ -11,7 +11,11 @@ const router = useRouter();
 const route = useRoute();
 const username = ref('');
 const password = ref('');
-const error = ref(route.query.expired ? 'Your session ended. Sign in again.' : '');
+const error = ref(
+  route.query.portal === 'failed'
+    ? 'Signing in through the portal isn’t working right now, so we stopped trying. You can sign in here with your Winter League username instead. If this keeps happening, let the league administrator know.'
+    : route.query.expired ? 'Your session ended. Sign in again.' : '',
+);
 const busy = ref(false);
 
 async function submit() {

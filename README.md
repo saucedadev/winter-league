@@ -2,6 +2,10 @@
 
 A standalone web app for running a multi-program youth basketball winter league. It is a sibling to Gym Hive: same stack, same look and feel, same auth approach, but its own codebase, its own database, and its own user accounts.
 
+**Hub Portal sign-in:** Winter League can let people sign in through the Hub
+Portal instead of its own form. It is off until configured; see
+[PORTAL-SSO.md](PORTAL-SSO.md).
+
 | Layer    | Tech                                  | Local                          | Production        |
 |----------|---------------------------------------|--------------------------------|-------------------|
 | Frontend | Vue 3 + Vite + Tailwind v4 + Pinia    | `http://localhost:5174`        | Vercel            |

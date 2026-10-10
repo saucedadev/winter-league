@@ -21,7 +21,10 @@ api.interceptors.response.use(
   (err) => {
     const status = err.response?.status;
     const code = err.response?.data?.code;
-    const isLogin = err.config?.url?.includes('/auth/login');
+    // A rejected sign-in attempt (own form or portal pass) is shown on its own
+    // page. Treating it as "session expired" would send the person back to the
+    // portal, which would send them straight here again, in a loop.
+    const isLogin = /\/auth\/(login|sso)/.test(err.config?.url || '');
     if (!isLogin && (status === 401 || code === 'MUST_CHANGE_PASSWORD')) onAuthProblem(status === 401 ? 'expired' : 'must-change');
     return Promise.reject(err);
   }

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { api, TOKEN_KEY } from '../api/client';
 import { ROLE_LABELS } from '../utils/format';
+import { portalSignInSucceeded } from '../utils/portal';
 
 // The token lives in sessionStorage and travels as an Authorization
 // header — not a cookie — so Safari's cross-site cookie blocking can't
@@ -33,9 +34,25 @@ export const useAuthStore = defineStore('auth', {
       sessionStorage.setItem(TOKEN_KEY, data.token);
       return data.user;
     },
+    // Hub Portal sign-in: trades the portal's one-time pass for a session.
+    async loginWithPass(passToken) {
+      const { data } = await api.post('/auth/sso', { token: passToken });
+      portalSignInSucceeded();
+      this.token = data.token;
+      this.user = data.user;
+      sessionStorage.setItem(TOKEN_KEY, data.token);
+      return data.user;
+    },
     async changePassword(currentPassword, newPassword) {
       const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
       this.user = data.user;
+    },
+    // Drops the saved session but leaves the page as it is, for when the
+    // browser is about to leave for the portal anyway. Emptying `user` first
+    // would make the screen still showing re-render with nobody signed in.
+    forgetStoredSession() {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem('winterleague:program');
     },
     clear() {
       this.user = null;

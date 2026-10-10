@@ -33,6 +33,13 @@ export const config = {
   leagueTimezone: process.env.LEAGUE_TIMEZONE || 'America/Los_Angeles',
   // For live demos only: lets referees check in to any upcoming game regardless of time.
   demoCheckInAnytime: process.env.DEMO_CHECKIN_ANYTIME === 'true',
+  // Hub Portal single sign-on (see PORTAL-SSO.md). With no secret set, the
+  // portal hand-off is off and the app's own sign-in works exactly as before.
+  portal: {
+    ssoSecret: (process.env.PORTAL_SSO_SECRET || '').trim(),
+    appSlug: process.env.PORTAL_APP_SLUG || 'winter-league',
+    issuer: process.env.PORTAL_SSO_ISSUER || 'hub-portal',
+  },
   email: {
     provider: process.env.EMAIL_PROVIDER || 'console',
     from: process.env.EMAIL_FROM || 'Winter League <no-reply@example.com>',
