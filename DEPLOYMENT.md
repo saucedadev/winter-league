@@ -102,7 +102,7 @@ Want the ten starter divisions too (4th–8th grade boys and girls)? Run `npm ru
 turso db shell winter-league "SELECT version FROM schema_migrations;"
 turso db shell winter-league "SELECT username, role FROM users;"
 ```
-You should see every migration (up to `014_rule_requests.sql`) and your one `super_admin`.
+You should see every migration (up to `015_portal_sso.sql`) and your one `super_admin`.
 
 ---
 
@@ -168,7 +168,7 @@ https://winter-league-api.onrender.com/api/health
 ```
 Expected (`schema` is how many database updates have been applied, and `latestUpdate` the most recent one — handy for confirming a deploy landed):
 ```json
-{"ok":true,"app":"winter-league","database":"turso","schema":14,"latestUpdate":"014_rule_requests.sql"}
+{"ok":true,"app":"winter-league","database":"turso","schema":15,"latestUpdate":"015_portal_sso.sql"}
 ```
 Save the base URL plus `/api` as the **API URL**, e.g. `https://winter-league-api.onrender.com/api`.
 
