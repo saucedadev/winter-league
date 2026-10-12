@@ -83,7 +83,7 @@ The next screen shows the username and temporary password **once**. The password
 Once programs have entered their gym slots, blackouts, and teams, the Schedule builder creates the season's games. Nothing is visible to coaches, directors, or referees until you publish.
 
 ### 1. Check the rules
-**Menu → Scheduling → Schedule builder.** If programs have sent [rule requests](#rule-requests-from-programs) that are waiting for an answer, a line above the rules says how many.
+**Menu → Scheduling → Schedule builder.** If there's no active season yet, the page lists what to set up first (the season, divisions, programs and their directors, then teams, venues and gym slots), with a link to each. **Generate draft** also tells you what's still missing (for example *no teams yet*, or *no game slots for this season*) rather than making an empty draft. If programs have sent [rule requests](#rule-requests-from-programs) that are waiting for an answer, a line above the rules says how many.
 
 ![Matchmaker rules](/help/img/sa-builder-rules.png)
 

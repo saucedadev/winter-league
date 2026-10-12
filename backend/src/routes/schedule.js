@@ -23,6 +23,26 @@ const adminOnly = requireRole('super_admin');
 const parseJson = (s, fallback) => { try { return JSON.parse(s); } catch { return fallback; } };
 const shapeRun = (r) => r && ({ ...r, rules: parseJson(r.rules, {}), summary: parseJson(r.summary, null), warnings: parseJson(r.warnings, []), publishOverride: parseJson(r.publishOverride, null) });
 
+// Before generating: is there anything to schedule? Without teams, or without
+// game slots in the season, the matchmaker would only make an empty draft, so
+// say what's missing instead.
+async function requireSomethingToSchedule(season) {
+  const n = async (sql, args = []) => Number((await one(sql, args)).n);
+  const [divisions, programs, teams, slots] = await Promise.all([
+    n('SELECT COUNT(*) AS n FROM divisions WHERE is_active = 1'),
+    n('SELECT COUNT(*) AS n FROM programs WHERE is_active = 1 AND is_guest = 0'),
+    n(`SELECT COUNT(*) AS n FROM teams t JOIN divisions d ON d.id = t.division_id JOIN programs p ON p.id = t.program_id
+       WHERE t.is_active = 1 AND d.is_active = 1 AND p.is_active = 1 AND p.is_guest = 0`),
+    n(`SELECT COUNT(*) AS n FROM gym_slots WHERE season_id = ? AND category IN ('WEEKNIGHT_GAME', 'WEEKEND_GAME_BLOCK')`, [season.id]),
+  ]);
+  const missing = [];
+  if (!divisions) missing.push('divisions (League setup)');
+  if (!programs) missing.push('programs (Programs)');
+  if (!teams) missing.push(divisions && programs ? 'teams (each Program Director adds theirs under Teams)' : 'teams');
+  if (!slots) missing.push(`game slots for ${season.name} (weeknight or weekend game time, added by each Program Director under Gym slots)`);
+  if (missing.length) throw badRequest(`There’s nothing to schedule yet. Still needed: ${missing.join('; ')}.`);
+}
+
 async function requireSeason() {
   const s = await activeSeason();
   if (!s) throw conflict('No season is active. Set one up under League setup first.');
@@ -100,7 +120,19 @@ router.put('/rules', adminOnly, ah(async (req, res) => {
 // ---------------------------------------------------------------------
 router.get('/overview', adminOnly, ah(async (req, res) => {
   const season = await activeSeason();
-  if (!season) return res.json({ season: null });
+  // No active season yet: say what's set up so far, so the page can show the
+  // league admin what to do first instead of an empty builder.
+  if (!season) {
+    const n = async (sql) => Number((await one(sql)).n);
+    const [seasons, divisions, programs, teams, venues] = await Promise.all([
+      n('SELECT COUNT(*) AS n FROM seasons'),
+      n('SELECT COUNT(*) AS n FROM divisions WHERE is_active = 1'),
+      n('SELECT COUNT(*) AS n FROM programs WHERE is_active = 1 AND is_guest = 0'),
+      n('SELECT COUNT(*) AS n FROM teams t JOIN programs p ON p.id = t.program_id WHERE t.is_active = 1 AND p.is_active = 1 AND p.is_guest = 0'),
+      n('SELECT COUNT(*) AS n FROM venues v JOIN programs p ON p.id = v.program_id WHERE v.is_active = 1 AND p.is_active = 1'),
+    ]);
+    return res.json({ season: null, setup: { seasons, divisions, programs, teams, venues } });
+  }
   const [draft, published, openRequests] = await Promise.all([
     one("SELECT * FROM schedule_runs WHERE season_id = ? AND status = 'draft' ORDER BY created_at DESC LIMIT 1", [season.id]),
     publishedRun(season.id),
@@ -120,6 +152,7 @@ router.get('/overview', adminOnly, ah(async (req, res) => {
 // ---------------------------------------------------------------------
 router.post('/generate', adminOnly, ah(async (req, res) => {
   const season = await requireSeason();
+  await requireSomethingToSchedule(season);
   let rules = await getRules();
   let divisionNames = null;
   let programNames = null;

@@ -23,6 +23,23 @@ const ctx = useProgramContext();
 const overview = ref(null);
 // Rule requests from programs, shown above the rules so they aren't missed before generating.
 const ruleRequests = ref({ open: 0, toConfirm: 0 });
+// Before there's an active season: what the league has set up so far.
+const setup = computed(() => overview.value?.setup || { seasons: 0, divisions: 0, programs: 0, teams: 0, venues: 0 });
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const setupSteps = computed(() => {
+  const s = setup.value;
+  return [
+    { title: 'Season', done: false, to: '/league', link: s.seasons ? 'Make a season active' : 'Add the season',
+      detail: s.seasons ? `${plural(s.seasons, 'season')} set up, none active. Only one season is active at a time.` : 'Its first and last day. Gym slots, blackouts, and the schedule all belong to it.' },
+    { title: 'Divisions', done: s.divisions > 0, to: '/league', link: 'Add divisions',
+      detail: s.divisions ? `${plural(s.divisions, 'active division')}.` : 'The grade and gender groups teams play in, e.g. 6th Grade Girls.' },
+    { title: 'Programs and their directors', done: s.programs > 0, to: '/programs', link: 'Add programs',
+      detail: s.programs ? `${plural(s.programs, 'active program')}. Give each a Program Director under Users.` : 'Each club in the league, and a Program Director account for each (under Users).' },
+    { title: 'Teams, venues, and gym slots', done: s.teams > 0 && s.venues > 0, to: null, link: '',
+      detail: s.teams || s.venues ? `${plural(s.teams, 'team')} and ${plural(s.venues, 'venue')} so far. Directors add these for their programs, then their gym slots once the season is active.` : 'Program Directors add their teams, venues, and gym slots once the season is active.' },
+  ];
+});
+const firstOpenStep = computed(() => setupSteps.value.findIndex((x) => !x.done));
 const ruleRequestText = computed(() => `${[ruleRequests.value.open && `${ruleRequests.value.open} waiting for your answer`, ruleRequests.value.toConfirm && `${ruleRequests.value.toConfirm} to confirm for this season`].filter(Boolean).join(', ')}.`);
 api.get('/rule-requests/count').then(({ data }) => { ruleRequests.value = data; }).catch(() => {});
 const loading = ref(true);
@@ -41,6 +58,9 @@ const RULE_FIELDS = [
 async function loadOverview() {
   const { data } = await api.get('/schedule/overview');
   overview.value = data;
+  // No active season: nothing to build yet, and no rules or runs to load. The
+  // page shows the setup steps instead.
+  if (!data.season) { view.value = null; return; }
   if (!rules.value) rules.value = { ...data.rules, divisionOverrides: cloneOverrides(data.rules.divisionOverrides), programOverrides: cloneOverrides(data.rules.programOverrides) };
   if (!view.value || (view.value === 'draft' && !data.draft) || (view.value === 'published' && !data.published)) {
     view.value = data.draft ? 'draft' : data.published ? 'published' : null;
@@ -362,9 +382,24 @@ const publishMessage = computed(() => {
     </PageHeader>
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
-    <EmptyState v-else-if="!overview?.season" title="No active season" body="Set up the season under League setup before building a schedule.">
-      <RouterLink to="/league" class="btn btn-primary">League setup</RouterLink>
-    </EmptyState>
+    <section v-else-if="!overview?.season" class="card p-6 max-w-2xl">
+      <h2 class="text-lg font-semibold">Set up the league before building a schedule</h2>
+      <p class="text-sm text-text-muted mt-1">{{ setup.seasons
+        ? 'There’s no active season. The Schedule builder works on the active season, so make one active under League setup.'
+        : 'The Schedule builder needs an active season to work in, and the divisions, programs, teams, and gym time to build from. Start with the season.' }}</p>
+      <ol class="mt-4 space-y-3">
+        <li v-for="(s, i) in setupSteps" :key="s.title" class="flex gap-3">
+          <span class="w-6 h-6 shrink-0 rounded-full grid place-items-center text-xs font-bold" :class="s.done ? 'bg-success text-black' : i === firstOpenStep ? 'bg-accent text-accent-contrast' : 'border border-border text-text-muted'"
+            :aria-label="s.done ? 'Done' : 'To do'">{{ s.done ? '✓' : i + 1 }}</span>
+          <span class="min-w-0 text-sm">
+            <span class="font-medium" :class="s.done && 'text-text-muted'">{{ s.title }}</span>
+            <span class="block text-text-muted">{{ s.detail }}</span>
+            <RouterLink v-if="!s.done && s.to" :to="s.to" class="underline font-medium text-accent-text">{{ s.link }}</RouterLink>
+          </span>
+        </li>
+      </ol>
+      <RouterLink to="/league" class="btn btn-primary mt-5">{{ setup.seasons ? 'Make a season active' : 'Set up the season' }}</RouterLink>
+    </section>
 
     <template v-else>
       <!-- Rules + generate -->
