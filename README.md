@@ -156,3 +156,11 @@ Then commit `frontend/public/guides/`. `--name` sets the conference name printed
 - **Sending email (Brevo):** **[EMAIL-SETUP.md](./EMAIL-SETUP.md)**, domain authentication, SMTP key and Render settings.
 - **Demo copies (local or hosted):** **[DEMO-DEPLOYMENT.md](./DEMO-DEPLOYMENT.md)**, loaded from the demo spreadsheet, with or without a schedule.
 - **Running the demo meeting:** **[DEMO.md](./DEMO.md)**.
+
+## Ownership and license
+Copyright (c) 2026 Saucidion, LLC. All rights reserved. This software is
+proprietary and is provided to authorized organizations under a written
+agreement; see [`LICENSE`](LICENSE). The notice shown in the app footer is
+hard-coded in `frontend/src/components/AppFooter.vue` (not configurable through
+`.env` or Branding & Theme). The footer's first line is the app name from
+Branding & Theme.

@@ -59,7 +59,7 @@ try {
       displayHeaderFooter: true,
       headerTemplate: '<span></span>',
       footerTemplate: `<div style="font-family: system-ui, sans-serif; font-size: 8px; color: #666; width: 100%; padding: 0 0.65in; display: flex; justify-content: space-between;">
-        <span>${esc(appName)} · ${esc(g.title)}</span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>`,
+        <span>${esc(appName)} · ${esc(g.title)} · © 2026 Saucidion, LLC. All rights reserved.</span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>`,
     });
     await page.close();
     console.log(`✅ ${path.relative(root, file)}  (${Math.round(fs.statSync(file).size / 1024)} KB)`);

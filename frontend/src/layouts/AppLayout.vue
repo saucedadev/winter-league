@@ -151,7 +151,7 @@ function signOut() {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col">
+  <div class="flex-1 flex flex-col">
     <header class="h-16 border-b border-header-border bg-header text-header-text flex items-center px-4 md:px-6 gap-3 sticky top-0 z-30">
       <RouterLink to="/" class="shrink-0 min-w-0" :aria-label="`${branding.appName} home`"><BrandMark on-header /></RouterLink>
 

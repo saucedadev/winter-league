@@ -1,6 +1,8 @@
 {
   "name": "winter-league-frontend",
   "version": "1.0.0",
+  "author": "Saucidion, LLC",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {
