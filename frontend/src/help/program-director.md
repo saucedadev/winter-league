@@ -168,13 +168,33 @@ Programs pay the referees, **one referee each per game**. **Menu → My program 
 Home and away games are balanced across the season, so each program ends up paying for about the same number of referees. Referees can have different pay rates, so the two programs in a game may owe slightly different amounts.
 
 1. Choose **From** and **To** dates and **Update**.
-2. **Your program owes** is the total for those dates. Expand a referee to see each game you pay them for.
-3. Under each game, a line names the other referee and the program that pays them, for example *Referee 2, Morgan Hayes: paid by Oak Hollow Owls*. When you're paying half, it says so and names the program paying the other half.
-4. **Download game detail (CSV)** gives one row per payment, each detail in its own column so you can sort or filter in Excel or Google Sheets: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (Pacific Time), **Confirmed by**, **Paid by**, **Share** (Full or Half), and **Amount**. **Download summary (CSV)** gives one row per referee.
+2. **Your program still owes** is what's left to pay for those dates, and **Marked as paid** is what you've already paid. The list shows **Unpaid** referees first; switch to **Paid** or **All** to see the rest.
+3. Expand a referee to see each game you pay them for, marked **Paid**, **Unpaid** or **Partly paid**. A line under each game names the other referee and the program that pays them, for example *Referee 2, Morgan Hayes: paid by Oak Hollow Owls*. When you're paying half, it says so and names the program paying the other half.
+4. **Download game detail (CSV)** gives one row per payment, each detail in its own column so you can sort or filter in Excel or Google Sheets: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (Pacific Time), **Confirmed by**, **Paid by**, **Share** (Full or Half), **Amount**, **Status** (Paid, Partly paid or Unpaid), and **Paid**. **Download summary (CSV)** gives one row per referee, with their Venmo username and what's paid and unpaid.
 
 ![Referee payouts for a program](/help/img/pd-payouts.png)
 
-No money moves through the app; pay your referees the way your program usually does. If a warning says some assigned referees never checked in, the Referee Assignor confirms attendance for those games. That can change who pays: a game with one confirmed referee is split, and becomes one referee each once the second is confirmed.
+No money moves through the app. If a warning says some assigned referees never checked in, the Referee Assignor confirms attendance for those games. That can change who pays: a game with one confirmed referee is split, and becomes one referee each once the second is confirmed.
+
+### Paying a referee
+Referees add their **Venmo username** to their profile. You see it under the name of each referee your program owes (only referees your program pays).
+
+1. Choose **Pay…** next to the referee.
+2. Under **Games to pay for**, every game you still owe them is ticked. Untick any you aren't paying now; the total updates.
+3. **1. Pay:**
+   - **On a phone**, choose **Open Venmo to pay**. The Venmo app opens with the amount and a note (for example *Winter League referee · 2 games, Nov 5 – Nov 7 · Northfield Hawks*) filled in.
+   - **On a computer**, scan the code with your phone's camera to do the same in the Venmo app, or use the button.
+   - **Before you send, check the name and photo in Venmo.** If the referee changed their username in the last two weeks, a yellow note says so; if you haven't paid them before, check it with them first.
+   - If the referee hasn't added a Venmo username, pay them the way your program usually does (check, cash).
+4. **2. Mark as paid:** once the money is sent, choose how you paid (**Venmo**, **Check**, **Cash** or **Other**), the date, an optional note (e.g. *Check #1042*), and **Mark … as paid**. The referee is emailed and asked to confirm it arrived.
+
+![Paying a referee](/help/img/pd-pay-referee.png)
+
+Venmo's link fills in the amount and note on most phones. If it ever opens without them, type the amount shown in the app.
+
+**After marking it:** the payment appears under the referee (switch to **Paid** and expand them), with **Waiting for the referee to confirm** until they choose **Got it**, then **Referee confirmed ✓**. Marked something by mistake? **Undo** takes it off the record (it doesn't move any money), until the referee has confirmed it; after that, ask the league.
+
+![A payment the referee has confirmed](/help/img/pd-payouts-paid.png)
 
 ## Final scores
 

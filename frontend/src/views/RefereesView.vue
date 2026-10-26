@@ -53,7 +53,7 @@ const created = ref(null);
 function openNew() { formError.value = ''; editor.value = { id: null, form: { firstName: '', lastName: '', email: '', phone: '', rate: '' } }; }
 function openEdit(r) {
   formError.value = '';
-  editor.value = { id: r.id, name: `${r.firstName} ${r.lastName}`, form: { email: r.email, phone: r.phone || '', rate: r.payRateCents == null ? '' : (r.payRateCents / 100).toFixed(2), notes: r.notes || '', isActive: r.isActive } };
+  editor.value = { id: r.id, name: `${r.firstName} ${r.lastName}`, form: { email: r.email, phone: r.phone || '', rate: r.payRateCents == null ? '' : (r.payRateCents / 100).toFixed(2), notes: r.notes || '', isActive: r.isActive, venmo: r.paymentMethods?.venmo?.handle || '' } };
 }
 async function save() {
   saving.value = true;
@@ -61,7 +61,7 @@ async function save() {
   const f = editor.value.form;
   try {
     if (editor.value.id) {
-      await api.put(`/referees/roster/${editor.value.id}`, { email: f.email, phone: f.phone, payRateCents: toCents(f.rate), notes: f.notes, isActive: f.isActive });
+      await api.put(`/referees/roster/${editor.value.id}`, { email: f.email, phone: f.phone, payRateCents: toCents(f.rate), notes: f.notes, isActive: f.isActive, paymentMethods: { venmo: f.venmo } });
       toast.success(f.isActive ? 'Referee updated.' : 'Referee deactivated and removed from upcoming games.');
     } else {
       const { data: r } = await api.post('/referees/roster', { firstName: f.firstName, lastName: f.lastName, email: f.email, phone: f.phone, payRateCents: toCents(f.rate) });
@@ -107,7 +107,7 @@ async function save() {
                 <p class="font-medium">{{ r.firstName }} {{ r.lastName }}<span v-if="!r.isActive" class="badge badge-outline ml-2">Inactive</span></p>
                 <p class="text-xs text-text-muted">{{ r.username }} · {{ r.lastLoginAt ? `last signed in ${timestamp(r.lastLoginAt)}` : 'hasn’t signed in yet' }}</p>
               </td>
-              <td class="px-4 py-2.5 text-xs"><p>{{ r.email }}</p><p class="text-text-muted">{{ formatPhone(r.phone) || '—' }}</p></td>
+              <td class="px-4 py-2.5 text-xs"><p>{{ r.email }}</p><p class="text-text-muted">{{ formatPhone(r.phone) || '—' }}</p><p class="text-text-muted">{{ r.paymentMethods?.venmo ? `Venmo ${r.paymentMethods.venmo.display}` : 'No Venmo yet' }}</p></td>
               <td class="px-4 py-2.5 text-right tabular-nums">{{ r.upcoming }}</td>
               <td class="px-4 py-2.5 text-right tabular-nums">{{ r.worked }}</td>
               <td class="px-4 py-2.5 text-right tabular-nums" :class="r.noShows && 'font-bold'">{{ r.noShows }}</td>
@@ -137,6 +137,11 @@ async function save() {
         <div>
           <label class="label" for="rf-rate">Pay per game <span class="font-normal text-text-muted">(blank = league default, {{ money(data.settings.defaultPayCents) }})</span></label>
           <input id="rf-rate" v-model="editor.form.rate" class="input" inputmode="decimal" placeholder="e.g. 45.00" />
+        </div>
+        <div v-if="editor.id">
+          <label class="label" for="rf-venmo">Venmo username <span class="font-normal text-text-muted">(optional)</span></label>
+          <input id="rf-venmo" v-model="editor.form.venmo" class="input" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="without the @" />
+          <p class="text-xs text-text-muted mt-1">Referees usually add this themselves on My games. Programs that owe them see it and pay them there. The referee is emailed whenever it changes.</p>
         </div>
         <div v-if="editor.id"><label class="label" for="rf-notes">Notes</label><textarea id="rf-notes" v-model="editor.form.notes" rows="2" class="input" placeholder="Certifications, preferred divisions…" /></div>
         <label v-if="editor.id" class="text-sm flex items-start gap-2">

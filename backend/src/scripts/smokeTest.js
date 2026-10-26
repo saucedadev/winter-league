@@ -1135,9 +1135,8 @@ if (!sameProgram && !tg.isGuestGame) {
   const mine = tg.homeProgramId === nfh.id ? p1 : p2;
   check('each program’s report lists only the referee it pays', pdBoth.detail.length === 1 && pdBoth.detail[0].assignmentId === mine.assignmentId && pdBoth.totals.totalCents === mine.amountCents);
   check('…and names the other referee and who pays them', pdBoth.detail[0].others.length === 1 && pdBoth.detail[0].others[0].paidBy === (mine === p1 ? tg.awayProgramName : tg.homeProgramName));
-  const otherDir = (await call('GET', '/users', { token: admin })).data.users.find((u) => u.role === 'program_director' && u.programId === otherId && u.isActive);
-  const otherTok = (await call('POST', '/auth/login', { body: { username: otherDir.username, password: 'WinterDemo2026' } })).data.token;
-  const otherPay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}`, { token: otherTok })).data;
+  // The other program's view (the league looking at one program works whether or not it has a director).
+  const otherPay = (await call('GET', `/referees/payouts?from=${todayLocal}&to=${todayLocal}&programId=${otherId}`, { token: admin })).data;
   check('the two programs’ reports don’t overlap', otherPay.detail.length === 1 && otherPay.detail[0].assignmentId !== mine.assignmentId
     && otherPay.totals.totalCents + pdBoth.totals.totalCents === both.totals.totalCents);
   const mineB = (await call('GET', '/referees/me/assignments', { token: refA })).data.assignments.find((m) => m.game.id === nfhGame.id);
@@ -1149,10 +1148,52 @@ if (!sameProgram && !tg.isGuestGame) {
 }
 const detailCsv = await (await fetch(`${API}/referees/payouts?from=${todayLocal}&to=${todayLocal}&format=csv&type=detail`, { headers: { Authorization: `Bearer ${pd}` } })).text();
 const header = detailCsv.split('\r\n')[0].replace('\uFEFF', '');
-check('the export has just the agreed columns', header === 'Referee,Email,Date,Home team,Away team,Checked in (Pacific Time),Confirmed by,Paid by,Share,Amount ($)', header);
+check('the export has just the agreed columns', header === 'Referee,Email,Date,Home team,Away team,Checked in (Pacific Time),Confirmed by,Paid by,Share,Amount ($),Status,Paid ($)', header);
 const row = detailCsv.split('\r\n')[1];
 check('an exported row carries that game’s details', /Owen Brooks/.test(row) && /\d{4}-\d{2}-\d{2}/.test(row) && /Referee check-in|Assignor/.test(row));
 check('check-in times are exported in league time, not UTC', /\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM)/.test(row), row);
+
+console.log('\nReferee payments (Venmo, mark as paid, Got it)');
+{
+  const q = `/referees/payouts?from=${todayLocal}&to=${todayLocal}`;
+  check('a Venmo username that isn’t one is refused', (await call('PUT', '/referees/me/payment-methods', { token: refA, body: { venmo: 'no way' } })).status === 400);
+  const setV = await call('PUT', '/referees/me/payment-methods', { token: refA, body: { venmo: 'https://venmo.com/u/Smoke-Test-Ref' } });
+  check('a referee adds their Venmo username (a pasted link works)', setV.status === 200 && setV.data.paymentMethods.venmo.handle === 'Smoke-Test-Ref', JSON.stringify(setV.data));
+  check('only referees set their own payment details', (await call('PUT', '/referees/me/payment-methods', { token: pd, body: { venmo: 'abcdef' } })).status === 403);
+  const owe = (await call('GET', q, { token: pd })).data;
+  const mineRow = owe.summary.find((x) => x.refereeId === meA.id);
+  check('a director who owes the referee sees their Venmo username', mineRow?.paymentMethods?.venmo?.display === '@Smoke-Test-Ref' && mineRow.paymentMethods.venmo.recentlyChanged === true);
+  check('everything starts unpaid', owe.totals.paidCents === 0 && owe.totals.unpaidCents === owe.totals.totalCents && owe.detail.every((d) => d.payStatus === 'unpaid'));
+  const items = owe.detail.filter((d) => d.refereeId === meA.id).map((d) => d.assignmentId);
+  check('a payment date in the future is refused', (await call('POST', '/referees/payments', { token: pd, body: { refereeId: meA.id, assignmentIds: items, method: 'venmo', paidOn: '2099-01-01' } })).status === 400);
+  const paidRes = await call('POST', '/referees/payments', { token: pd, body: { refereeId: meA.id, programId: 'ignored-for-directors', assignmentIds: items, method: 'venmo', paidOn: todayLocal, note: 'Smoke test' } });
+  check('a director marks the referee as paid', paidRes.status === 201 && paidRes.data.payment.amountCents === mineRow.unpaidCents, JSON.stringify(paidRes.data));
+  check('the same games can’t be marked twice', (await call('POST', '/referees/payments', { token: pd, body: { refereeId: meA.id, assignmentIds: items, method: 'cash', paidOn: todayLocal } })).status === 409);
+  const after = (await call('GET', q, { token: pd })).data;
+  check('the payouts page shows it as paid', after.totals.unpaidCents === owe.totals.unpaidCents - mineRow.unpaidCents && after.detail.filter((d) => d.refereeId === meA.id).every((d) => d.payStatus === 'paid')
+    && after.payments.length === 1 && after.payments[0].canUndo === true && after.payments[0].methodLabel === 'Venmo');
+  const leagueAfter = (await call('GET', q, { token: admin })).data;
+  check('the league sees what each program has paid', leagueAfter.programs.find((x) => x.programId === nfh.id)?.paidCents === mineRow.unpaidCents && leagueAfter.totals.paidCents === mineRow.unpaidCents);
+  const otherProgramPay = (await call('GET', q, { token: mbell })).data;
+  check('another program’s payouts are unaffected', otherProgramPay.totals.paidCents === 0);
+  const myPays = (await call('GET', '/referees/me/payments', { token: refA })).data.payments;
+  check('the referee sees the payment', myPays.length === 1 && myPays[0].amountCents === mineRow.unpaidCents && !myPays[0].confirmedAt);
+  const myGame = (await call('GET', '/referees/me/assignments', { token: refA })).data.assignments.find((a) => a.game.id === nfhGame.id);
+  check('…and the game shows as paid on My games', myGame?.paid?.length === 1);
+  check('a referee can’t confirm someone else’s payment', (await call('POST', `/referees/me/payments/${paidRes.data.payment.id}/confirm`, { token: refB })).status === 404);
+  check('the referee taps Got it', (await call('POST', `/referees/me/payments/${paidRes.data.payment.id}/confirm`, { token: refA })).status === 200
+    && !!(await call('GET', '/referees/me/payments', { token: refA })).data.payments[0].confirmedAt);
+  check('once confirmed, the director can’t undo it', (await call('DELETE', `/referees/payments/${paidRes.data.payment.id}`, { token: pd })).status === 409);
+  check('another program can’t undo it', (await call('DELETE', `/referees/payments/${paidRes.data.payment.id}`, { token: mbell })).status === 403);
+  check('the league can undo it', (await call('DELETE', `/referees/payments/${paidRes.data.payment.id}`, { token: admin })).status === 200
+    && (await call('GET', q, { token: pd })).data.totals.unpaidCents === owe.totals.unpaidCents);
+  const rosterNow = (await call('GET', '/referees/roster', { token: assignor })).data.referees.find((x) => x.id === meA.id);
+  check('the assignor sees the referee’s Venmo username', rosterNow.paymentMethods.venmo.display === '@Smoke-Test-Ref');
+  check('the assignor can correct it', (await call('PUT', `/referees/roster/${meA.id}`, { token: assignor, body: { paymentMethods: { venmo: '@smoke_test_2' } } })).status === 200
+    && (await call('GET', '/referees/me/payment-methods', { token: refA })).data.paymentMethods.venmo.handle === 'smoke_test_2');
+  check('a referee can remove it', (await call('PUT', '/referees/me/payment-methods', { token: refA, body: { venmo: '' } })).status === 200
+    && !(await call('GET', '/referees/me/payment-methods', { token: refA })).data.paymentMethods.venmo);
+}
 {
   const { leagueTimestamp } = await import('../utils/leagueTime.js');
   // 6:00 PM Pacific on game night is already the next day in UTC.

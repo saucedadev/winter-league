@@ -35,7 +35,8 @@ const base = server.resolvedUrls.local[0];
 
 let browser;
 try {
-  browser = await chromium.launch();
+  // PDF_CHROMIUM_PATH: use an already-installed Chromium instead of Playwright's own download.
+  browser = await chromium.launch(process.env.PDF_CHROMIUM_PATH ? { executablePath: process.env.PDF_CHROMIUM_PATH } : {});
 } catch (e) {
   console.error(`❌ Couldn't start Chromium (${e.message.split('\n')[0]}).\n   Run once: npx playwright install chromium`);
   await server.close();

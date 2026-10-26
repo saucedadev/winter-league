@@ -6,20 +6,58 @@ import { dateRange, leagueTimeZoneLabel, longDate, money, monthDay, timeRange, t
 import PageHeader from '../components/PageHeader.vue';
 import EmptyState from '../components/EmptyState.vue';
 import Modal from '../components/Modal.vue';
+import QrCode from '../components/QrCode.vue';
+import { PAYMENT_METHODS } from '../utils/paymentMethods';
+import { useAuthStore } from '../stores/auth';
 
 const toast = useToast();
+const busy = ref(false);
 const data = ref(null);
 const loading = ref(true);
 const unavailable = ref([]);
+const methods = ref({});
+const payments = ref([]);
+const auth = useAuthStore();
 
 async function load() {
   try {
-    const [a, u] = await Promise.all([api.get('/referees/me/assignments'), api.get('/referees/me/unavailability')]);
+    const [a, u, m, p] = await Promise.all([api.get('/referees/me/assignments'), api.get('/referees/me/unavailability'),
+      api.get('/referees/me/payment-methods'), api.get('/referees/me/payments')]);
     data.value = a.data;
     unavailable.value = u.data.unavailable;
+    methods.value = m.data.paymentMethods || {};
+    payments.value = p.data.payments;
   } catch (err) { toast.error(errorMessage(err)); }
   finally { loading.value = false; }
 }
+
+// ---- getting paid ----
+const venmo = computed(() => methods.value.venmo || null);
+const venmoProfile = computed(() => (venmo.value ? PAYMENT_METHODS.venmo.profileUrl(venmo.value.handle) : ''));
+const showCode = ref(false);
+const editingVenmo = ref(null); // the text being edited
+const venmoError = ref('');
+async function saveVenmo() {
+  venmoError.value = '';
+  busy.value = true;
+  try {
+    const { data: r } = await api.put('/referees/me/payment-methods', { venmo: editingVenmo.value });
+    methods.value = r.paymentMethods || {};
+    toast.success(methods.value.venmo ? `Saved. Programs will pay you at ${methods.value.venmo.display}.` : 'Venmo username removed.');
+    editingVenmo.value = null;
+  } catch (err) { venmoError.value = errorMessage(err); }
+  finally { busy.value = false; }
+}
+const toConfirm = computed(() => payments.value.filter((p) => !p.confirmedAt));
+const confirmed = computed(() => payments.value.filter((p) => p.confirmedAt));
+const confirming = ref('');
+async function gotIt(p) {
+  confirming.value = p.id;
+  try { await api.post(`/referees/me/payments/${p.id}/confirm`); toast.success(`Thanks. ${p.programName} can see you received it.`); await load(); }
+  catch (err) { toast.error(errorMessage(err)); }
+  finally { confirming.value = ''; }
+}
+const paidLine = (a) => a.paid.map((x) => `${x.programName} ${monthDay(x.paidOn)}`).join(', ');
 onMounted(load);
 
 const today = computed(() => data.value?.today || todayISO());
@@ -54,7 +92,6 @@ async function checkIn(a) {
 // ---- decline ----
 const declining = ref(null);
 const declineReason = ref('');
-const busy = ref(false);
 async function decline() {
   busy.value = true;
   try {
@@ -89,7 +126,9 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
 
 <template>
   <div class="max-w-3xl mx-auto">
-    <PageHeader title="My games" :subtitle="data ? `${upcoming.length} upcoming · ${money(earned)} earned this season · All times ${leagueTimeZoneLabel()}` : ''" />
+    <PageHeader title="My games" :subtitle="data ? `${upcoming.length} upcoming · ${money(earned)} earned this season · All times ${leagueTimeZoneLabel()}` : ''">
+      <button v-if="venmo" class="btn btn-secondary" @click="showCode = true">My Venmo code</button>
+    </PageHeader>
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
 
     <template v-else-if="data">
@@ -100,6 +139,16 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
         <p class="text-sm">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }} · {{ a.game.courtName }}</p>
         <button class="btn btn-primary w-full mt-4 !py-3 text-base" :disabled="checkingIn === a.id" @click="checkIn(a)">{{ checkingIn === a.id ? 'Checking in…' : 'I’m here: check in' }}</button>
         <p class="text-xs text-text-muted mt-2">Your phone may ask to share your location. That confirms you’re at the gym, but check-in works without it.</p>
+      </section>
+
+      <!-- Payments to confirm -->
+      <section v-for="p in toConfirm" :key="p.id" class="card p-4 mb-4 border-2 !border-accent flex flex-wrap items-center gap-3">
+        <div class="flex-1 min-w-[14rem] text-sm">
+          <p class="font-semibold">{{ p.programName }} paid you {{ money(p.amountCents) }}</p>
+          <p class="text-text-muted">By {{ p.method }} on {{ monthDay(p.paidOn) }} · {{ p.games }} game{{ p.games === 1 ? '' : 's' }}<template v-if="p.note"> · “{{ p.note }}”</template></p>
+          <p class="text-xs text-text-muted mt-0.5">Once it’s arrived, let them know.</p>
+        </div>
+        <button class="btn btn-primary" :disabled="confirming === p.id" @click="gotIt(p)">{{ confirming === p.id ? 'Saving…' : 'Got it' }}</button>
       </section>
 
       <h2 class="font-semibold mb-2">Upcoming</h2>
@@ -113,7 +162,7 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
               <p class="text-sm">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }}</p>
               <p class="text-sm text-text-muted">{{ a.game.venueName }} – {{ a.game.courtName }} · <a :href="directions(a.game)" target="_blank" rel="noopener" class="underline">Directions</a></p>
               <p class="text-xs text-text-muted mt-1">Working with: {{ a.partners.join(', ') || 'nobody else' }}</p>
-              <p v-if="a.paidBy" class="text-xs text-text-muted">Paid by: {{ a.paidBy }}</p>
+              <p v-if="a.paidBy" class="text-xs text-text-muted">Who pays you: {{ a.paidBy }}</p>
             </div>
             <span v-if="a.status === 'checked_in'" class="badge bg-success text-black">Checked in</span>
           </div>
@@ -140,18 +189,72 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
         </ul>
       </section>
 
+      <!-- Getting paid -->
+      <section class="mb-6">
+        <h2 class="font-semibold mb-2">Getting paid</h2>
+        <div class="card card-blocky p-4 text-sm">
+          <template v-if="venmo">
+            <div class="flex flex-wrap items-center gap-3">
+              <p class="flex-1 min-w-[12rem]">Programs pay you on Venmo at <strong>{{ venmo.display }}</strong>.</p>
+              <button class="btn btn-primary" @click="showCode = true">Show my code</button>
+              <button class="btn btn-ghost" @click="editingVenmo = venmo.handle; venmoError = ''">Change</button>
+            </div>
+            <p class="text-xs text-text-muted mt-2">Directors who owe you see this username and a Pay with Venmo button. Each program pays one referee per game.</p>
+          </template>
+          <template v-else>
+            <p>Add your Venmo username so programs can pay you with a tap, or by scanning your code at the gym.</p>
+            <button class="btn btn-primary mt-3" @click="editingVenmo = ''; venmoError = ''">Add Venmo username</button>
+          </template>
+        </div>
+      </section>
+
       <section v-if="past.length">
         <h2 class="font-semibold mb-2">Past games</h2>
         <ul class="card card-blocky divide-y divide-border">
           <li v-for="a in past" :key="a.id" class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <span class="w-24 font-medium">{{ weekday(a.game.date) }} {{ monthDay(a.game.date) }}</span>
-            <span class="flex-1 min-w-[12rem]">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }}<span v-if="a.status === 'checked_in' && a.paidBy" class="block text-xs text-text-muted">Paid by {{ a.paidBy }}</span></span>
+            <span class="flex-1 min-w-[12rem]">{{ a.game.homeTeamName }} vs {{ a.game.awayTeamName }}<span v-if="a.status === 'checked_in' && a.paid.length" class="block text-xs font-medium">Paid ✓ {{ paidLine(a) }}</span><span v-else-if="a.status === 'checked_in' && a.paidBy" class="block text-xs text-text-muted">To be paid by {{ a.paidBy }}</span></span>
             <span class="text-xs" :class="a.status === 'assigned' && 'text-text-muted'">{{ STATUS[a.status] }}</span>
             <span class="tabular-nums w-16 text-right">{{ a.status === 'checked_in' ? money(a.payCents) : '—' }}</span>
           </li>
         </ul>
       </section>
+
+      <section v-if="confirmed.length" class="mt-6">
+        <h2 class="font-semibold mb-2">Payments received</h2>
+        <ul class="card card-blocky divide-y divide-border">
+          <li v-for="p in confirmed" :key="p.id" class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span class="w-16 font-medium">{{ monthDay(p.paidOn) }}</span>
+            <span class="flex-1 min-w-0">{{ p.programName }} · {{ p.method }} · {{ p.games }} game{{ p.games === 1 ? '' : 's' }}</span>
+            <span class="tabular-nums w-20 text-right">{{ money(p.amountCents) }}</span>
+          </li>
+        </ul>
+      </section>
     </template>
+
+    <!-- Venmo code, full screen on a phone, for the payer to scan -->
+    <Modal v-if="showCode && venmo" title="My Venmo code" @close="showCode = false">
+      <div class="text-center">
+        <QrCode :value="venmoProfile" :size="260" :label="`Venmo code for ${venmo.display}`" class="mx-auto" />
+        <p class="text-lg font-bold mt-3">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</p>
+        <p class="text-base">{{ venmo.display }}</p>
+        <p class="text-sm text-text-muted mt-2">The person paying scans this with their phone’s camera. It opens your Venmo profile so they can pay you.</p>
+      </div>
+    </Modal>
+
+    <Modal v-if="editingVenmo !== null" :title="venmo ? 'Change your Venmo username' : 'Add your Venmo username'" @close="editingVenmo = null">
+      <form id="venmo-form" @submit.prevent="saveVenmo">
+        <label class="label" for="venmo-name">Venmo username</label>
+        <div class="flex items-center gap-2"><span class="text-text-muted">@</span><input id="venmo-name" v-model="editingVenmo" class="input" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="your-username" maxlength="80" /></div>
+        <p class="text-xs text-text-muted mt-2">As it appears in Venmo under your name (Me tab), without the @. You can also paste your Venmo profile link. Check it carefully: programs send money to this account. You’ll get an email whenever it changes.</p>
+        <p v-if="venmoError" class="text-sm text-danger mt-2" role="alert">{{ venmoError }}</p>
+      </form>
+      <template #footer>
+        <button v-if="venmo" class="btn btn-ghost mr-auto" :disabled="busy" @click="editingVenmo = ''; saveVenmo()">Remove</button>
+        <button class="btn btn-secondary" @click="editingVenmo = null">Cancel</button>
+        <button class="btn btn-primary" type="submit" form="venmo-form" :disabled="busy || !editingVenmo.trim()">Save</button>
+      </template>
+    </Modal>
 
     <Modal v-if="declining" title="Can’t make this game?" @close="declining = null">
       <p class="text-sm mb-3">{{ longDate(declining.game.date) }}, {{ timeRange(declining.game.startTime, declining.game.endTime) }}: {{ declining.game.homeTeamName }} vs {{ declining.game.awayTeamName }}. The assignor will find someone else.</p>

@@ -19,7 +19,7 @@ Every published game gets referee slots automatically (two per game by default).
 ![The referee roster](/help/img/as-roster.png)
 
 - **Add referee:** enter their name, email, and optionally phone and pay. The app creates a username and a **temporary password, shown once**, to pass on. They choose their own password the first time they sign in.
-- **Edit:** change contact details, a personal pay rate (blank means the league default), notes, or **Active**. Deactivating a referee removes them from every upcoming game.
+- **Edit:** change contact details, a personal pay rate (blank means the league default), the referee's **Venmo username**, notes, or **Active**. Referees usually add their Venmo username themselves; the roster shows it under their contact details, and they're emailed whenever it changes. Deactivating a referee removes them from every upcoming game.
 - **Settings:** referees per game, default pay per game, and when check-in opens and closes.
 
 The roster also shows each referee's upcoming games, games worked, no-shows, and the dates they've marked unavailable.
@@ -70,17 +70,23 @@ So **Referee 1 is paid by the home program and Referee 2 by the away program**. 
 
 **Menu → Referees → Payouts.**
 1. Choose **From** and **To** dates and **Update**.
-2. Check the totals. **What each program owes** lists every program with its number of referee payments and total. Guest programs are listed too, marked *(guest)*; they have no director or login, so the league collects their share from the club directly; the program totals add up to **Total owed**.
+2. Check the totals: **Still to pay**, **Marked as paid**, and games worked. **What each program owes** lists every program with its number of referee payments, total, what it has marked as paid, and what it still owes. Guest programs are listed too, marked *(guest)*; they have no director or login, so the league collects their share from the club directly; the program totals add up to **Total owed**.
 3. Expand a referee to see each game, with **Paid by** and the other referee on that game. If some assigned referees never checked in, a warning tells you, so you can confirm attendance first. Marking the second referee as worked or a no-show can change a game from *half each* to *one referee each*, or back.
-4. **Download summary (CSV)** gives one row per referee: name, email, username, games worked, and total.
-5. **Download game detail (CSV)** gives one row per payment, each detail in its own column so you can sort or filter: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (in Pacific Time, where the games are played), **Confirmed by** (their own check-in or your confirmation), **Paid by**, **Share** (Full or Half), and **Amount**. A referee split between two programs has two rows of half. Guest teams have *(guest)* after their name, so non-conference games are easy to pick out.
-6. **Download by program (CSV)** gives one row per program: referee payments and total.
+4. **Download summary (CSV)** gives one row per referee: name, email, username, Venmo username, games worked, total, paid and unpaid.
+5. **Download game detail (CSV)** gives one row per payment, each detail in its own column so you can sort or filter: **Referee**, **Email**, **Date**, **Home team**, **Away team**, **Checked in** (in Pacific Time, where the games are played), **Confirmed by** (their own check-in or your confirmation), **Paid by**, **Share** (Full or Half), **Amount**, **Status** (Paid, Partly paid or Unpaid) and **Paid**. A referee split between two programs has two rows of half. Guest teams have *(guest)* after their name, so non-conference games are easy to pick out.
+6. **Download by program (CSV)** gives one row per program: referee payments, total, paid and unpaid.
 
 All three open in Excel or Google Sheets. **Program Directors see and export only the referees their own program pays**, so they can check what they owe without asking you.
 
 ![Payouts](/help/img/as-payouts.png)
 
 A referee's pay is locked in when the game is checked in, so changing a rate later never changes what's already owed.
+
+### Paid and unpaid
+Programs pay referees directly (Venmo, check or cash) and mark it as paid on their payouts page. The referee is emailed and confirms with **Got it**. You see the same here: the **Unpaid / Paid / All** switch, each game's status, and under each referee their **Payments** (amount, method, date, program, who marked it, and whether the referee confirmed).
+
+- **Paying on a program's behalf:** **Pay…** next to a referee works here too. Pick **Which program is paying?** and the games, then **Mark as paid**. Use it for a guest program, or a director who asks you to.
+- **Undo** takes a payment back off the record if it was marked by mistake (no money moves). You can undo any payment; a director can only undo their own program's, and only until the referee confirms it.
 
 ## Your referees
 

@@ -15,6 +15,7 @@ import {
   payRate, milesBetween, autoFill, lowerFirst, payersFor, splitCents, paidByLabel,
 } from '../referees/data.js';
 import { leagueTimestamp, leagueZoneLabel } from '../utils/leagueTime.js';
+import { PAYMENT_METHODS, PAID_WITH, RECENT_CHANGE_DAYS } from '../referees/payMethods.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -55,6 +56,55 @@ router.put('/settings', managers, ah(async (req, res) => {
 }));
 
 // =====================================================================
+// Payment methods (how a referee gets paid: Venmo for now)
+// =====================================================================
+// userId -> { venmo: { handle, display, updatedAt, recentlyChanged } }
+async function methodsFor(userIds) {
+  const out = new Map(userIds.map((id) => [id, {}]));
+  if (!userIds.length) return out;
+  const cutoff = new Date(Date.now() - RECENT_CHANGE_DAYS * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+  for (let i = 0; i < userIds.length; i += 500) {
+    const chunk = userIds.slice(i, i + 500);
+    const rows = await all(`SELECT user_id, method, handle, updated_at FROM referee_payment_methods WHERE user_id IN (${chunk.map(() => '?').join(',')})`, chunk);
+    for (const r of rows) {
+      const m = PAYMENT_METHODS[r.method];
+      if (!m) continue; // a method no longer offered
+      out.get(r.userId)[r.method] = { handle: r.handle, display: m.show(r.handle), updatedAt: r.updatedAt, recentlyChanged: r.updatedAt >= cutoff };
+    }
+  }
+  return out;
+}
+
+// Saves the methods given in `body` (e.g. { venmo: 'name' }, or '' to remove
+// one). Any change is logged and emailed to the referee, so a username can't
+// be swapped without them knowing.
+async function savePaymentMethods(referee, body, actor) {
+  const current = (await methodsFor([referee.id])).get(referee.id);
+  const changes = [];
+  for (const [key, m] of Object.entries(PAYMENT_METHODS)) {
+    if (body?.[key] === undefined) continue;
+    const raw = body[key];
+    const next = raw === null || String(raw).trim() === '' ? null : m.normalize(raw);
+    const before = current[key]?.handle || null;
+    if (next === before) continue;
+    if (next) {
+      await run(`INSERT INTO referee_payment_methods (user_id, method, handle, updated_by) VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, method) DO UPDATE SET handle = excluded.handle, updated_by = excluded.updated_by, updated_at = datetime('now')`, [referee.id, key, next, actor.id]);
+    } else {
+      await run('DELETE FROM referee_payment_methods WHERE user_id = ? AND method = ?', [referee.id, key]);
+    }
+    changes.push(next ? `${m.label} username set to ${m.show(next)}` : `${m.label} username removed`);
+  }
+  if (!changes.length) return [];
+  const self = actor.id === referee.id;
+  await logActivity({ category: 'referee', action: 'payment details', actor, details: `${refName(referee)}: ${changes.join('; ')}` });
+  await notifyUsers('id = ?', [referee.id], 'Your payment details were changed',
+    `${self ? 'You changed' : `${actor.firstName} ${actor.lastName} changed`} how you get paid:\n${changes.map((c) => `• ${c}`).join('\n')}\n\nPrograms use this to pay you. If you didn’t expect this change, contact the referee assignor right away.`,
+    { label: 'Open My games', url: '/my-games' });
+  return changes;
+}
+
+// =====================================================================
 // Roster
 // =====================================================================
 router.get('/roster', managers, ah(async (req, res) => {
@@ -69,9 +119,10 @@ router.get('/roster', managers, ah(async (req, res) => {
     FROM users u LEFT JOIN referee_profiles rp ON rp.user_id = u.id
     WHERE u.role = 'referee' ORDER BY u.is_active DESC, u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE`, [t]);
   const unav = await all('SELECT * FROM referee_unavailability WHERE end_date >= ? ORDER BY start_date', [t]);
+  const methods = await methodsFor(refs.map((r) => r.id));
   res.json({
     settings: await getRefSettings(),
-    referees: refs.map((r) => ({ ...r, isActive: !!r.isActive, unavailable: unav.filter((u) => u.userId === r.id) })),
+    referees: refs.map((r) => ({ ...r, isActive: !!r.isActive, unavailable: unav.filter((u) => u.userId === r.id), paymentMethods: methods.get(r.id) })),
   });
 }));
 
@@ -126,8 +177,11 @@ router.put('/roster/:id', managers, ah(async (req, res) => {
         WHERE referee_id = ? AND status = 'assigned' AND game_id IN (SELECT id FROM games WHERE date >= ?)`, args: [u.id, today()] });
     }
   }
+  // Check a new payment username before saving anything else.
+  if (b.paymentMethods) for (const [k, m] of Object.entries(PAYMENT_METHODS)) if (b.paymentMethods[k]) m.normalize(b.paymentMethods[k]);
   if (stmts.length) await db.batch(stmts, 'write');
-  await logActivity({ category: 'referee', action: 'edited', actor: req.user, details: `Updated referee ${refName(u)}${b.isActive === false ? ' (deactivated; removed from upcoming games)' : ''}` });
+  if (stmts.length) await logActivity({ category: 'referee', action: 'edited', actor: req.user, details: `Updated referee ${refName(u)}${b.isActive === false ? ' (deactivated; removed from upcoming games)' : ''}` });
+  if (b.paymentMethods) await savePaymentMethods(u, b.paymentMethods, req.user);
   res.json({ ok: true });
 }));
 
@@ -268,6 +322,19 @@ router.get('/me/assignments', refereeOnly, ah(async (req, res) => {
       payCents: mine.payCents,
     });
   }
+  // What programs have marked as paid, per game.
+  const paid = new Map();
+  if (assignments.length) {
+    const aIds = assignments.map((a) => a.id);
+    const rows = await all(`SELECT i.assignment_id, i.amount_cents, p.paid_on, p.method, pr.name AS program_name, p.confirmed_at
+      FROM referee_payment_items i JOIN referee_payments p ON p.id = i.payment_id JOIN programs pr ON pr.id = p.program_id
+      WHERE p.referee_id = ? AND i.assignment_id IN (${aIds.map(() => '?').join(',')}) ORDER BY p.paid_on`, [req.user.id, ...aIds]);
+    for (const r of rows) {
+      if (!paid.has(r.assignmentId)) paid.set(r.assignmentId, []);
+      paid.get(r.assignmentId).push({ programName: r.programName, amountCents: r.amountCents, paidOn: r.paidOn, method: PAID_WITH[r.method] || r.method });
+    }
+  }
+  for (const a of assignments) a.paid = paid.get(a.id) || [];
   res.json({ assignments, settings, today: now.date });
 }));
 
@@ -303,6 +370,35 @@ router.post('/me/assignments/:id/decline', refereeOnly, ah(async (req, res) => {
   await run(`UPDATE referee_assignments SET referee_id = NULL, assigned_by = NULL, assigned_at = NULL, updated_at = datetime('now') WHERE id = ?`, [a.id]);
   await notifyAssignors('A referee declined a game', `${req.user.firstName} ${req.user.lastName} can’t work ${gameLine(game)}.\nReason: ${reason}\nThe slot is open again.`);
   await logActivity({ category: 'referee', action: 'declined', actor: req.user, details: `Declined ${game.homeTeamName} vs ${game.awayTeamName} on ${game.date}: ${reason}` });
+  res.json({ ok: true });
+}));
+
+// How the referee gets paid (their own Venmo username, etc.).
+router.get('/me/payment-methods', refereeOnly, ah(async (req, res) => {
+  res.json({ paymentMethods: (await methodsFor([req.user.id])).get(req.user.id), offered: Object.entries(PAYMENT_METHODS).map(([id, m]) => ({ id, label: m.label })) });
+}));
+router.put('/me/payment-methods', refereeOnly, ah(async (req, res) => {
+  const me = await one('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  await savePaymentMethods(me, req.body || {}, req.user);
+  res.json({ paymentMethods: (await methodsFor([req.user.id])).get(req.user.id) });
+}));
+
+// Payments programs have marked as paid to this referee, newest first.
+router.get('/me/payments', refereeOnly, ah(async (req, res) => {
+  const rows = await all(`SELECT p.*, pr.name AS program_name, (SELECT COUNT(*) FROM referee_payment_items i WHERE i.payment_id = p.id) AS games
+    FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.referee_id = ? ORDER BY p.paid_on DESC, p.created_at DESC`, [req.user.id]);
+  res.json({ payments: rows.map((p) => ({ id: p.id, programName: p.programName, amountCents: p.amountCents, method: PAID_WITH[p.method] || p.method,
+    paidOn: p.paidOn, note: p.note, games: Number(p.games), confirmedAt: p.confirmedAt })) });
+}));
+// "Got it": the referee confirms the money arrived.
+router.post('/me/payments/:id/confirm', refereeOnly, ah(async (req, res) => {
+  const p = await one('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.id = ? AND p.referee_id = ?', [req.params.id, req.user.id]);
+  if (!p) throw notFound('Payment');
+  if (!p.confirmedAt) {
+    await run("UPDATE referee_payments SET confirmed_at = datetime('now') WHERE id = ?", [p.id]);
+    await logActivity({ category: 'referee', action: 'payment received', actor: req.user, programId: p.programId,
+      details: `${refName(req.user)} confirmed receiving ${money(p.amountCents)} from ${p.programName} (${PAID_WITH[p.method] || p.method}, ${p.paidOn})` });
+  }
   res.json({ ok: true });
 }));
 
@@ -390,21 +486,39 @@ async function payoutRows(from, to, programId = null) {
         splitWith: shares.length > 1 ? shares.find((x) => x.programId !== sh.programId)?.programName : null, others });
     }
   }
+  // What each program has already marked as paid for each of these games.
+  const paidBy = new Map(); // `${assignmentId}:${programId}` -> cents
+  const aIds = [...new Set(detail.map((d) => d.assignmentId))];
+  for (let i = 0; i < aIds.length; i += 500) {
+    const chunk = aIds.slice(i, i + 500);
+    const rows = await all(`SELECT i.assignment_id, p.program_id, SUM(i.amount_cents) AS cents FROM referee_payment_items i
+      JOIN referee_payments p ON p.id = i.payment_id WHERE i.assignment_id IN (${chunk.map(() => '?').join(',')}) GROUP BY i.assignment_id, p.program_id`, chunk);
+    for (const r of rows) paidBy.set(`${r.assignmentId}:${r.programId}`, Number(r.cents));
+  }
+  for (const d of detail) {
+    d.paidCents = paidBy.get(d.id) || 0;
+    d.outstandingCents = Math.max(0, d.amountCents - d.paidCents);
+    d.payStatus = d.outstandingCents === 0 ? 'paid' : d.paidCents ? 'part' : 'unpaid';
+  }
+
   const byRef = new Map();
   const byProgram = new Map();
   const counted = new Set();
   for (const d of detail) {
-    if (!byRef.has(d.refereeId)) byRef.set(d.refereeId, { refereeId: d.refereeId, name: `${d.firstName} ${d.lastName}`, email: d.email, username: d.username, games: 0, totalCents: 0 });
+    if (!byRef.has(d.refereeId)) byRef.set(d.refereeId, { refereeId: d.refereeId, name: `${d.firstName} ${d.lastName}`, email: d.email, username: d.username, games: 0, totalCents: 0, paidCents: 0, unpaidCents: 0 });
     const s = byRef.get(d.refereeId);
     if (!counted.has(d.assignmentId)) { counted.add(d.assignmentId); s.games++; }
-    s.totalCents += d.amountCents;
-    if (!byProgram.has(d.paidByProgramId)) byProgram.set(d.paidByProgramId, { programId: d.paidByProgramId, name: d.paidByName, isGuest: d.paidByIsGuest, payments: 0, totalCents: 0 });
+    s.totalCents += d.amountCents; s.paidCents += Math.min(d.paidCents, d.amountCents); s.unpaidCents += d.outstandingCents;
+    if (!byProgram.has(d.paidByProgramId)) byProgram.set(d.paidByProgramId, { programId: d.paidByProgramId, name: d.paidByName, isGuest: d.paidByIsGuest, payments: 0, totalCents: 0, paidCents: 0, unpaidCents: 0 });
     const p = byProgram.get(d.paidByProgramId);
-    p.payments++; p.totalCents += d.amountCents;
+    p.payments++; p.totalCents += d.amountCents; p.paidCents += Math.min(d.paidCents, d.amountCents); p.unpaidCents += d.outstandingCents;
   }
   const summary = [...byRef.values()];
+  const methods = await methodsFor(summary.map((s) => s.refereeId));
+  for (const s of summary) s.paymentMethods = methods.get(s.refereeId);
   const programs = [...byProgram.values()].sort((a, b) => a.name.localeCompare(b.name));
-  return { detail, summary, programs, totals: { referees: summary.length, games: counted.size, totalCents: summary.reduce((x, s) => x + s.totalCents, 0) } };
+  const sum = (k) => summary.reduce((x, s) => x + s[k], 0);
+  return { detail, summary, programs, totals: { referees: summary.length, games: counted.size, totalCents: sum('totalCents'), paidCents: sum('paidCents'), unpaidCents: sum('unpaidCents') } };
 }
 
 const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -416,9 +530,12 @@ router.get('/payouts', requireRole('super_admin', 'referee_assignor', 'program_d
   const { from, to } = req.query;
   assertDate(from, 'From'); assertDate(to, 'To');
   if (to < from) throw badRequest('“To” must be on or after “From”.');
-  const scopeProgram = req.user.role === 'program_director' ? req.user.programId : null;
+  // Directors see their own program. The league sees everything, or one
+  // program when one is chosen in the header (to mark payments on its behalf).
+  const scopeProgram = req.user.role === 'program_director' ? req.user.programId : (req.query.programId || null);
   if (req.user.role === 'program_director' && !scopeProgram) throw forbidden('Your account isn’t assigned to a program.');
   const data = await payoutRows(from, to, scopeProgram);
+  data.payments = await paymentsFor(data, scopeProgram, req.user);
   // Open/unconfirmed games in range, so nothing is paid out by accident while incomplete.
   const pending = await one(`SELECT COUNT(*) AS n FROM referee_assignments a JOIN games g ON g.id = a.game_id JOIN schedule_runs r ON r.id = g.run_id
     JOIN teams ht ON ht.id = g.home_team_id JOIN teams at ON at.id = g.away_team_id
@@ -430,17 +547,101 @@ router.get('/payouts', requireRole('super_admin', 'referee_assignor', 'program_d
   const type = ['detail', 'programs'].includes(req.query.type) ? req.query.type : 'summary';
   const usd = (c) => (c / 100).toFixed(2);
   const csv = type === 'summary'
-    ? toCsv(['Referee', 'Email', 'Username', 'Games worked', 'Total ($)'], data.summary.map((s) => [s.name, s.email, s.username, s.games, usd(s.totalCents)]))
+    ? toCsv(['Referee', 'Email', 'Username', 'Venmo', 'Games worked', 'Total ($)', 'Paid ($)', 'Unpaid ($)'], data.summary.map((s) => [s.name, s.email, s.username, s.paymentMethods?.venmo?.display || '', s.games, usd(s.totalCents), usd(s.paidCents), usd(s.unpaidCents)]))
     : type === 'programs'
-      ? toCsv(['Program', 'Referee payments', 'Total ($)'], data.programs.map((p) => [p.name, p.payments, usd(p.totalCents)]))
+      ? toCsv(['Program', 'Referee payments', 'Total ($)', 'Paid ($)', 'Unpaid ($)'], data.programs.map((p) => [p.name, p.payments, usd(p.totalCents), usd(p.paidCents), usd(p.unpaidCents)]))
       // One row per payment. Check-in times are stored in UTC and exported in league time, where the games are played.
-      : toCsv(['Referee', 'Email', 'Date', 'Home team', 'Away team', `Checked in (${leagueZoneLabel()})`, 'Confirmed by', 'Paid by', 'Share', 'Amount ($)'],
+      : toCsv(['Referee', 'Email', 'Date', 'Home team', 'Away team', `Checked in (${leagueZoneLabel()})`, 'Confirmed by', 'Paid by', 'Share', 'Amount ($)', 'Status', 'Paid ($)'],
         data.detail.map((d) => [`${d.firstName} ${d.lastName}`, d.email, d.date, d.homeTeamName, d.awayTeamName,
-          leagueTimestamp(d.checkedInAt), d.checkInMethod === 'assignor' ? 'Assignor' : 'Referee check-in', d.paidByName, d.isSplit ? 'Half' : 'Full', usd(d.amountCents)]));
+          leagueTimestamp(d.checkedInAt), d.checkInMethod === 'assignor' ? 'Assignor' : 'Referee check-in', d.paidByName, d.isSplit ? 'Half' : 'Full', usd(d.amountCents),
+          { paid: 'Paid', part: 'Partly paid', unpaid: 'Unpaid' }[d.payStatus], usd(Math.min(d.paidCents, d.amountCents))]));
   await logActivity({ category: 'referee', action: 'payout export', actor: req.user, details: `Exported referee payouts (${type}) for ${from} to ${to}: ${data.totals.games} games worked, ${money(data.totals.totalCents)}` });
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="referee-payouts-${type}-${from}-to-${to}.csv"`);
   res.send(`\uFEFF${csv}`); // BOM so Excel opens UTF-8 names correctly
+}));
+
+// Payments covering the games on the page, newest first. canUndo: the league
+// always; a director for their own program's payments until the referee has
+// confirmed receiving it.
+async function paymentsFor(data, scopeProgram, user) {
+  const aIds = [...new Set(data.detail.map((d) => d.assignmentId))];
+  if (!aIds.length) return [];
+  const ids = new Set();
+  for (let i = 0; i < aIds.length; i += 500) {
+    const chunk = aIds.slice(i, i + 500);
+    for (const r of await all(`SELECT DISTINCT payment_id FROM referee_payment_items WHERE assignment_id IN (${chunk.map(() => '?').join(',')})`, chunk)) ids.add(r.paymentId);
+  }
+  if (!ids.size) return [];
+  const list = [...ids];
+  const rows = await all(`SELECT p.*, pr.name AS program_name, u.first_name || ' ' || u.last_name AS recorded_by_name,
+      (SELECT COUNT(*) FROM referee_payment_items i WHERE i.payment_id = p.id) AS games
+    FROM referee_payments p JOIN programs pr ON pr.id = p.program_id LEFT JOIN users u ON u.id = p.recorded_by
+    WHERE p.id IN (${list.map(() => '?').join(',')})${scopeProgram ? ' AND p.program_id = ?' : ''} ORDER BY p.paid_on DESC, p.created_at DESC`,
+  scopeProgram ? [...list, scopeProgram] : list);
+  const league = ['super_admin', 'referee_assignor'].includes(user.role);
+  return rows.map((p) => ({ id: p.id, refereeId: p.refereeId, programId: p.programId, programName: p.programName, method: p.method, methodLabel: PAID_WITH[p.method] || p.method,
+    amountCents: p.amountCents, paidOn: p.paidOn, note: p.note, games: Number(p.games), recordedByName: p.recordedByName, createdAt: p.createdAt, confirmedAt: p.confirmedAt,
+    canUndo: league || (p.programId === user.programId && !p.confirmedAt) }));
+}
+
+// ---- POST /api/referees/payments ----  Mark as paid.
+// { refereeId, programId (league only; a director always pays for their own
+//   program), assignmentIds: [...], method, paidOn, note }
+// Each game must still be owed by that program; what's recorded is what was
+// still owed for it.
+router.post('/payments', requireRole('super_admin', 'referee_assignor', 'program_director'), ah(async (req, res) => {
+  const b = req.body || {};
+  const programId = req.user.role === 'program_director' ? req.user.programId : b.programId;
+  if (!programId) throw badRequest('Choose which program made the payment.');
+  const program = await one('SELECT id, name FROM programs WHERE id = ?', [programId]);
+  if (!program) throw notFound('Program');
+  const referee = await one("SELECT * FROM users WHERE id = ? AND role = 'referee'", [b.refereeId]);
+  if (!referee) throw notFound('Referee');
+  if (!PAID_WITH[b.method]) throw badRequest('Choose how it was paid.');
+  assertDate(b.paidOn, 'Paid on');
+  if (b.paidOn > today()) throw badRequest('The payment date can’t be in the future.');
+  const ids = [...new Set(Array.isArray(b.assignmentIds) ? b.assignmentIds : [])];
+  if (!ids.length) throw badRequest('Choose at least one game.');
+
+  const owed = (await payoutRows('0000-01-01', '9999-12-31', programId)).detail.filter((d) => d.refereeId === referee.id && ids.includes(d.assignmentId));
+  if (owed.length !== ids.length) throw conflict(`Some of those games aren’t owed by ${program.name} any more. Refresh the page and try again.`);
+  if (owed.some((d) => d.outstandingCents <= 0)) throw conflict('Some of those games are already marked as paid. Refresh the page to see the latest.');
+  const amount = owed.reduce((n, d) => n + d.outstandingCents, 0);
+  const id = newId();
+  const note = trimOrNull(b.note)?.slice(0, 300) || null;
+  await db.batch([
+    { sql: 'INSERT INTO referee_payments (id, referee_id, program_id, method, amount_cents, paid_on, note, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [id, referee.id, programId, b.method, amount, b.paidOn, note, req.user.id] },
+    ...owed.map((d) => ({ sql: 'INSERT INTO referee_payment_items (payment_id, assignment_id, amount_cents, game_date, game_label) VALUES (?, ?, ?, ?, ?)',
+      args: [id, d.assignmentId, d.outstandingCents, d.date, `${d.matchup} · ${d.divisionName}`] })),
+  ], 'write');
+  const what = `${money(amount)} for ${owed.length} game${owed.length === 1 ? '' : 's'}`;
+  await logActivity({ category: 'referee', action: 'payment', actor: req.user, programId,
+    details: `${program.name} paid ${refName(referee)} ${what} (${PAID_WITH[b.method]}, ${b.paidOn})${note ? `: ${note}` : ''}` });
+  await notifyUsers('id = ?', [referee.id], `${program.name} marked a payment to you`,
+    `${program.name} marked ${what} as paid by ${PAID_WITH[b.method]} on ${b.paidOn}.${note ? `\nNote: ${note}` : ''}\n\nWhen it arrives, open My games and choose Got it, so they know you received it.`,
+    { label: 'Open My games', url: '/my-games' });
+  res.status(201).json({ payment: { id, amountCents: amount, games: owed.length } });
+}));
+
+// ---- DELETE /api/referees/payments/:id ----  Undo a mark (e.g. marked by mistake).
+router.delete('/payments/:id', requireRole('super_admin', 'referee_assignor', 'program_director'), ah(async (req, res) => {
+  const p = await one('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.id = ?', [req.params.id]);
+  if (!p) throw notFound('Payment');
+  if (req.user.role === 'program_director') {
+    if (p.programId !== req.user.programId) throw forbidden('That payment belongs to another program.');
+    if (p.confirmedAt) throw conflict('The referee has already confirmed receiving this payment. Ask the league if it needs to be undone.');
+  }
+  const referee = await one('SELECT * FROM users WHERE id = ?', [p.refereeId]);
+  await run('DELETE FROM referee_payment_items WHERE payment_id = ?', [p.id]);
+  await run('DELETE FROM referee_payments WHERE id = ?', [p.id]);
+  await logActivity({ category: 'referee', action: 'payment undone', actor: req.user, programId: p.programId,
+    details: `Undid ${p.programName}’s payment of ${money(p.amountCents)} to ${referee ? refName(referee) : 'a referee'} (${PAID_WITH[p.method] || p.method}, ${p.paidOn})` });
+  if (referee) await notifyUsers('id = ?', [referee.id], `A payment from ${p.programName} was taken back off the record`,
+    `${p.programName}’s payment of ${money(p.amountCents)} (${PAID_WITH[p.method] || p.method}, ${p.paidOn}) was marked by mistake and has been removed from the record. Those games show as unpaid again.`,
+    { label: 'Open My games', url: '/my-games' });
+  res.json({ ok: true });
 }));
 
 export default router;
