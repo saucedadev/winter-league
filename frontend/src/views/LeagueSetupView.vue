@@ -29,8 +29,8 @@ const formError = ref('');
 function openSeason(s) {
   formError.value = '';
   seasonEditor.value = s
-    ? { id: s.id, form: { name: s.name, startDate: s.startDate, endDate: s.endDate } }
-    : { id: null, form: { name: '', startDate: '', endDate: '', isActive: !seasons.value.some((x) => x.isActive) } };
+    ? { id: s.id, form: { name: s.name, startDate: s.startDate, endDate: s.endDate, preseasonStart: s.preseasonStart || '' } }
+    : { id: null, form: { name: '', startDate: '', endDate: '', preseasonStart: '', isActive: !seasons.value.some((x) => x.isActive) } };
 }
 async function saveSeason() {
   formError.value = '';
@@ -93,13 +93,13 @@ const genderLabel = { boys: 'Boys', girls: 'Girls', coed: 'Coed' };
           <h2 class="font-semibold">Seasons</h2>
           <button class="btn btn-secondary !py-1.5" @click="openSeason()">Add season</button>
         </div>
-        <p class="text-sm text-text-muted mb-3">One season is active at a time. Gym slots can only be entered inside its dates.</p>
+        <p class="text-sm text-text-muted mb-3">One season is active at a time. Gym slots can only be entered inside its dates, from the preseason if it has one.</p>
         <ul class="card card-blocky divide-y divide-border">
           <li v-for="s in seasons" :key="s.id" class="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
             <div class="flex-1 min-w-[10rem]">
               <p class="font-medium text-sm">{{ s.name }}
                 <span v-if="s.isActive" class="ml-1 rounded-full bg-accent text-accent-contrast px-2 py-0.5 text-xs">Active</span></p>
-              <p class="text-xs text-text-muted">{{ dateRange(s.startDate, s.endDate) }}, {{ s.endDate.slice(0, 4) }} · {{ s.slotCount }} gym slots</p>
+              <p class="text-xs text-text-muted">{{ dateRange(s.startDate, s.endDate) }}, {{ s.endDate.slice(0, 4) }} · {{ s.slotCount }} gym slots<template v-if="s.preseasonStart"> · preseason opens {{ dateRange(s.preseasonStart, s.preseasonStart) }}</template></p>
             </div>
             <button v-if="!s.isActive" class="btn btn-ghost" @click="activate(s)">Make active</button>
             <button class="btn btn-ghost" @click="openSeason(s)">Edit</button>
@@ -132,8 +132,13 @@ const genderLabel = { boys: 'Boys', girls: 'Girls', coed: 'Coed' };
       <form id="season-form" class="space-y-4" @submit.prevent="saveSeason">
         <div><label class="label" for="sn-name">Season name</label><input id="sn-name" v-model="seasonEditor.form.name" class="input" required placeholder="Winter 2026–27" /></div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="label" for="sn-start">First day</label><input id="sn-start" v-model="seasonEditor.form.startDate" type="date" class="input" required /></div>
+          <div><label class="label" for="sn-start">Regular season starts</label><input id="sn-start" v-model="seasonEditor.form.startDate" type="date" class="input" required /></div>
           <div><label class="label" for="sn-end">Last day</label><input id="sn-end" v-model="seasonEditor.form.endDate" type="date" class="input" :min="seasonEditor.form.startDate" required /></div>
+        </div>
+        <div>
+          <label class="label" for="sn-pre">Preseason opens <span class="font-normal text-text-muted">(optional)</span></label>
+          <input id="sn-pre" v-model="seasonEditor.form.preseasonStart" type="date" class="input sm:!w-48" :max="seasonEditor.form.startDate" />
+          <p class="text-xs text-text-muted mt-1">Before the regular season, programs that are ready can arrange scrimmages and joint practices with each other. Gym time is accepted from this date; the Schedule builder only uses gym time from the regular-season start. Leave blank for no preseason.</p>
         </div>
         <label v-if="!seasonEditor.id" class="flex items-center gap-2 text-sm"><input v-model="seasonEditor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Make this the active season</label>
         <p v-if="formError" class="text-sm text-danger" role="alert">{{ formError }}</p>

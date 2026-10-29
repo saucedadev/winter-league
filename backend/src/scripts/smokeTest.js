@@ -1246,6 +1246,69 @@ console.log('\nReferee payout reserve');
   await call('DELETE', `/referees/payments/${paidR.data.payment.id}`, { token: admin });
   await call('PUT', `/reserves/${nfh.id}/settings`, { token: admin, body: { mode: 'direct' } });
 }
+console.log('\nPreseason');
+{
+  const plus = (n) => { const d = new Date(`${todayLocal}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const seasonNow = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
+  const orig = { startDate: seasonNow.startDate, preseasonStart: seasonNow.preseasonStart || '' };
+  check('without a preseason, the board says so', (await call('GET', `/preseason/board?teamId=${myTeam.id}`, { token: pd })).status === 409);
+  check('the preseason must open before the regular season', (await call('PUT', `/league/seasons/${seasonNow.id}`, { token: admin, body: { preseasonStart: seasonNow.startDate } })).status === 400);
+  // For this test: preseason from today, regular season in ten days.
+  const setP = await call('PUT', `/league/seasons/${seasonNow.id}`, { token: admin, body: { startDate: plus(10), preseasonStart: todayLocal } });
+  check('the league adds a preseason to the season', setP.status === 200 && setP.data.season.preseasonStart === todayLocal, JSON.stringify(setP.data).slice(0, 160));
+  const nfhCourt = (await call('GET', `/venues?programId=${nfh.id}`, { token: pd })).data.venues[0].courts[0];
+  const rybProg = (await call('GET', '/auth/me', { token: mbell })).data.user.programId;
+  const rybCourt = (await call('GET', '/venues', { token: mbell })).data.venues[0].courts[0];
+  const ps1 = await call('POST', '/slots', { token: pd, body: { courtId: nfhCourt.id, date: plus(2), startTime: '18:00', endTime: '20:00', category: 'WEEKNIGHT_GAME' } });
+  check('directors add gym time in the preseason', ps1.status === 201, JSON.stringify(ps1.data).slice(0, 160));
+  const ps2 = await call('POST', '/slots', { token: mbell, body: { courtId: rybCourt.id, date: plus(3), startTime: '18:00', endTime: '19:00', category: 'WEEKNIGHT_GAME' } });
+  check('…both programs', ps2.status === 201);
+  const rybTeams = (await call('GET', '/teams', { token: mbell })).data.teams;
+  const nfhTeams = (await call('GET', `/teams?programId=${nfh.id}`, { token: pd })).data.teams.filter((t) => t.isActive);
+  const pair = nfhTeams.map((t) => [t, rybTeams.find((r) => r.divisionId === t.divisionId && r.isActive)]).find(([, r]) => r);
+  const [mine, theirs] = pair;
+  check('a director can’t open another program’s team', (await call('PUT', '/preseason/teams', { token: pd, body: { teamIds: [theirs.id], open: true } })).status === 403);
+  check('a director opens a team for preseason', (await call('PUT', '/preseason/teams', { token: pd, body: { teamIds: [mine.id], open: true } })).data.changed === 1);
+  check('…or all their teams at once', (await call('PUT', '/preseason/teams', { token: mbell, body: { all: true, open: true } })).data.changed >= 1);
+  check('guest teams stay out of the preseason', (await call('PUT', '/preseason/teams', { token: admin, body: { teamIds: [gt.data.team.id], open: true } })).status === 400);
+  const board = (await call('GET', `/preseason/board?teamId=${mine.id}`, { token: pd })).data;
+  check('the board lists open teams in the same division', board.opponents.some((o) => o.id === theirs.id) && board.opponents.every((o) => o.sameDivision && o.programId !== nfh.id));
+  check('…and can widen to a grade either side', (await call('GET', `/preseason/board?teamId=${mine.id}&wider=1`, { token: pd })).data.opponents.length >= board.opponents.length);
+  const times = (await call('GET', `/preseason/times?teamId=${mine.id}&opponentId=${theirs.id}&kind=scrimmage`, { token: pd })).data.times;
+  check('suggested times come from both programs’ preseason gym time', times.some((t) => t.host === 'you' && t.date === plus(2)) && times.some((t) => t.host === 'them' && t.date === plus(3)), JSON.stringify(times.map((t) => [t.date, t.host])));
+  check('…and never from the regular season', times.every((t) => t.date < plus(10)));
+  const pick = times.find((t) => t.host === 'you');
+  const leagueGamesBefore = (await call('GET', '/schedule/games', { token: admin })).data.games.length;
+  const rq = await call('POST', '/preseason/requests', { token: pd, body: { teamId: mine.id, opponentId: theirs.id, kind: 'scrimmage', ...pick, refereesWanted: true, note: 'Smoke test' } });
+  check('a director asks for a scrimmage', rq.status === 201 && rq.data.event.status === 'requested');
+  check('the same time can’t be asked for twice', (await call('POST', '/preseason/requests', { token: pd, body: { teamId: mine.id, opponentId: theirs.id, kind: 'scrimmage', ...pick } })).status === 409);
+  check('the other director has one waiting', (await call('GET', '/preseason/count', { token: mbell })).data.needsAction === 1 && (await call('GET', '/preseason/count', { token: pd })).data.needsAction === 0);
+  check('the asking director can’t accept their own request', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: pd, body: { decision: 'accept' } })).status === 403);
+  check('declining needs a note', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: mbell, body: { decision: 'decline' } })).status === 400);
+  check('the other director accepts', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: mbell, body: { decision: 'accept' } })).data.status === 'accepted');
+  const coachEvents = (await call('GET', '/preseason/events', { token: coach })).data.events;
+  check('a coach sees it if it’s their team', mine.headCoachUserId === coachId ? coachEvents.some((e) => e.id === rq.data.event.id) : !coachEvents.some((e) => e.id === rq.data.event.id));
+  check('the assignor sees it, with referees wanted', (await call('GET', '/preseason/events', { token: assignor })).data.events.some((e) => e.id === rq.data.event.id && e.refereesWanted));
+  check('referees can’t see preseason requests', (await call('GET', '/preseason/events', { token: refA })).status === 403);
+  check('a booked slot can’t be deleted', (await call('DELETE', `/slots/${pick.slotId}`, { token: pd })).status === 409);
+  check('the day is no longer offered to those teams', !(await call('GET', `/preseason/times?teamId=${mine.id}&opponentId=${theirs.id}&kind=scrimmage`, { token: pd })).data.times.some((t) => t.date === pick.date));
+  check('preseason games don’t join the league schedule', (await call('GET', '/schedule/games', { token: admin })).data.games.length === leagueGamesBefore);
+  check('cancelling needs a reason', (await call('POST', `/preseason/events/${rq.data.event.id}/cancel`, { token: pd, body: {} })).status === 400);
+  check('either director can cancel', (await call('POST', `/preseason/events/${rq.data.event.id}/cancel`, { token: pd, body: { reason: 'Gym closed' } })).status === 200);
+  // A request taken back before it's answered.
+  const t2 = (await call('GET', `/preseason/times?teamId=${mine.id}&opponentId=${theirs.id}&kind=scrimmage`, { token: pd })).data.times[0];
+  const rq2 = await call('POST', '/preseason/requests', { token: pd, body: { teamId: mine.id, opponentId: theirs.id, kind: 'joint_practice', ...t2 } });
+  check('a joint practice can be asked for too', rq2.status === 201);
+  check('only the asking program can withdraw it', (await call('POST', `/preseason/events/${rq2.data.event.id}/withdraw`, { token: mbell })).status === 403
+    && (await call('POST', `/preseason/events/${rq2.data.event.id}/withdraw`, { token: pd })).status === 200);
+  // Back to how it was, for the checks below.
+  await call('PUT', '/preseason/teams', { token: pd, body: { all: true, open: false } });
+  await call('PUT', '/preseason/teams', { token: mbell, body: { all: true, open: false } });
+  check('the preseason gym time can be removed once nothing is booked', (await call('DELETE', `/slots/${ps1.data.slots[0].id}`, { token: pd })).status === 200
+    && (await call('DELETE', `/slots/${ps2.data.slots[0].id}`, { token: mbell })).status === 200);
+  const back = await call('PUT', `/league/seasons/${seasonNow.id}`, { token: admin, body: { startDate: orig.startDate, preseasonStart: orig.preseasonStart } });
+  check('the season goes back to its dates', back.status === 200, JSON.stringify(back.data).slice(0, 200));
+}
 {
   const { leagueTimestamp } = await import('../utils/leagueTime.js');
   // 6:00 PM Pacific on game night is already the next day in UTC.

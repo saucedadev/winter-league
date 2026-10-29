@@ -4,7 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToast } from '../stores/toast';
-import { longDate, todayISO, timestamp, leagueTimeZoneLabel } from '../utils/format';
+import { longDate, todayISO, timestamp, leagueTimeZoneLabel, timeRange, weekday, monthDay } from '../utils/format';
 import { downloadSchedule, slug } from '../utils/scheduleCsv';
 import { useBrandingStore } from '../stores/branding';
 import PageHeader from '../components/PageHeader.vue';
@@ -31,10 +31,18 @@ const needsScore = ref(route.query.needsScore === '1');
 const showPast = ref(needsScore.value);
 watch(needsScore, (on) => { if (on) showPast.value = true; });
 
+// Preseason scrimmages and joint practices that are arranged (yours, or the
+// league's for admins and the assignor). Kept apart from league games.
+const preseason = ref([]);
+const PRESEASON_ROLES = ['super_admin', 'program_director', 'league_coach', 'referee_assignor'];
 async function load() {
   loading.value = true;
-  try { data.value = (await api.get('/schedule/games')).data; }
-  catch (err) { toast.error(errorMessage(err)); }
+  try {
+    const [g, p] = await Promise.all([api.get('/schedule/games'),
+      PRESEASON_ROLES.includes(auth.user.role) ? api.get('/preseason/events', { params: { status: 'booked' } }).catch(() => ({ data: { events: [] } })) : { data: { events: [] } }]);
+    data.value = g.data;
+    preseason.value = p.data.events.filter((e) => e.date >= today);
+  } catch (err) { toast.error(errorMessage(err)); }
   finally { loading.value = false; }
 }
 onMounted(load);
@@ -110,6 +118,22 @@ function onGameRequested() { requestingGame.value = false; }
       <button v-if="hasOwn && data?.published" class="btn btn-secondary" @click="requestingGame = true">Request a game</button>
       <button v-if="data?.published" class="btn btn-secondary" :disabled="!filtered.length" :title="`Download the ${filtered.length} game${filtered.length === 1 ? '' : 's'} shown, with your filters, as a spreadsheet file`" @click="downloadCsv">Download CSV</button>
     </PageHeader>
+
+    <section v-if="!loading && preseason.length" class="card card-blocky mb-4">
+      <div class="flex flex-wrap items-center gap-2 px-4 pt-3">
+        <h2 class="font-semibold mr-auto">Preseason</h2>
+        <RouterLink v-if="['super_admin', 'program_director', 'referee_assignor'].includes(auth.user.role)" to="/preseason" class="text-sm underline">Open Preseason</RouterLink>
+      </div>
+      <p class="px-4 text-xs text-text-muted">Scrimmages and joint practices before the regular season. They don’t count toward standings.</p>
+      <ul class="divide-y divide-border mt-2">
+        <li v-for="e in preseason" :key="e.id" class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span class="w-40 font-medium">{{ weekday(e.date) }} {{ monthDay(e.date) }}<span class="block text-xs font-normal text-text-muted">{{ timeRange(e.startTime, e.endTime) }}</span></span>
+          <span class="flex-1 min-w-[14rem]"><span class="badge badge-outline mr-1">Preseason · {{ e.kindLabel }}</span>
+            <span class="font-medium">{{ e.hostTeamName }}</span> vs <span class="font-medium">{{ e.visitorTeamName }}</span>
+            <span class="block text-xs text-text-muted">{{ e.venueName }} – {{ e.courtName }}<template v-if="e.venueAddress"> · {{ e.venueAddress }}</template></span></span>
+        </li>
+      </ul>
+    </section>
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
     <EmptyState v-else-if="!data?.published" title="The schedule hasn’t been published yet"

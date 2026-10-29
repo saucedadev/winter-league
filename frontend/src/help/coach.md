@@ -14,6 +14,11 @@ Coaches see their teams' schedule and ask for a game to be moved when something 
 
 **Change requested** on a game means someone has asked to change it and it's waiting for approval. Each game also lists the referees assigned to it, or **Referees: not assigned yet**.
 
+### Preseason scrimmages
+If your program arranges a preseason scrimmage or joint practice for your team, it appears in a **Preseason** box at the top of the **Schedule** page, with the date, time, and gym. Preseason games don't count toward standings and don't have a score to enter. Your Program Director arranges them; ask them if you'd like one.
+
+![A preseason scrimmage on the schedule](/help/img/coach-schedule-preseason.png)
+
 ## Entering the final score
 
 After a game, a coach of either team can enter the final score. Either side can do it, so there's no need to wait for the other team.

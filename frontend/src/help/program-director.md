@@ -52,7 +52,7 @@ While a contact is the head coach of a team, you can't change their role away fr
 
 ## Gym slots
 
-Gym slots are the times your program can offer the league. **Menu → My program → Gym slots.**
+Gym slots are the times your program can offer the league. **Menu → My program → Gym slots.** If the season has a preseason, you can add gym time from the day it opens; time before the regular-season start is used only for [preseason](#preseason) scrimmages and joint practices.
 
 ![The gym slots week board](/help/img/pd-gym-slots.png)
 
@@ -122,6 +122,41 @@ It changes your existing weeknight and weekend game slots; practice slots aren't
 ![Blackouts](/help/img/pd-blackouts.png)
 
 If you add a blackout after the schedule is published and it covers games already scheduled, the app tells you how many, and the league admin sees them flagged to move.
+
+## Preseason
+
+If the league has a preseason, programs that are ready (tryouts done, teams formed) can arrange **scrimmages** and **joint practices** with each other before the regular season starts. Join whenever you're ready; not every program has to. Preseason games don't count toward standings, games per team, or home/away balance, and the Schedule builder never uses preseason gym time.
+
+**Menu → Scheduling → Preseason.**
+
+### 1. Add preseason gym time
+Add gym slots as usual under **Gym slots**, on dates between the preseason opening and the regular-season start. Those slots are marked **Preseason**, and a note on the page says so. Game time (weeknight or weekend) is offered for scrimmages; practice time is also offered for joint practices.
+
+![Preseason gym time](/help/img/pd-slots-preseason.png)
+
+### 2. Open your teams
+Under **Your teams**, click a team to open it for preseason (**Open all** does every team). You can also do it from **Teams** with **Open for preseason**. Other programs can then find that team. Closing a team later doesn't cancel anything already arranged.
+
+![Opening a team for preseason on the Teams page](/help/img/pd-teams-preseason.png)
+
+### 3. Find an opponent and pick a time
+1. Under **Find an opponent**, choose your team. Teams in the same division that are open for preseason are listed, nearest first. Tick **Include teams one grade up or down** to see more.
+2. Choose **Find times**. You'll see times when **either** program has open preseason gym time and both teams are free (no other preseason event that day, no blackout), with whose gym it is and how far the visitors travel. Switch between **Scrimmage** and **Joint practice**.
+3. Choose **Ask** next to a time, tick **We'd like referees** if you want them, add an optional note, and **Send request**. The time is held while you wait.
+
+![Finding a time](/help/img/pd-preseason-find.png)
+
+![Asking for a scrimmage](/help/img/pd-preseason-ask.png)
+
+### 4. Answering a request
+When another program asks, you're emailed, and it appears at the top of the page under **Waiting for your answer** (the **Preseason** menu item shows a number). **Accept** puts it on both teams' schedules; **Decline** needs a short note (e.g. a time that would work instead). There's no league sign-off, but the league can see everything.
+
+![A request waiting for an answer](/help/img/pd-preseason-waiting.png)
+
+### Afterwards
+- **Arranged** lists everything that's on. Each one also shows at the top of the **Schedule** page, for you and the coaches of both teams.
+- **Withdraw** a request you sent, while it's still waiting. **Cancel…** something arranged (either program can), with a reason; the other program is emailed.
+- **Referees:** if you asked for referees, the Referee Assignor is told once it's accepted. Preseason games aren't on the referee assignment board or in Referee payouts, so referees and their pay are arranged directly with the assignor.
 
 ## The schedule
 

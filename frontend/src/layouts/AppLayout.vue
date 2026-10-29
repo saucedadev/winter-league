@@ -12,6 +12,9 @@ import { useBrandingStore } from '../stores/branding';
 const auth = useAuthStore();
 const ctx = useProgramContext();
 const badge = useRequestBadge();
+// Which badge a menu item shows: 'preseason' its own count, any other its Requests count.
+const badgeFor = (n) => (n.badge === 'preseason' ? badge.preseason : n.badge ? badge.count : 0);
+const groupBadge = (g) => g.items.filter((i) => i.show !== false).reduce((x, i) => x + badgeFor(i), 0);
 const branding = useBrandingStore();
 const route = useRoute();
 const router = useRouter();
@@ -53,6 +56,7 @@ const menuGroups = computed(() => {
       { to: '/referees', label: 'Referees', show: role.value === 'referee_assignor' },
       { to: '/payouts', label: 'Payouts', show: role.value === 'referee_assignor' },
       { to: '/reserve', label: 'Reserves', show: role.value === 'referee_assignor' },
+      { to: '/preseason', label: 'Preseason', show: role.value === 'referee_assignor' },
     ] },
     { id: 'program', label: sa ? 'Programs & gyms' : 'My program', items: [
       { to: '/slots', label: 'Gym slots', show: auth.canManage },
@@ -67,6 +71,7 @@ const menuGroups = computed(() => {
     { id: 'scheduling', label: 'Scheduling', items: [
       { to: '/schedule/builder', label: 'Schedule builder', show: sa },
       { to: '/schedule/draft', label: 'Draft review', show: role.value === 'program_director' },
+      { to: '/preseason', label: 'Preseason', show: sa || role.value === 'program_director', badge: 'preseason' },
     ] },
     { id: 'referees', label: 'Referees', items: [
       { to: '/assignments', label: 'Referee assignments', show: sa },
@@ -163,7 +168,7 @@ function signOut() {
         <RouterLink v-for="n in primaryNav" :key="n.to" :to="n.to"
           class="px-2.5 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
           :class="isActive(n.to) ? 'bg-header-accent text-header-accent-contrast' : 'text-header-text/75 hover:text-header-text'">
-          {{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5" :aria-label="`${badge.count} waiting on you`">{{ badge.count }}</span>
+          {{ n.label }}<span v-if="badgeFor(n)" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5" :aria-label="`${badgeFor(n)} waiting on you`">{{ badgeFor(n) }}</span>
         </RouterLink>
       </nav>
 
@@ -176,7 +181,7 @@ function signOut() {
         <button ref="menuButton" class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-black/5" :aria-expanded="menuOpen" aria-controls="account-menu"
           :aria-label="menuOpen ? 'Close menu' : 'Open menu'" @click="menuOpen = !menuOpen">
           <span class="relative w-8 h-8 rounded-full bg-header-accent text-header-accent-contrast grid place-items-center text-xs font-bold">
-            <span v-if="badge.count" class="xl:hidden absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-highlight ring-2 ring-header" :aria-label="`${badge.count} request(s) waiting on you`" />
+            <span v-if="badge.total" class="xl:hidden absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-highlight ring-2 ring-header" :aria-label="`${badge.total} request(s) waiting on you`" />
             {{ (auth.user?.firstName?.[0] || '') + (auth.user?.lastName?.[0] || '') }}
           </span>
           <span class="hidden sm:block text-left leading-tight whitespace-nowrap">
@@ -206,7 +211,7 @@ function signOut() {
             <section v-for="g in menuGroups" :key="g.id" class="border-b border-border last:border-b-0 py-1" :class="g.allInHeader && 'xl:hidden'">
               <button v-if="collapsible" type="button" class="w-full flex items-center justify-between px-4 py-2.5 sm:py-2 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text"
                 :aria-expanded="groupOpen(g)" :aria-controls="`menu-group-${g.id}`" @click="toggleGroup(g)">
-                <span>{{ g.label }}<span v-if="!groupOpen(g) && g.items.some((i) => i.badge) && badge.count" class="ml-2 badge bg-highlight text-black !py-0 !px-1.5 normal-case tracking-normal">{{ badge.count }}</span></span>
+                <span>{{ g.label }}<span v-if="!groupOpen(g) && groupBadge(g)" class="ml-2 badge bg-highlight text-black !py-0 !px-1.5 normal-case tracking-normal">{{ groupBadge(g) }}</span></span>
                 <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" class="transition-transform" :class="groupOpen(g) && 'rotate-180'"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
               </button>
               <p v-else-if="menuGroups.length > 1" class="px-4 pt-2 pb-1 text-xs font-semibold uppercase tracking-wide text-text-muted" :class="g.allInHeader && 'xl:hidden'">{{ g.label }}</p>
@@ -214,7 +219,7 @@ function signOut() {
                 <li v-for="n in g.items" :key="n.to" :class="n.inHeader && 'xl:hidden'">
                   <RouterLink :to="n.to" class="flex items-center px-4 py-3 sm:py-2 text-sm hover:bg-background"
                     :class="isActive(n.to) && 'font-semibold text-accent-text'" :aria-current="isActive(n.to) ? 'page' : undefined">
-                    {{ n.label }}<span v-if="n.badge && badge.count" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5">{{ badge.count }}</span>
+                    {{ n.label }}<span v-if="badgeFor(n)" class="ml-1.5 badge bg-highlight text-black !py-0 !px-1.5">{{ badgeFor(n) }}</span>
                   </RouterLink>
                 </li>
               </ul>

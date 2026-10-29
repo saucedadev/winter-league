@@ -15,8 +15,8 @@ const hasMore = ref(false);
 const category = ref('');
 const loading = ref(false);
 
-const CATEGORY_LABELS = { slot: 'Gym slots', blackout: 'Blackouts', venue: 'Venues', team: 'Teams', program: 'Programs', season: 'Seasons', division: 'Divisions', user: 'Users', schedule: 'Schedule', request: 'Requests', referee: 'Referees' };
-const chips = auth.isSuperAdmin ? Object.keys(CATEGORY_LABELS) : ['slot', 'blackout', 'venue', 'team', 'request'];
+const CATEGORY_LABELS = { slot: 'Gym slots', blackout: 'Blackouts', venue: 'Venues', team: 'Teams', program: 'Programs', season: 'Seasons', division: 'Divisions', user: 'Users', schedule: 'Schedule', request: 'Requests', referee: 'Referees', preseason: 'Preseason' };
+const chips = auth.isSuperAdmin ? Object.keys(CATEGORY_LABELS) : ['slot', 'blackout', 'venue', 'team', 'request', 'preseason'];
 
 // Beside the name: the person's own program (as it was when they acted), or
 // their role for league-wide accounts, e.g. "Colleen Rogers · GYB",

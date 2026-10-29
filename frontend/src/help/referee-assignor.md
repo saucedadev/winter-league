@@ -112,6 +112,14 @@ On **Payouts**, choose **Pay…** next to a referee and pick the program under *
 
 The balance goes down when you mark a referee paid, not when the game is played, so it matches the money you're actually holding. It can go below zero (so a referee who worked is never left unpaid); the program then shows as owing the reserve.
 
+## Preseason scrimmages
+
+Before the regular season, programs can arrange scrimmages and joint practices with each other. **Menu → Referees → Preseason** lists everything arranged. Tick **Only those wanting referees** to see the ones that asked for referees; you're also emailed when one is accepted or cancelled.
+
+Preseason games aren't on the assignment board or in Payouts (they're kept apart from league games), so arrange referees and their pay directly with the host program's director.
+
+![Preseason scrimmages](/help/img/as-preseason.png)
+
 ## Your referees
 
 Referees have their own guide: the [Referee guide](/help/referee).

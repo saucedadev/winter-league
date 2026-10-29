@@ -43,7 +43,7 @@ router.get('/', requireRole('super_admin', 'program_director', 'league_coach'), 
   if (req.query.divisionId) { where.push('t.division_id = ?'); args.push(req.query.divisionId); }
   const teams = await all(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY d.sort_order, d.name COLLATE NOCASE, p.name COLLATE NOCASE, t.name COLLATE NOCASE`, args);
-  res.json({ teams: teams.map((t) => ({ ...t, isActive: !!t.isActive, programIsGuest: !!t.programIsGuest, headCoachIsContact: !!t.headCoachIsContact })) });
+  res.json({ teams: teams.map((t) => ({ ...t, isActive: !!t.isActive, programIsGuest: !!t.programIsGuest, headCoachIsContact: !!t.headCoachIsContact, preseasonOpen: !!t.preseasonOpen })) });
 }));
 
 // ---- GET /api/teams/coaches ---- (active Coach accounts a PD can assign as head coach)

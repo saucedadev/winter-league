@@ -19,6 +19,10 @@ Do these in order before programs start entering gym time.
 ### 1. The season and divisions
 **Menu → League admin → League setup.**
 - **Season:** **Add season** with its first and last day, and use **Make active** if it isn't already the active season. Only one season is active at a time; gym slots, blackouts, and the schedule all belong to it.
+- **Preseason (optional):** set **Preseason opens** on the season (e.g. November 2, with the regular season starting January 4). Programs can then add gym time from that date, open their teams for preseason, and arrange scrimmages and joint practices with each other. The Schedule builder only uses gym time from the regular-season start, so preseason time is never taken by league games. Leave it blank for no preseason.
+
+![Season with a preseason](/help/img/sa-season-preseason.png)
+
 - **Divisions:** the grade and gender groups teams play in (e.g. *6th Grade Girls*). A new league starts with none (or with ten starter divisions, if they were added when the database was set up); add, rename, or deactivate them to match your league. Teams only ever play teams in their own division.
 
 ![League setup](/help/img/sa-league-setup.png)
@@ -279,6 +283,10 @@ Accepted and noted requests move to **In effect** and stay there until the progr
 If a director tells you by phone, text, or email, choose **Record a request**, pick the program, and fill it in as they would. It's then on record with the rest, and you answer it the same way.
 
 Every request, question, reply, and decision is in the **Activity** log under **Requests**. A value applied to the rules also appears under **Schedule**.
+
+## Preseason
+
+**Menu → Scheduling → Preseason** shows how many teams are open and every request and arranged scrimmage or joint practice across the league. Directors arrange them without league sign-off; you can **Cancel…** any of them (both programs are emailed). Choose a program in the header to open its teams or arrange one on its behalf. Preseason games are kept apart from league games: they don't count toward standings, games per team, or home/away balance, and they aren't on the referee board or in payouts. Every step is in **Activity** under **Preseason**.
 
 ## Activity
 

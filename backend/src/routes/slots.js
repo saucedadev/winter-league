@@ -207,7 +207,10 @@ router.post('/', ah(async (req, res) => {
   const created = [];
   const skipped = [];
   for (const date of dates) {
-    if (date < season.startDate || date > season.endDate) { skipped.push({ date, reason: `outside the ${season.name} season` }); continue; }
+    // Gym time is accepted from the preseason, if there is one. Preseason time
+    // (before the regular season starts) is offered for scrimmages; the
+    // Matchmaker only uses time from the regular-season start.
+    if (date < (season.preseasonStart || season.startDate) || date > season.endDate) { skipped.push({ date, reason: `outside the ${season.name} season${season.preseasonStart ? ' (including its preseason)' : ''}` }); continue; }
     const o = await findOverlap(court.id, date, b.startTime, b.endTime);
     if (o) { skipped.push({ date, reason: overlapMsg(o) }); continue; }
     if (skipBlackouts) {
@@ -302,7 +305,11 @@ router.put('/:id', ah(async (req, res) => {
       if (n) throw conflict(`Can’t change this slot: ${n} published game${n > 1 ? 's' : ''} scheduled in it would no longer fit. Ask the league admin to move ${n > 1 ? 'them' : 'it'} first.`);
     }
     const season = await one('SELECT * FROM seasons WHERE id = ?', [s.seasonId]);
-    if (next.date < season.startDate || next.date > season.endDate) throw badRequest(`That date is outside the ${season.name} season (${season.startDate} to ${season.endDate}).`);
+    if (next.date < (season.preseasonStart || season.startDate) || next.date > season.endDate) throw badRequest(`That date is outside the ${season.name} season (${season.preseasonStart || season.startDate} to ${season.endDate}${season.preseasonStart ? ', preseason included' : ''}).`);
+    // A booked preseason scrimmage keeps its slot: don't move or shrink it away.
+    if (moved && await one("SELECT 1 FROM preseason_events WHERE gym_slot_id = ? AND status IN ('requested', 'accepted') LIMIT 1", [s.id])) {
+      throw conflict('A preseason scrimmage or joint practice is booked in this slot. Cancel it first (under Preseason), then change the slot.');
+    }
     const o = await findOverlap(next.courtId, next.date, next.startTime, next.endTime, s.id);
     if (o) throw conflict(`Can’t save — this slot ${overlapMsg(o)} on the same court.`);
     // A draft game stays only if the slot still covers it (and didn't change date).
@@ -418,6 +425,8 @@ router.delete('/:id', ah(async (req, res) => {
     : [s.id];
   await assertNoPublishedGames(ids, following ? 'delete these slots' : 'delete this slot');
   const ph = ids.map(() => '?').join(',');
+  const pre = await one(`SELECT COUNT(*) AS n FROM preseason_events WHERE gym_slot_id IN (${ph}) AND status IN ('requested', 'accepted')`, ids);
+  if (Number(pre.n)) throw conflict(`${pre.n} preseason scrimmage${Number(pre.n) === 1 ? ' or joint practice is' : 's or joint practices are'} booked in ${ids.length === 1 ? 'this slot' : 'these slots'}. Cancel ${Number(pre.n) === 1 ? 'it' : 'them'} first (under Preseason).`);
   // Draft games in these slots go back to "unscheduled" for the admin to re-place.
   const [, r] = await db.batch([
     { sql: `UPDATE games SET status = 'unscheduled', court_id = NULL, gym_slot_id = NULL, date = NULL, start_time = NULL, end_time = NULL,

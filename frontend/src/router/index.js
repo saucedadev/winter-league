@@ -37,6 +37,7 @@ const routes = [
       { path: 'referees', component: () => import('../views/RefereesView.vue'), meta: { roles: REF_MANAGERS, title: 'Referees' } },
       { path: 'payouts', component: () => import('../views/PayoutsView.vue'), meta: { roles: [...REF_MANAGERS, 'program_director'], title: 'Referee payouts' } },
       { path: 'reserve', component: () => import('../views/ReserveView.vue'), meta: { roles: [...REF_MANAGERS, 'program_director'], title: 'Referee reserve' } },
+      { path: 'preseason', component: () => import('../views/PreseasonView.vue'), meta: { roles: [...REF_MANAGERS, 'program_director'], title: 'Preseason' } },
       { path: 'my-games', component: () => import('../views/MyGamesView.vue'), meta: { roles: ['referee'], title: 'My games' } },
       { path: 'help/:guide?', component: () => import('../views/HelpView.vue'), meta: { title: 'Help' } },
       { path: 'activity', component: () => import('../views/ActivityView.vue'), meta: { roles: MANAGERS, title: 'Activity' } },

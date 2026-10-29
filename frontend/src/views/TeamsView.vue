@@ -20,15 +20,31 @@ const divisionFilter = ref('');
 const canEdit = computed(() => auth.canManage);
 const showProgram = computed(() => auth.isSuperAdmin && !ctx.programId);
 
+// Preseason: whether this season has one that's still open, so teams can be
+// marked ready for scrimmages and joint practices.
+const preseason = ref(null);
+const preseasonOpen = computed(() => !!preseason.value?.isOpen);
 async function load() {
   loading.value = true;
   try {
-    const [t, d] = await Promise.all([api.get('/teams', { params: ctx.query }), api.get('/league/divisions')]);
+    const [t, d, p] = await Promise.all([api.get('/teams', { params: ctx.query }), api.get('/league/divisions'), api.get('/preseason').catch(() => ({ data: null }))]);
     teams.value = t.data.teams;
     divisions.value = d.data.divisions;
+    preseason.value = p.data;
   } catch (err) { toast.error(errorMessage(err)); }
   finally { loading.value = false; }
 }
+const togglingId = ref('');
+async function togglePreseason(t) {
+  togglingId.value = t.id;
+  try {
+    await api.put('/preseason/teams', { teamIds: [t.id], open: !t.preseasonOpen });
+    t.preseasonOpen = !t.preseasonOpen;
+    toast.success(t.preseasonOpen ? `${t.name} is open for preseason games. Other programs can now find it on the Preseason page.` : `${t.name} is closed for preseason games. Anything already arranged stays on.`);
+  } catch (err) { toast.error(errorMessage(err)); }
+  finally { togglingId.value = ''; }
+}
+const canPreseason = (t) => canEdit.value && preseasonOpen.value && t.isActive && !t.programIsGuest;
 onMounted(load);
 
 const grouped = computed(() => {
@@ -115,6 +131,10 @@ async function doDelete() {
               <p class="font-medium text-sm">{{ t.name }} <span v-if="!t.isActive" class="text-xs text-text-muted">(inactive)</span></p>
               <p v-if="showProgram" class="text-xs text-text-muted">{{ t.programName }}{{ t.programIsGuest ? ' (guest)' : '' }}</p>
             </div>
+            <button v-if="canPreseason(t)" class="badge cursor-pointer" :class="t.preseasonOpen ? 'bg-success text-black' : 'badge-outline'" :disabled="togglingId === t.id"
+              :aria-pressed="t.preseasonOpen" :title="t.preseasonOpen ? 'Open for preseason scrimmages and joint practices. Click to close.' : 'Click to open this team for preseason scrimmages and joint practices.'"
+              @click="togglePreseason(t)">{{ t.preseasonOpen ? 'Preseason: open ✓' : 'Open for preseason' }}</button>
+            <span v-else-if="t.preseasonOpen && preseasonOpen" class="badge bg-success text-black">Preseason</span>
             <p class="text-sm" :class="t.headCoachName ? '' : 'text-text-muted'">
               {{ t.headCoachName ? `Coach ${t.headCoachName}` : 'No head coach assigned' }}
               <span v-if="t.headCoachIsContact" class="badge badge-outline ml-1" title="From the program’s Directory: no app account yet">Directory</span>

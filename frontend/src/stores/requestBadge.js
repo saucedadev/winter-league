@@ -2,20 +2,25 @@ import { defineStore } from 'pinia';
 import { api } from '../api/client';
 import { useAuthStore } from './auth';
 
-// Number of requests waiting on the signed-in user, for the nav badge:
-// game changes to decide, plus rule requests to answer (league) or questions
-// to reply to (director).
+// Numbers waiting on the signed-in user, for the nav badges:
+//   count:     game changes to decide, plus rule requests to answer (league)
+//              or questions to reply to (director) — on "Requests";
+//   preseason: preseason scrimmage requests from other programs — on "Preseason".
 export const useRequestBadge = defineStore('requestBadge', {
-  state: () => ({ games: 0, rules: 0 }),
-  getters: { count: (s) => s.games + s.rules },
+  state: () => ({ games: 0, rules: 0, preseason: 0 }),
+  getters: {
+    count: (s) => s.games + s.rules,
+    total: (s) => s.games + s.rules + s.preseason,
+  },
   actions: {
     async refresh() {
       const auth = useAuthStore();
-      if (!auth.canManage) { this.games = 0; this.rules = 0; return; }
+      if (!auth.canManage) { this.games = 0; this.rules = 0; this.preseason = 0; return; }
       // Best-effort: a failed count leaves the last value in place.
-      const [games, rules] = await Promise.allSettled([api.get('/requests/count'), api.get('/rule-requests/count')]);
+      const [games, rules, pre] = await Promise.allSettled([api.get('/requests/count'), api.get('/rule-requests/count'), api.get('/preseason/count')]);
       if (games.status === 'fulfilled') this.games = games.value.data.needsAction;
       if (rules.status === 'fulfilled') this.rules = rules.value.data.needsAction;
+      if (pre.status === 'fulfilled') this.preseason = pre.value.data.needsAction;
     },
   },
 });

@@ -15,6 +15,8 @@ const ctx = useProgramContext();
 const toast = useToast();
 
 const season = ref(null);
+// First day gym time can be entered: the preseason, if the season has one.
+const firstDay = computed(() => season.value?.preseasonStart || season.value?.startDate || '');
 const weekStart = ref(startOfWeek(todayISO()));
 const slots = ref([]);
 const blackouts = ref([]);
@@ -72,7 +74,7 @@ onMounted(async () => {
     season.value = seasonRes.data.seasons.find((s) => s.isActive) || null;
     venues.value = venueList;
     // Before the season starts, open on its first week instead of an empty "this week".
-    if (season.value && today < season.value.startDate) weekStart.value = startOfWeek(season.value.startDate);
+    if (season.value && today < firstDay.value) weekStart.value = startOfWeek(firstDay.value);
   } catch (err) {
     error.value = errorMessage(err);
   }
@@ -100,7 +102,7 @@ const blankForm = (date) => ({
   venueId: venueFilter.value || '',
   courtId: '',
   category: 'PRACTICE',
-  date: date || (season.value && today < season.value.startDate ? season.value.startDate : today), // the start date
+  date: date || (season.value && today < firstDay.value ? firstDay.value : today), // the start date
   endDate: '',      // empty: just the one date
   weekdays: [],     // 0–6; filled from the start date
   startTime: '18:00',
@@ -281,6 +283,9 @@ watch(editor, () => { confirmDelete.value = false; });
       <button class="btn btn-primary" :disabled="!season" :title="season ? '' : 'A season must be active first'" @click="openCreate()">Add gym slots</button>
     </PageHeader>
 
+    <div v-if="season?.preseasonStart && weekStart < season.startDate" class="card card-blocky border-l-4 border-l-accent px-4 py-3 mb-4 text-sm">
+      <span class="font-medium">Preseason.</span> Gym time before {{ dateRange(season.startDate, season.startDate) }} is preseason time: it’s offered for <RouterLink to="/preseason" class="underline">scrimmages and joint practices</RouterLink>, and the Schedule builder doesn’t use it for league games.
+    </div>
     <div v-if="!season && !loading" class="card card-blocky border-l-4 border-l-warning px-4 py-3 mb-4 text-sm">
       No season is active. {{ auth.isSuperAdmin ? 'Create one under League setup before adding gym slots.' : 'Your league administrator needs to open the season before gym slots can be added.' }}
     </div>
@@ -295,7 +300,7 @@ watch(editor, () => { confirmDelete.value = false; });
       <button class="text-sm text-accent-text font-medium hover:underline" @click="weekStart = startOfWeek(today)">This week</button>
       <label class="text-sm flex items-center gap-2">
         <span class="text-text-muted">Go to</span>
-        <input type="date" class="input !w-auto !py-1" :min="season?.startDate" :max="season?.endDate" @change="jumpTo" />
+        <input type="date" class="input !w-auto !py-1" :min="season?.preseasonStart || season?.startDate" :max="season?.endDate" @change="jumpTo" />
       </label>
       <select v-if="ctx.programId && venues.length > 1" v-model="venueFilter" class="input !w-auto !py-1" aria-label="Filter by venue">
         <option value="">All venues</option>
@@ -339,7 +344,7 @@ watch(editor, () => { confirmDelete.value = false; });
               <span v-if="s.isBlackedOut" class="absolute inset-0 hatch-blackout" aria-hidden="true" />
               <span class="relative block">
                 <span class="block font-semibold text-[0.8125rem]">{{ timeRange(s.startTime, s.endTime) }}</span>
-                <span class="block opacity-90">{{ CATEGORY[s.category].short }}<template v-if="showProgramCode"> · {{ s.shortCode }}</template></span>
+                <span class="block opacity-90">{{ CATEGORY[s.category].short }}<template v-if="showProgramCode"> · {{ s.shortCode }}</template><template v-if="season?.preseasonStart && s.date < season.startDate"> · Preseason</template></span>
                 <span class="block opacity-90 truncate" :title="s.venueName">{{ s.venueName }}</span>
                 <span class="block opacity-90 truncate">{{ s.courtName }}</span>
                 <span v-if="s.reservedText" class="block mt-1 font-semibold">★ {{ s.reservedText }}</span>
@@ -399,12 +404,12 @@ watch(editor, () => { confirmDelete.value = false; });
 
         <div v-if="editor.mode === 'edit'">
           <label class="label" for="sf-date">Date</label>
-          <input id="sf-date" v-model="editor.form.date" type="date" class="input" :min="season?.startDate" :max="season?.endDate" required />
+          <input id="sf-date" v-model="editor.form.date" type="date" class="input" :min="firstDay" :max="season?.endDate" required />
         </div>
         <div v-else class="sm:col-span-2 grid gap-4 sm:grid-cols-2">
           <div>
             <label class="label" for="sf-date">Start date</label>
-            <input id="sf-date" v-model="editor.form.date" type="date" class="input" :min="season?.startDate" :max="season?.endDate" required />
+            <input id="sf-date" v-model="editor.form.date" type="date" class="input" :min="firstDay" :max="season?.endDate" required />
           </div>
           <div>
             <label class="label" for="sf-end-date">End date <span class="font-normal text-text-muted">(optional, to repeat)</span></label>
@@ -514,7 +519,7 @@ watch(editor, () => { confirmDelete.value = false; });
             <option v-for="v in taggingVenues" :key="v.id" :value="v.id">{{ v.name }}</option>
           </select>
         </div>
-        <div><label class="label" for="tg-from">From</label><input id="tg-from" v-model="tagging.from" type="date" class="input" :min="season?.startDate" :max="season?.endDate" /></div>
+        <div><label class="label" for="tg-from">From</label><input id="tg-from" v-model="tagging.from" type="date" class="input" :min="firstDay" :max="season?.endDate" /></div>
         <div><label class="label" for="tg-to">To</label><input id="tg-to" v-model="tagging.to" type="date" class="input" :min="tagging.from" :max="season?.endDate" /></div>
         <div class="sm:col-span-2"><SlotTagFields v-model="tagging.tag" :divisions="divisions" id-prefix="tg-tag" /></div>
         <p v-if="tagError" class="sm:col-span-2 text-sm text-danger" role="alert">{{ tagError }}</p>

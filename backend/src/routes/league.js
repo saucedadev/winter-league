@@ -22,7 +22,13 @@ function validateSeason(body) {
   assertDate(body.startDate, 'Start date');
   assertDate(body.endDate, 'End date');
   if (body.startDate >= body.endDate) throw badRequest('The season must end after it starts.');
+  // Optional preseason: opens before the regular season starts.
+  if (body.preseasonStart) {
+    assertDate(body.preseasonStart, 'Preseason opens');
+    if (body.preseasonStart >= body.startDate) throw badRequest('The preseason has to open before the regular season starts.');
+  }
 }
+const preseasonOf = (v) => (v === undefined ? undefined : v ? String(v) : null);
 
 router.post('/seasons', adminOnly, ah(async (req, res) => {
   requireFields(req.body, ['name', 'startDate', 'endDate']);
@@ -32,7 +38,7 @@ router.post('/seasons', adminOnly, ah(async (req, res) => {
   const makeActive = !!req.body.isActive || !(await one('SELECT 1 FROM seasons WHERE is_active = 1'));
   await db.batch([
     ...(makeActive ? ['UPDATE seasons SET is_active = 0'] : []),
-    { sql: 'INSERT INTO seasons (id, name, start_date, end_date, is_active) VALUES (?, ?, ?, ?, ?)', args: [id, req.body.name.trim(), req.body.startDate, req.body.endDate, makeActive ? 1 : 0] },
+    { sql: 'INSERT INTO seasons (id, name, start_date, end_date, preseason_start, is_active) VALUES (?, ?, ?, ?, ?, ?)', args: [id, req.body.name.trim(), req.body.startDate, req.body.endDate, preseasonOf(req.body.preseasonStart) || null, makeActive ? 1 : 0] },
   ], 'write');
   await logActivity({ category: 'season', action: 'created', actor: req.user, details: `Created season ${req.body.name.trim()}` });
   res.status(201).json({ season: await one('SELECT * FROM seasons WHERE id = ?', [id]) });
@@ -41,14 +47,19 @@ router.post('/seasons', adminOnly, ah(async (req, res) => {
 router.put('/seasons/:id', adminOnly, ah(async (req, res) => {
   const s = await one('SELECT * FROM seasons WHERE id = ?', [req.params.id]);
   if (!s) throw notFound('Season');
-  const next = { name: req.body.name?.trim() || s.name, startDate: req.body.startDate || s.startDate, endDate: req.body.endDate || s.endDate };
+  const ps = preseasonOf(req.body.preseasonStart);
+  const next = { name: req.body.name?.trim() || s.name, startDate: req.body.startDate || s.startDate, endDate: req.body.endDate || s.endDate, preseasonStart: ps === undefined ? s.preseasonStart : ps };
   validateSeason(next);
-  const outside = await one('SELECT COUNT(*) AS n FROM gym_slots WHERE season_id = ? AND (date < ? OR date > ?)', [s.id, next.startDate, next.endDate]);
+  // Gym slots may start from the preseason, if there is one.
+  const firstDay = next.preseasonStart || next.startDate;
+  const outside = await one('SELECT COUNT(*) AS n FROM gym_slots WHERE season_id = ? AND (date < ? OR date > ?)', [s.id, firstDay, next.endDate]);
   if (Number(outside.n) > 0) throw conflict(`${outside.n} gym slot(s) fall outside those dates. Move or delete them first.`);
+  const booked = await one("SELECT COUNT(*) AS n FROM preseason_events WHERE season_id = ? AND status IN ('requested', 'accepted') AND (date < ? OR date >= ?)", [s.id, firstDay, next.startDate]);
+  if (Number(booked.n) > 0) throw conflict(`${booked.n} preseason scrimmage${Number(booked.n) === 1 ? ' is' : 's are'} booked outside the new preseason dates. Cancel ${Number(booked.n) === 1 ? 'it' : 'them'} first.`);
   const activate = req.body.isActive === true;
   await db.batch([
     ...(activate ? ['UPDATE seasons SET is_active = 0'] : []),
-    { sql: `UPDATE seasons SET name = ?, start_date = ?, end_date = ?${activate ? ', is_active = 1' : ''} WHERE id = ?`, args: [next.name, next.startDate, next.endDate, s.id] },
+    { sql: `UPDATE seasons SET name = ?, start_date = ?, end_date = ?, preseason_start = ?${activate ? ', is_active = 1' : ''} WHERE id = ?`, args: [next.name, next.startDate, next.endDate, next.preseasonStart || null, s.id] },
   ], 'write');
   await logActivity({ category: 'season', action: activate ? 'activated' : 'edited', actor: req.user, details: `${activate ? 'Made active' : 'Updated'}: season ${next.name}` });
   res.json({ season: await one('SELECT * FROM seasons WHERE id = ?', [s.id]) });
