@@ -88,6 +88,30 @@ Programs pay referees directly (Venmo, check or cash) and mark it as paid on the
 - **Paying on a program's behalf:** **Pay…** next to a referee works here too. Pick **Which program is paying?** and the games, then **Mark as paid**. Use it for a guest program, or a director who asks you to.
 - **Undo** takes a payment back off the record if it was marked by mistake (no money moves). You can undo any payment; a director can only undo their own program's, and only until the referee confirms it.
 
+## Referee reserves
+
+A program can prepay you instead of paying its referees itself. You hold the money, pay its referees, and each payment comes out of its **reserve**. Guest programs can have one too; you record their deposits for them.
+
+**Menu → Referees → Reserves.** The summary shows each program on a reserve: **Deposited**, **Paid out**, **Balance** (what you're holding for it), **Owed** (worked, not yet paid), **Upcoming** (an estimate for referees assigned to future games), and **Available**. **Held for all programs** is the total you should be holding. **Download summary (CSV)** for a spreadsheet. Programs that pay referees directly are listed underneath.
+
+![Referee reserves](/help/img/as-reserves.png)
+
+Open a program to see its figures, waiting deposits, and statement.
+- **Switch to a reserve** (or **Switch to paying directly**): changes how the program pays its referees. Its director is emailed.
+- **Deposits to confirm:** when a director adds a deposit, you're emailed. **Confirm received** once the money arrives, or **Decline** with a reason (e.g. *Not received yet*). Only confirmed deposits count.
+- **Record a deposit:** for money that reached you directly, and for guest programs. It's confirmed straight away.
+- **Refund** and **Adjustment** (add to or take from the reserve, with a note saying why).
+- **Reverse…** on a statement line: corrects a mistake by adding the opposite amount. Nothing is ever edited or deleted, so the statement always explains itself.
+- **Refund what's left…** at the end of the season: records a refund of the whole balance (pay it back first). If referees are still owed for games already played, pay them first.
+- **Low-balance email:** you and the program's director are emailed when its Available drops below the level set on its page.
+
+### Paying referees from reserves
+On **Payouts**, choose **Pay…** next to a referee and pick the program under **Which program is paying?** Programs on a reserve say *from its reserve*. If more than one reserve program owes the referee, **All N reserve programs together** pays them all in one go: one Venmo payment, recorded against each program's reserve for its own games, and the referee confirms it once with **Got it**.
+
+![Paying from two reserves at once](/help/img/as-pay-reserves.png)
+
+The balance goes down when you mark a referee paid, not when the game is played, so it matches the money you're actually holding. It can go below zero (so a referee who worked is never left unpaid); the program then shows as owing the reserve.
+
 ## Your referees
 
 Referees have their own guide: the [Referee guide](/help/referee).

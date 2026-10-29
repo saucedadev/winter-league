@@ -53,7 +53,7 @@ const confirmed = computed(() => payments.value.filter((p) => p.confirmedAt));
 const confirming = ref('');
 async function gotIt(p) {
   confirming.value = p.id;
-  try { await api.post(`/referees/me/payments/${p.id}/confirm`); toast.success(`Thanks. ${p.programName} can see you received it.`); await load(); }
+  try { await api.post(`/referees/me/payments/${p.id}/confirm`); toast.success(`Thanks. ${p.fromReserve ? 'The assignor' : p.programName} can see you received it.`); await load(); }
   catch (err) { toast.error(errorMessage(err)); }
   finally { confirming.value = ''; }
 }
@@ -144,9 +144,9 @@ const STATUS = { checked_in: 'Worked', no_show: 'No-show', assigned: 'Not confir
       <!-- Payments to confirm -->
       <section v-for="p in toConfirm" :key="p.id" class="card p-4 mb-4 border-2 !border-accent flex flex-wrap items-center gap-3">
         <div class="flex-1 min-w-[14rem] text-sm">
-          <p class="font-semibold">{{ p.programName }} paid you {{ money(p.amountCents) }}</p>
-          <p class="text-text-muted">By {{ p.method }} on {{ monthDay(p.paidOn) }} · {{ p.games }} game{{ p.games === 1 ? '' : 's' }}<template v-if="p.note"> · “{{ p.note }}”</template></p>
-          <p class="text-xs text-text-muted mt-0.5">Once it’s arrived, let them know.</p>
+          <p class="font-semibold">{{ p.fromReserve ? 'The referee assignor' : p.programName }} paid you {{ money(p.amountCents) }}</p>
+          <p class="text-text-muted"><template v-if="p.fromReserve">From {{ p.programName }}’s referee reserve · </template>By {{ p.method }} on {{ monthDay(p.paidOn) }} · {{ p.games }} game{{ p.games === 1 ? '' : 's' }}<template v-if="p.note"> · “{{ p.note }}”</template></p>
+          <p class="text-xs text-text-muted mt-0.5">Once it’s arrived, let {{ p.fromReserve ? 'the assignor' : 'them' }} know.</p>
         </div>
         <button class="btn btn-primary" :disabled="confirming === p.id" @click="gotIt(p)">{{ confirming === p.id ? 'Saving…' : 'Got it' }}</button>
       </section>

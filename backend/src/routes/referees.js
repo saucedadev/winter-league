@@ -15,7 +15,9 @@ import {
   payRate, milesBetween, autoFill, lowerFirst, payersFor, splitCents, paidByLabel,
 } from '../referees/data.js';
 import { leagueTimestamp, leagueZoneLabel } from '../utils/leagueTime.js';
-import { PAYMENT_METHODS, PAID_WITH, RECENT_CHANGE_DAYS } from '../referees/payMethods.js';
+import { PAYMENT_METHODS, PAID_WITH } from '../referees/payMethods.js';
+import { methodsFor, payoutRows } from '../referees/payouts.js';
+import { checkReserveAlert } from '../referees/reserve.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -58,23 +60,6 @@ router.put('/settings', managers, ah(async (req, res) => {
 // =====================================================================
 // Payment methods (how a referee gets paid: Venmo for now)
 // =====================================================================
-// userId -> { venmo: { handle, display, updatedAt, recentlyChanged } }
-async function methodsFor(userIds) {
-  const out = new Map(userIds.map((id) => [id, {}]));
-  if (!userIds.length) return out;
-  const cutoff = new Date(Date.now() - RECENT_CHANGE_DAYS * 86400000).toISOString().slice(0, 19).replace('T', ' ');
-  for (let i = 0; i < userIds.length; i += 500) {
-    const chunk = userIds.slice(i, i + 500);
-    const rows = await all(`SELECT user_id, method, handle, updated_at FROM referee_payment_methods WHERE user_id IN (${chunk.map(() => '?').join(',')})`, chunk);
-    for (const r of rows) {
-      const m = PAYMENT_METHODS[r.method];
-      if (!m) continue; // a method no longer offered
-      out.get(r.userId)[r.method] = { handle: r.handle, display: m.show(r.handle), updatedAt: r.updatedAt, recentlyChanged: r.updatedAt >= cutoff };
-    }
-  }
-  return out;
-}
-
 // Saves the methods given in `body` (e.g. { venmo: 'name' }, or '' to remove
 // one). Any change is logged and emailed to the referee, so a username can't
 // be swapped without them knowing.
@@ -383,21 +368,33 @@ router.put('/me/payment-methods', refereeOnly, ah(async (req, res) => {
   res.json({ paymentMethods: (await methodsFor([req.user.id])).get(req.user.id) });
 }));
 
-// Payments programs have marked as paid to this referee, newest first.
+// Payments marked as paid to this referee, newest first. Payments made
+// together (the assignor paying from several programs' reserves at once) come
+// back as one, since they arrived as one transfer.
 router.get('/me/payments', refereeOnly, ah(async (req, res) => {
   const rows = await all(`SELECT p.*, pr.name AS program_name, (SELECT COUNT(*) FROM referee_payment_items i WHERE i.payment_id = p.id) AS games
     FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.referee_id = ? ORDER BY p.paid_on DESC, p.created_at DESC`, [req.user.id]);
-  res.json({ payments: rows.map((p) => ({ id: p.id, programName: p.programName, amountCents: p.amountCents, method: PAID_WITH[p.method] || p.method,
-    paidOn: p.paidOn, note: p.note, games: Number(p.games), confirmedAt: p.confirmedAt })) });
+  const groups = new Map();
+  for (const p of rows) {
+    const key = p.batchId || p.id;
+    if (!groups.has(key)) groups.set(key, { id: p.id, programs: [], amountCents: 0, games: 0, method: PAID_WITH[p.method] || p.method, paidOn: p.paidOn, note: p.note, confirmedAt: p.confirmedAt, fromReserve: false });
+    const g = groups.get(key);
+    g.programs.push(p.programName); g.amountCents += p.amountCents; g.games += Number(p.games);
+    g.fromReserve = g.fromReserve || !!p.fromReserve;
+    if (!p.confirmedAt) g.confirmedAt = null;
+  }
+  res.json({ payments: [...groups.values()].map((g) => ({ ...g, programName: g.programs.length === 1 ? g.programs[0] : `${g.programs.slice(0, -1).join(', ')} and ${g.programs.at(-1)}` })) });
 }));
-// "Got it": the referee confirms the money arrived.
+// "Got it": the referee confirms the money arrived (for every payment made with it).
 router.post('/me/payments/:id/confirm', refereeOnly, ah(async (req, res) => {
-  const p = await one('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.id = ? AND p.referee_id = ?', [req.params.id, req.user.id]);
+  const p = await one('SELECT * FROM referee_payments WHERE id = ? AND referee_id = ?', [req.params.id, req.user.id]);
   if (!p) throw notFound('Payment');
-  if (!p.confirmedAt) {
-    await run("UPDATE referee_payments SET confirmed_at = datetime('now') WHERE id = ?", [p.id]);
-    await logActivity({ category: 'referee', action: 'payment received', actor: req.user, programId: p.programId,
-      details: `${refName(req.user)} confirmed receiving ${money(p.amountCents)} from ${p.programName} (${PAID_WITH[p.method] || p.method}, ${p.paidOn})` });
+  const group = p.batchId ? await all('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.batch_id = ? AND p.referee_id = ?', [p.batchId, req.user.id])
+    : await all('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.id = ?', [p.id]);
+  for (const x of group.filter((g) => !g.confirmedAt)) {
+    await run("UPDATE referee_payments SET confirmed_at = datetime('now') WHERE id = ?", [x.id]);
+    await logActivity({ category: 'referee', action: 'payment received', actor: req.user, programId: x.programId,
+      details: `${refName(req.user)} confirmed receiving ${money(x.amountCents)} from ${x.programName}${x.fromReserve ? '’s reserve' : ''} (${PAID_WITH[x.method] || x.method}, ${x.paidOn})` });
   }
   res.json({ ok: true });
 }));
@@ -431,96 +428,6 @@ router.delete('/me/unavailability/:id', refereeOnly, ah(async (req, res) => {
 // =====================================================================
 // Payouts — CSV export only; no money moves through this app.
 // =====================================================================
-// One row per PAYMENT: a referee on a game, and the program that pays them
-// (see payersFor). A referee the two programs split appears as two rows of half.
-// programId limits the rows to what that program pays (what a Program Director
-// sees). Leave it out for the whole league.
-async function payoutRows(from, to, programId = null) {
-  const settings = await getRefSettings();
-  const rows = await all(`SELECT a.id, a.game_id, a.position, a.referee_id, a.checked_in_at, a.check_in_method, a.check_in_distance_miles, a.pay_cents,
-      u.first_name, u.last_name, u.email, u.username, rp.pay_rate_cents,
-      g.date, g.start_time, g.end_time, g.home_score, g.away_score, d.name AS division_name,
-      ht.name AS home_team_name, at.name AS away_team_name, hp.name AS home_program_name, ap.name AS away_program_name,
-      ht.program_id AS home_program_id, at.program_id AS away_program_id,
-      hp.is_guest AS home_is_guest, ap.is_guest AS away_is_guest,
-      v.name AS venue_name, c.name AS court_name
-    FROM referee_assignments a
-    JOIN users u ON u.id = a.referee_id LEFT JOIN referee_profiles rp ON rp.user_id = u.id
-    JOIN games g ON g.id = a.game_id JOIN schedule_runs r ON r.id = g.run_id
-    JOIN divisions d ON d.id = g.division_id
-    JOIN teams ht ON ht.id = g.home_team_id JOIN programs hp ON hp.id = ht.program_id
-    JOIN teams at ON at.id = g.away_team_id JOIN programs ap ON ap.id = at.program_id
-    JOIN courts c ON c.id = g.court_id JOIN venues v ON v.id = c.venue_id
-    WHERE a.status = 'checked_in' AND g.status != 'cancelled' AND r.status IN ('published', 'superseded') AND g.date BETWEEN ? AND ?
-      ${programId ? 'AND ? IN (ht.program_id, at.program_id)' : ''}
-    ORDER BY u.last_name COLLATE NOCASE, u.first_name COLLATE NOCASE, g.date, g.start_time`,
-  programId ? [from, to, programId] : [from, to]);
-
-  // Every referee slot on those games, to work out who pays whom.
-  const gameIds = [...new Set(rows.map((r) => r.gameId))];
-  const crew = new Map(gameIds.map((id) => [id, []]));
-  for (let i = 0; i < gameIds.length; i += 500) {
-    const chunk = gameIds.slice(i, i + 500);
-    const slots = await all(`SELECT a.id, a.game_id, a.position, a.referee_id, a.status, u.first_name || ' ' || u.last_name AS referee_name
-      FROM referee_assignments a LEFT JOIN users u ON u.id = a.referee_id WHERE a.game_id IN (${chunk.map(() => '?').join(',')}) ORDER BY a.position`, chunk);
-    for (const x of slots) crew.get(x.gameId).push(x);
-  }
-  const payers = new Map(); // gameId -> Map(assignmentId -> shares)
-  const detail = [];
-  for (const r of rows) {
-    if (!payers.has(r.gameId)) payers.set(r.gameId, payersFor(r, crew.get(r.gameId)));
-    const forGame = payers.get(r.gameId);
-    // Guest teams are marked in names so exports never mix them up with league teams.
-    const home = `${r.homeTeamName}${r.homeIsGuest ? ' (guest)' : ''}`;
-    const away = `${r.awayTeamName}${r.awayIsGuest ? ' (guest)' : ''}`;
-    const fullCents = r.payCents ?? payRate(r.payRateCents, settings);
-    const shares = splitCents(fullCents, forGame.get(r.id) || []);
-    // The rest of the crew and who pays them, so a program can see nothing is missing.
-    const others = crew.get(r.gameId).filter((x) => x.id !== r.id && forGame.has(x.id))
-      .map((x) => ({ name: x.refereeName, position: x.position, paidBy: paidByLabel(forGame.get(x.id)) }));
-    for (const sh of shares) {
-      if (programId && sh.programId !== programId) continue;
-      detail.push({ ...r, id: `${r.id}:${sh.programId}`, assignmentId: r.id, homeTeamName: home, awayTeamName: away, isGuestGame: !!(r.homeIsGuest || r.awayIsGuest),
-        matchup: `${home} vs ${away}`, fullCents, amountCents: sh.cents, isSplit: shares.length > 1,
-        paidByProgramId: sh.programId, paidByName: sh.programName, paidByIsGuest: sh.isGuest,
-        splitWith: shares.length > 1 ? shares.find((x) => x.programId !== sh.programId)?.programName : null, others });
-    }
-  }
-  // What each program has already marked as paid for each of these games.
-  const paidBy = new Map(); // `${assignmentId}:${programId}` -> cents
-  const aIds = [...new Set(detail.map((d) => d.assignmentId))];
-  for (let i = 0; i < aIds.length; i += 500) {
-    const chunk = aIds.slice(i, i + 500);
-    const rows = await all(`SELECT i.assignment_id, p.program_id, SUM(i.amount_cents) AS cents FROM referee_payment_items i
-      JOIN referee_payments p ON p.id = i.payment_id WHERE i.assignment_id IN (${chunk.map(() => '?').join(',')}) GROUP BY i.assignment_id, p.program_id`, chunk);
-    for (const r of rows) paidBy.set(`${r.assignmentId}:${r.programId}`, Number(r.cents));
-  }
-  for (const d of detail) {
-    d.paidCents = paidBy.get(d.id) || 0;
-    d.outstandingCents = Math.max(0, d.amountCents - d.paidCents);
-    d.payStatus = d.outstandingCents === 0 ? 'paid' : d.paidCents ? 'part' : 'unpaid';
-  }
-
-  const byRef = new Map();
-  const byProgram = new Map();
-  const counted = new Set();
-  for (const d of detail) {
-    if (!byRef.has(d.refereeId)) byRef.set(d.refereeId, { refereeId: d.refereeId, name: `${d.firstName} ${d.lastName}`, email: d.email, username: d.username, games: 0, totalCents: 0, paidCents: 0, unpaidCents: 0 });
-    const s = byRef.get(d.refereeId);
-    if (!counted.has(d.assignmentId)) { counted.add(d.assignmentId); s.games++; }
-    s.totalCents += d.amountCents; s.paidCents += Math.min(d.paidCents, d.amountCents); s.unpaidCents += d.outstandingCents;
-    if (!byProgram.has(d.paidByProgramId)) byProgram.set(d.paidByProgramId, { programId: d.paidByProgramId, name: d.paidByName, isGuest: d.paidByIsGuest, payments: 0, totalCents: 0, paidCents: 0, unpaidCents: 0 });
-    const p = byProgram.get(d.paidByProgramId);
-    p.payments++; p.totalCents += d.amountCents; p.paidCents += Math.min(d.paidCents, d.amountCents); p.unpaidCents += d.outstandingCents;
-  }
-  const summary = [...byRef.values()];
-  const methods = await methodsFor(summary.map((s) => s.refereeId));
-  for (const s of summary) s.paymentMethods = methods.get(s.refereeId);
-  const programs = [...byProgram.values()].sort((a, b) => a.name.localeCompare(b.name));
-  const sum = (k) => summary.reduce((x, s) => x + s[k], 0);
-  return { detail, summary, programs, totals: { referees: summary.length, games: counted.size, totalCents: sum('totalCents'), paidCents: sum('paidCents'), unpaidCents: sum('unpaidCents') } };
-}
-
 const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const toCsv = (header, rows) => [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 
@@ -542,7 +449,8 @@ router.get('/payouts', requireRole('super_admin', 'referee_assignor', 'program_d
     WHERE a.referee_id IS NOT NULL AND a.status = 'assigned' AND r.status = 'published' AND g.status = 'scheduled'
       AND g.date BETWEEN ? AND ? AND g.date <= ?${scopeProgram ? ' AND ? IN (ht.program_id, at.program_id)' : ''}`,
   scopeProgram ? [from, to, today(), scopeProgram] : [from, to, today()]);
-  if (req.query.format !== 'csv') return res.json({ ...data, unconfirmed: Number(pending.n), scope: scopeProgram ? 'program' : 'league' });
+  const programMode = scopeProgram ? (await one('SELECT referee_pay_mode FROM programs WHERE id = ?', [scopeProgram]))?.refereePayMode || 'direct' : null;
+  if (req.query.format !== 'csv') return res.json({ ...data, unconfirmed: Number(pending.n), scope: scopeProgram ? 'program' : 'league', programMode });
 
   const type = ['detail', 'programs'].includes(req.query.type) ? req.query.type : 'summary';
   const usd = (c) => (c / 100).toFixed(2);
@@ -582,66 +490,102 @@ async function paymentsFor(data, scopeProgram, user) {
   const league = ['super_admin', 'referee_assignor'].includes(user.role);
   return rows.map((p) => ({ id: p.id, refereeId: p.refereeId, programId: p.programId, programName: p.programName, method: p.method, methodLabel: PAID_WITH[p.method] || p.method,
     amountCents: p.amountCents, paidOn: p.paidOn, note: p.note, games: Number(p.games), recordedByName: p.recordedByName, createdAt: p.createdAt, confirmedAt: p.confirmedAt,
-    canUndo: league || (p.programId === user.programId && !p.confirmedAt) }));
+    fromReserve: !!p.fromReserve, batchId: p.batchId,
+    canUndo: league || (p.programId === user.programId && !p.confirmedAt && !p.fromReserve) }));
 }
 
 // ---- POST /api/referees/payments ----  Mark as paid.
-// { refereeId, programId (league only; a director always pays for their own
-//   program), assignmentIds: [...], method, paidOn, note }
-// Each game must still be owed by that program; what's recorded is what was
-// still owed for it.
+// { refereeId, method, paidOn, note, and either
+//   programId + assignmentIds: [...]          (one program), or
+//   items: [{ assignmentId, programId }, ...]  (several programs at once: the
+//                                              assignor paying from reserves) }
+// A director always pays for their own program, and only when it pays its
+// referees directly; a program on a reserve is paid by the assignor, and the
+// payment comes out of its reserve. Each game must still be owed by its
+// program; what's recorded is what was still owed. Payments made together share
+// a batch, so the referee confirms them with one "Got it".
 router.post('/payments', requireRole('super_admin', 'referee_assignor', 'program_director'), ah(async (req, res) => {
   const b = req.body || {};
-  const programId = req.user.role === 'program_director' ? req.user.programId : b.programId;
-  if (!programId) throw badRequest('Choose which program made the payment.');
-  const program = await one('SELECT id, name FROM programs WHERE id = ?', [programId]);
-  if (!program) throw notFound('Program');
+  const isDirector = req.user.role === 'program_director';
   const referee = await one("SELECT * FROM users WHERE id = ? AND role = 'referee'", [b.refereeId]);
   if (!referee) throw notFound('Referee');
   if (!PAID_WITH[b.method]) throw badRequest('Choose how it was paid.');
   assertDate(b.paidOn, 'Paid on');
   if (b.paidOn > today()) throw badRequest('The payment date can’t be in the future.');
-  const ids = [...new Set(Array.isArray(b.assignmentIds) ? b.assignmentIds : [])];
-  if (!ids.length) throw badRequest('Choose at least one game.');
+  let wanted = Array.isArray(b.items) && b.items.length
+    ? b.items.map((i) => ({ assignmentId: i.assignmentId, programId: i.programId }))
+    : (Array.isArray(b.assignmentIds) ? b.assignmentIds : []).map((id) => ({ assignmentId: id, programId: b.programId }));
+  if (isDirector) wanted = wanted.map((w) => ({ ...w, programId: req.user.programId }));
+  if (!wanted.length) throw badRequest('Choose at least one game.');
+  if (wanted.some((w) => !w.programId)) throw badRequest('Choose which program made the payment.');
 
-  const owed = (await payoutRows('0000-01-01', '9999-12-31', programId)).detail.filter((d) => d.refereeId === referee.id && ids.includes(d.assignmentId));
-  if (owed.length !== ids.length) throw conflict(`Some of those games aren’t owed by ${program.name} any more. Refresh the page and try again.`);
-  if (owed.some((d) => d.outstandingCents <= 0)) throw conflict('Some of those games are already marked as paid. Refresh the page to see the latest.');
-  const amount = owed.reduce((n, d) => n + d.outstandingCents, 0);
-  const id = newId();
+  const byProgram = new Map();
+  for (const w of wanted) { if (!byProgram.has(w.programId)) byProgram.set(w.programId, new Set()); byProgram.get(w.programId).add(w.assignmentId); }
+  const season = await one('SELECT id FROM seasons WHERE is_active = 1');
+  const batchId = newId();
+  const stmts = [];
+  const made = [];
+  for (const [programId, idSet] of byProgram) {
+    const program = await one('SELECT id, name, referee_pay_mode FROM programs WHERE id = ?', [programId]);
+    if (!program) throw notFound('Program');
+    const fromReserve = program.refereePayMode === 'reserve';
+    if (isDirector && fromReserve) throw forbidden(`${program.name} pays its referees from its reserve: the referee assignor pays them, and it comes out of the reserve.`);
+    const ids = [...idSet];
+    const owed = (await payoutRows('0000-01-01', '9999-12-31', programId)).detail.filter((d) => d.refereeId === referee.id && ids.includes(d.assignmentId));
+    if (owed.length !== ids.length) throw conflict(`Some of those games aren’t owed by ${program.name} any more. Refresh the page and try again.`);
+    if (owed.some((d) => d.outstandingCents <= 0)) throw conflict('Some of those games are already marked as paid. Refresh the page to see the latest.');
+    const amount = owed.reduce((n, d) => n + d.outstandingCents, 0);
+    const id = newId();
+    stmts.push({ sql: `INSERT INTO referee_payments (id, referee_id, program_id, method, amount_cents, paid_on, note, recorded_by, from_reserve, season_id, batch_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args: [id, referee.id, programId, b.method, amount, b.paidOn, trimOrNull(b.note)?.slice(0, 300) || null, req.user.id, fromReserve ? 1 : 0, season?.id || null, batchId] });
+    for (const d of owed) stmts.push({ sql: 'INSERT INTO referee_payment_items (payment_id, assignment_id, amount_cents, game_date, game_label) VALUES (?, ?, ?, ?, ?)',
+      args: [id, d.assignmentId, d.outstandingCents, d.date, `${d.matchup} · ${d.divisionName}`] });
+    made.push({ id, program, amount, games: owed.length, fromReserve });
+  }
+  await db.batch(stmts, 'write');
   const note = trimOrNull(b.note)?.slice(0, 300) || null;
-  await db.batch([
-    { sql: 'INSERT INTO referee_payments (id, referee_id, program_id, method, amount_cents, paid_on, note, recorded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      args: [id, referee.id, programId, b.method, amount, b.paidOn, note, req.user.id] },
-    ...owed.map((d) => ({ sql: 'INSERT INTO referee_payment_items (payment_id, assignment_id, amount_cents, game_date, game_label) VALUES (?, ?, ?, ?, ?)',
-      args: [id, d.assignmentId, d.outstandingCents, d.date, `${d.matchup} · ${d.divisionName}`] })),
-  ], 'write');
-  const what = `${money(amount)} for ${owed.length} game${owed.length === 1 ? '' : 's'}`;
-  await logActivity({ category: 'referee', action: 'payment', actor: req.user, programId,
-    details: `${program.name} paid ${refName(referee)} ${what} (${PAID_WITH[b.method]}, ${b.paidOn})${note ? `: ${note}` : ''}` });
-  await notifyUsers('id = ?', [referee.id], `${program.name} marked a payment to you`,
-    `${program.name} marked ${what} as paid by ${PAID_WITH[b.method]} on ${b.paidOn}.${note ? `\nNote: ${note}` : ''}\n\nWhen it arrives, open My games and choose Got it, so they know you received it.`,
+  const total = made.reduce((n, m) => n + m.amount, 0);
+  const games = made.reduce((n, m) => n + m.games, 0);
+  for (const m of made) {
+    await logActivity({ category: 'referee', action: 'payment', actor: req.user, programId: m.program.id,
+      details: `${m.program.name} paid ${refName(referee)} ${money(m.amount)} for ${m.games} game${m.games === 1 ? '' : 's'}${m.fromReserve ? ' from its reserve' : ''} (${PAID_WITH[b.method]}, ${b.paidOn})${note ? `: ${note}` : ''}` });
+  }
+  const names = made.map((m) => m.program.name);
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  const anyReserve = made.some((m) => m.fromReserve);
+  await notifyUsers('id = ?', [referee.id], anyReserve ? 'The referee assignor marked a payment to you' : `${who} marked a payment to you`,
+    `${anyReserve ? `The referee assignor marked ${money(total)} as paid to you, from ${who}’s referee reserve${names.length === 1 ? '' : 's'},` : `${who} marked ${money(total)} as paid`} by ${PAID_WITH[b.method]} on ${b.paidOn}, for ${games} game${games === 1 ? '' : 's'}.${note ? `\nNote: ${note}` : ''}\n\nWhen it arrives, open My games and choose Got it, so they know you received it.`,
     { label: 'Open My games', url: '/my-games' });
-  res.status(201).json({ payment: { id, amountCents: amount, games: owed.length } });
+  for (const m of made) if (m.fromReserve) await checkReserveAlert(m.program.id);
+  res.status(201).json({ payment: { id: made[0].id, batchId, amountCents: total, games, payments: made.map((m) => ({ id: m.id, programId: m.program.id, amountCents: m.amount, fromReserve: m.fromReserve })) } });
 }));
 
 // ---- DELETE /api/referees/payments/:id ----  Undo a mark (e.g. marked by mistake).
+// Payments made together (one batch) are undone together.
 router.delete('/payments/:id', requireRole('super_admin', 'referee_assignor', 'program_director'), ah(async (req, res) => {
-  const p = await one('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.id = ?', [req.params.id]);
-  if (!p) throw notFound('Payment');
+  const first = await one('SELECT * FROM referee_payments WHERE id = ?', [req.params.id]);
+  if (!first) throw notFound('Payment');
+  const group = first.batchId
+    ? await all('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.batch_id = ?', [first.batchId])
+    : await all('SELECT p.*, pr.name AS program_name FROM referee_payments p JOIN programs pr ON pr.id = p.program_id WHERE p.id = ?', [first.id]);
   if (req.user.role === 'program_director') {
-    if (p.programId !== req.user.programId) throw forbidden('That payment belongs to another program.');
-    if (p.confirmedAt) throw conflict('The referee has already confirmed receiving this payment. Ask the league if it needs to be undone.');
+    if (group.some((p) => p.programId !== req.user.programId)) throw forbidden('That payment belongs to another program.');
+    if (group.some((p) => p.fromReserve)) throw forbidden('Payments from your reserve are made by the referee assignor. Ask them if one needs to be undone.');
+    if (group.some((p) => p.confirmedAt)) throw conflict('The referee has already confirmed receiving this payment. Ask the league if it needs to be undone.');
   }
-  const referee = await one('SELECT * FROM users WHERE id = ?', [p.refereeId]);
-  await run('DELETE FROM referee_payment_items WHERE payment_id = ?', [p.id]);
-  await run('DELETE FROM referee_payments WHERE id = ?', [p.id]);
-  await logActivity({ category: 'referee', action: 'payment undone', actor: req.user, programId: p.programId,
-    details: `Undid ${p.programName}’s payment of ${money(p.amountCents)} to ${referee ? refName(referee) : 'a referee'} (${PAID_WITH[p.method] || p.method}, ${p.paidOn})` });
-  if (referee) await notifyUsers('id = ?', [referee.id], `A payment from ${p.programName} was taken back off the record`,
-    `${p.programName}’s payment of ${money(p.amountCents)} (${PAID_WITH[p.method] || p.method}, ${p.paidOn}) was marked by mistake and has been removed from the record. Those games show as unpaid again.`,
+  const referee = await one('SELECT * FROM users WHERE id = ?', [first.refereeId]);
+  for (const p of group) {
+    await run('DELETE FROM referee_payment_items WHERE payment_id = ?', [p.id]);
+    await run('DELETE FROM referee_payments WHERE id = ?', [p.id]);
+    await logActivity({ category: 'referee', action: 'payment undone', actor: req.user, programId: p.programId,
+      details: `Undid ${p.programName}’s payment of ${money(p.amountCents)} to ${referee ? refName(referee) : 'a referee'}${p.fromReserve ? ' (from its reserve)' : ''} (${PAID_WITH[p.method] || p.method}, ${p.paidOn})` });
+  }
+  const total = group.reduce((n, p) => n + p.amountCents, 0);
+  if (referee) await notifyUsers('id = ?', [referee.id], 'A payment was taken back off the record',
+    `A payment of ${money(total)} (${PAID_WITH[first.method] || first.method}, ${first.paidOn}) from ${group.map((p) => p.programName).join(' and ')} was marked by mistake and has been removed from the record. Those games show as unpaid again.`,
     { label: 'Open My games', url: '/my-games' });
-  res.json({ ok: true });
+  for (const p of group) if (p.fromReserve) await checkReserveAlert(p.programId);
+  res.json({ ok: true, undone: group.length });
 }));
 
 export default router;

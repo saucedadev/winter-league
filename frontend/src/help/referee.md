@@ -53,7 +53,7 @@ Programs pay you directly; no money moves through the app. The quickest way for 
 
 ![Your Venmo code](/help/img/ref-venmo-code.png)
 
-**When a program pays you,** they mark it as paid and you get an email. A card at the top of My games shows who paid, how much, and how. Once the money has arrived, choose **Got it** so they know you received it. Paid games show **Paid ✓** under **Past games**, and confirmed payments are listed under **Payments received**.
+**When a program pays you,** they mark it as paid and you get an email. Some programs prepay the Referee Assignor instead; then the assignor pays you, and the card says which programs' reserves it came from (one payment can cover games for several programs). A card at the top of My games shows who paid, how much, and how. Once the money has arrived, choose **Got it** so they know you received it. Paid games show **Paid ✓** under **Past games**, and confirmed payments are listed under **Payments received**.
 
 ![A payment to confirm](/help/img/ref-got-it.png)
 

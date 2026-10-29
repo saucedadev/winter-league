@@ -75,26 +75,37 @@ const STATUS = { paid: ['Paid', 'bg-success text-black'], part: ['Partly paid', 
 const paying = ref(null); // { s, programId, selected: [assignmentId], method, paidOn, note }
 const payError = ref('');
 const saving = ref(false);
-const owedTo = (s, programId) => data.value.detail.filter((d) => d.refereeId === s.refereeId && d.outstandingCents > 0 && (!programId || d.paidByProgramId === programId));
+// A director whose program is on a reserve doesn't pay referees: the assignor does.
+const directorOnReserve = computed(() => isProgram.value && data.value?.programMode === 'reserve');
+// '__reserve': the league paying a referee from every reserve program that owes them, in one go.
+const ALL_RESERVES = '__reserve';
+const owedTo = (s, programId) => data.value.detail.filter((d) => d.refereeId === s.refereeId && d.outstandingCents > 0
+  && (!programId || (programId === ALL_RESERVES ? d.payerMode === 'reserve' : d.paidByProgramId === programId)));
 // Programs that still owe this referee (the league view picks one per payment).
 const payerChoices = computed(() => {
   if (!paying.value) return [];
   const m = new Map();
-  for (const d of owedTo(paying.value.s)) m.set(d.paidByProgramId, d.paidByName);
-  return [...m.entries()];
+  for (const d of owedTo(paying.value.s)) m.set(d.paidByProgramId, `${d.paidByName}${d.payerMode === 'reserve' ? ' · from its reserve' : ''}`);
+  const list = [...m.entries()];
+  const reserves = new Set(owedTo(paying.value.s, ALL_RESERVES).map((d) => d.paidByProgramId));
+  if (reserves.size > 1) list.unshift([ALL_RESERVES, `All ${reserves.size} reserve programs together`]);
+  return list;
 });
 function openPay(s) {
   payError.value = '';
   const choices = new Set(owedTo(s).map((d) => d.paidByProgramId));
-  const programId = isProgram.value ? auth.user.programId : ctx.programId || (choices.size === 1 ? [...choices][0] : '');
+  const reserves = new Set(owedTo(s, ALL_RESERVES).map((d) => d.paidByProgramId));
+  const programId = isProgram.value ? auth.user.programId : ctx.programId || (choices.size === 1 ? [...choices][0] : reserves.size > 1 && reserves.size === choices.size ? ALL_RESERVES : '');
   paying.value = { s, programId, selected: [], method: venmoOf(s) ? 'venmo' : 'check', paidOn: today, note: '' };
   selectAll();
 }
-function selectAll() { paying.value.selected = owedTo(paying.value.s, paying.value.programId).map((d) => d.assignmentId); }
+function selectAll() { paying.value.selected = owedTo(paying.value.s, paying.value.programId).map((d) => d.id); }
 const payItems = computed(() => (paying.value ? owedTo(paying.value.s, paying.value.programId) : []));
-const chosen = computed(() => payItems.value.filter((d) => paying.value.selected.includes(d.assignmentId)));
+const chosen = computed(() => payItems.value.filter((d) => paying.value.selected.includes(d.id)));
+const payFromReserve = computed(() => chosen.value.some((d) => d.payerMode === 'reserve'));
+const manyPayers = computed(() => new Set(payItems.value.map((d) => d.paidByProgramId)).size > 1);
 const payTotal = computed(() => chosen.value.reduce((n, d) => n + d.outstandingCents, 0));
-const programName = computed(() => payItems.value[0]?.paidByName || '');
+const programName = computed(() => { const names = [...new Set(chosen.value.map((d) => d.paidByName))]; return names.length > 1 ? `${names.length} programs` : names[0] || ''; });
 const payNote = computed(() => {
   const dates = chosen.value.map((d) => d.date).sort();
   return dates.length ? `${branding.appName} referee · ${chosen.value.length} game${chosen.value.length === 1 ? '' : 's'}, ${dateRange(dates[0], dates.at(-1))} · ${programName.value}` : '';
@@ -110,7 +121,7 @@ async function markPaid() {
   payError.value = '';
   saving.value = true;
   try {
-    await api.post('/referees/payments', { refereeId: p.s.refereeId, programId: p.programId, assignmentIds: p.selected, method: p.method, paidOn: p.paidOn, note: p.note });
+    await api.post('/referees/payments', { refereeId: p.s.refereeId, items: chosen.value.map((d) => ({ assignmentId: d.assignmentId, programId: d.paidByProgramId })), method: p.method, paidOn: p.paidOn, note: p.note });
     toast.success(`Marked ${money(payTotal.value)} as paid to ${p.s.name}. They’ve been emailed to confirm.`);
     paying.value = null;
     await load();
@@ -155,6 +166,9 @@ async function undo() {
           They aren’t included below. Confirm who worked on the <RouterLink to="/assignments" class="underline">Assignments</RouterLink> page (Mark as worked or Mark no-show) before paying.</p>
       </div>
 
+      <div v-if="directorOnReserve" class="card card-blocky border-l-4 !border-l-success px-4 py-3 mb-4 text-sm">
+        <p><span class="font-medium">Your program pays referees from its reserve.</span> The referee assignor pays them and it comes out of your reserve, so there’s nothing to pay here. This page shows who’s been paid. See <RouterLink to="/reserve" class="underline">Referee reserve</RouterLink> for your balance.</p>
+      </div>
       <div class="card card-blocky border-l-4 border-l-accent px-4 py-3 mb-4 text-sm">
         <p><span class="font-medium">Who pays:</span> the home program pays Referee 1 and the away program pays Referee 2. If only one referee worked a game, the two programs pay half each. Guest programs pay their referee the same way. For a game between two of a program’s own teams, that program pays both.</p>
       </div>
@@ -210,7 +224,8 @@ async function undo() {
               </span>
               <span class="text-text-muted text-xs w-4" aria-hidden="true">{{ expanded === s.refereeId ? '▾' : '▸' }}</span>
             </button>
-            <button v-if="s.unpaidCents" class="btn btn-primary !py-1.5 shrink-0" @click="openPay(s)">Pay…</button>
+            <button v-if="s.unpaidCents && !directorOnReserve" class="btn btn-primary !py-1.5 shrink-0" @click="openPay(s)">Pay…</button>
+            <span v-else-if="s.unpaidCents" class="badge badge-outline shrink-0">Assignor pays</span>
             <span v-else class="badge bg-success text-black shrink-0">Paid</span>
           </div>
 
@@ -236,7 +251,7 @@ async function undo() {
               <ul class="divide-y divide-border">
                 <li v-for="p in paymentsFor(s.refereeId)" :key="p.id" class="px-3 py-2 text-xs flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span class="font-medium tabular-nums">{{ money(p.amountCents) }}</span>
-                  <span>{{ p.methodLabel }} · {{ monthDay(p.paidOn) }}<template v-if="!oneProgram"> · {{ p.programName }}</template> · {{ p.games }} game{{ p.games === 1 ? '' : 's' }}</span>
+                  <span>{{ p.methodLabel }} · {{ monthDay(p.paidOn) }}<template v-if="!oneProgram"> · {{ p.programName }}</template> · {{ p.games }} game{{ p.games === 1 ? '' : 's' }}<span v-if="p.fromReserve" class="badge badge-outline ml-1">from reserve</span></span>
                   <span class="text-text-muted">marked by {{ p.recordedByName || 'someone' }}</span>
                   <span v-if="p.note" class="text-text-muted italic">“{{ p.note }}”</span>
                   <span class="ml-auto" :class="p.confirmedAt ? 'font-semibold' : 'text-text-muted'">{{ p.confirmedAt ? `Referee confirmed ✓ ${monthDay(p.confirmedAt.slice(0, 10))}` : 'Waiting for the referee to confirm' }}</span>
@@ -266,9 +281,9 @@ async function undo() {
             <ul class="rounded-lg border border-border divide-y divide-border max-h-56 overflow-y-auto">
               <li v-for="d in payItems" :key="d.id">
                 <label class="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer">
-                  <input v-model="paying.selected" type="checkbox" :value="d.assignmentId" class="w-4 h-4 accent-[var(--color-accent)]" />
+                  <input v-model="paying.selected" type="checkbox" :value="d.id" class="w-4 h-4 accent-[var(--color-accent)]" />
                   <span class="w-14 sm:w-20 shrink-0">{{ monthDay(d.date) }}</span>
-                  <span class="flex-1 min-w-0 truncate">{{ d.matchup }}<span v-if="d.isSplit" class="text-text-muted"> · half</span></span>
+                  <span class="flex-1 min-w-0 truncate">{{ d.matchup }}<span v-if="d.isSplit" class="text-text-muted"> · half</span><span v-if="manyPayers" class="block text-xs text-text-muted truncate">{{ d.paidByName }}</span></span>
                   <span class="tabular-nums">{{ money(d.outstandingCents) }}</span>
                 </label>
               </li>
@@ -294,7 +309,7 @@ async function undo() {
 
           <section class="rounded-lg border border-border p-4">
             <h3 class="text-sm font-semibold">2. Mark as paid</h3>
-            <p class="text-xs text-text-muted mb-3">After the money is sent. {{ paying.s.name.split(' ')[0] }} is emailed and asked to confirm it arrived.</p>
+            <p class="text-xs text-text-muted mb-3">After the money is sent. {{ paying.s.name.split(' ')[0] }} is emailed and asked to confirm it arrived.<template v-if="payFromReserve"> It comes out of {{ manyPayers ? 'each program’s reserve (its own games only)' : `${programName}’s reserve` }}.</template></p>
             <div class="grid gap-3 sm:grid-cols-3">
               <div>
                 <label class="label" for="pay-method">Paid with</label>

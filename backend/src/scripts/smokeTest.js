@@ -1194,6 +1194,58 @@ console.log('\nReferee payments (Venmo, mark as paid, Got it)');
   check('a referee can remove it', (await call('PUT', '/referees/me/payment-methods', { token: refA, body: { venmo: '' } })).status === 200
     && !(await call('GET', '/referees/me/payment-methods', { token: refA })).data.paymentMethods.venmo);
 }
+console.log('\nReferee payout reserve');
+{
+  const q = `/referees/payouts?from=${todayLocal}&to=${todayLocal}`;
+  const fig = async (tok, id) => (await call('GET', `/reserves/${id}`, { token: tok })).data.figures;
+  check('a director can’t add a deposit while paying directly', (await call('POST', `/reserves/${nfh.id}/entries`, { token: pd, body: { kind: 'deposit', amountCents: 50000, method: 'check', entryDate: todayLocal } })).status === 409);
+  check('a director can’t switch to a reserve themselves', (await call('PUT', `/reserves/${nfh.id}/settings`, { token: pd, body: { mode: 'reserve' } })).status === 403);
+  check('the league switches a program to a reserve', (await call('PUT', `/reserves/${nfh.id}/settings`, { token: admin, body: { mode: 'reserve' } })).status === 200);
+  const dep = await call('POST', `/reserves/${nfh.id}/entries`, { token: pd, body: { kind: 'deposit', amountCents: 50000, method: 'check', entryDate: todayLocal, note: 'Check #1001' } });
+  check('a director adds a deposit, waiting for the assignor', dep.status === 201 && dep.data.entry.status === 'pending');
+  check('…which doesn’t count until confirmed', (await fig(pd, nfh.id)).balance === 0 && (await fig(pd, nfh.id)).pendingDeposits === 1);
+  check('directors can’t record refunds or adjustments', (await call('POST', `/reserves/${nfh.id}/entries`, { token: pd, body: { kind: 'refund', amountCents: 100, method: 'cash' } })).status === 403);
+  check('a director can’t confirm their own deposit', (await call('POST', `/reserves/entries/${dep.data.entry.id}/confirm`, { token: pd })).status === 403);
+  check('the assignor confirms it', (await call('POST', `/reserves/entries/${dep.data.entry.id}/confirm`, { token: assignor })).status === 200 && (await fig(pd, nfh.id)).balance === 50000);
+  check('a director can’t see another program’s reserve', (await call('GET', `/reserves/${(await call('GET', '/auth/me', { token: mbell })).data.user.programId}`, { token: pd })).status === 403);
+  const owe = (await call('GET', q, { token: pd })).data;
+  check('payouts say the program pays from its reserve', owe.programMode === 'reserve' && owe.detail.every((d) => d.payerMode === 'reserve'));
+  const mine = owe.detail.filter((d) => d.refereeId === meA.id);
+  check('the director can’t mark reserve games paid', (await call('POST', '/referees/payments', { token: pd, body: { refereeId: meA.id, assignmentIds: mine.map((d) => d.assignmentId), method: 'venmo', paidOn: todayLocal } })).status === 403);
+  const paidR = await call('POST', '/referees/payments', { token: assignor, body: { refereeId: meA.id, items: mine.map((d) => ({ assignmentId: d.assignmentId, programId: nfh.id })), method: 'venmo', paidOn: todayLocal } });
+  const owedNow = mine.reduce((n, d) => n + d.outstandingCents, 0);
+  check('the assignor pays the referee from the reserve', paidR.status === 201 && paidR.data.payment.payments[0].fromReserve === true, JSON.stringify(paidR.data));
+  const after = await fig(pd, nfh.id);
+  check('…and it comes out of the reserve', after.paidOut === owedNow && after.balance === 50000 - owedNow && after.available === after.balance - after.owed - after.upcoming);
+  const st = (await call('GET', `/reserves/${nfh.id}`, { token: pd })).data.statement;
+  check('the statement shows the deposit and the payout with a running balance', st.lines.length === 2 && st.lines[0].type === 'deposit' && st.lines[1].type === 'payout' && st.closing === 50000 - owedNow);
+  check('a director can’t undo a reserve payment', (await call('DELETE', `/referees/payments/${paidR.data.payment.id}`, { token: pd })).status === 403);
+  const refPays = (await call('GET', '/referees/me/payments', { token: refA })).data.payments;
+  check('the referee sees it came from the reserve', refPays[0]?.fromReserve === true && refPays[0].programName === nfh.name);
+  check('a reversal needs a reason', (await call('POST', `/reserves/${nfh.id}/entries`, { token: assignor, body: { reversesId: st.lines[0].id } })).status === 400);
+  check('the assignor reverses the deposit (a correcting entry)', (await call('POST', `/reserves/${nfh.id}/entries`, { token: assignor, body: { reversesId: st.lines[0].id, note: 'Check returned' } })).status === 201);
+  check('…only once', (await call('POST', `/reserves/${nfh.id}/entries`, { token: assignor, body: { reversesId: st.lines[0].id, note: 'Again' } })).status === 409);
+  check('the balance can go below zero, and says so', (await fig(pd, nfh.id)).balance === -owedNow);
+  check('an adjustment needs a note', (await call('POST', `/reserves/${nfh.id}/entries`, { token: assignor, body: { kind: 'adjustment', amountCents: 500 } })).status === 400);
+  check('the assignor records a deposit (confirmed straight away)', (await call('POST', `/reserves/${nfh.id}/entries`, { token: assignor, body: { kind: 'deposit', amountCents: 20000, method: 'venmo', entryDate: todayLocal } })).data.entry.status === 'confirmed');
+  const refund = await call('POST', `/reserves/${nfh.id}/refund-balance`, { token: assignor, body: { method: 'check', entryDate: todayLocal } });
+  const fNow = await fig(admin, nfh.id);
+  check('refunding what’s left zeroes the reserve (or waits for referees owed)', fNow.owed > 0 ? refund.status === 409 : (refund.status === 201 && fNow.balance === 0), `${refund.status} owed ${fNow.owed} bal ${fNow.balance}`);
+  // Guest programs: the league records their deposits.
+  check('a guest program can use a reserve', (await call('PUT', `/reserves/${guestId}/settings`, { token: admin, body: { mode: 'reserve' } })).status === 200
+    && (await call('POST', `/reserves/${guestId}/entries`, { token: assignor, body: { kind: 'deposit', amountCents: 15000, method: 'cash', entryDate: todayLocal } })).status === 201
+    && (await fig(assignor, guestId)).balance === 15000);
+  const sum = (await call('GET', '/reserves', { token: assignor })).data;
+  check('the league summary lists every reserve program, guests included', sum.scope === 'league' && sum.programs.some((x) => x.programId === guestId && x.isGuest) && sum.programs.some((x) => x.programId === nfh.id));
+  const pdSum = (await call('GET', '/reserves', { token: pd })).data;
+  check('a director’s summary is just their program', pdSum.scope === 'program' && pdSum.programs.length === 1 && pdSum.programs[0].programId === nfh.id);
+  const stCsv = await (await fetch(`${API}/reserves/${nfh.id}?format=csv`, { headers: { Authorization: `Bearer ${pd}` } })).text();
+  check('the statement downloads as CSV', stCsv.includes('Opening balance') && stCsv.includes('Closing balance'));
+  check('referees and coaches can’t see reserves', (await call('GET', '/reserves', { token: refA })).status === 403 && (await call('GET', '/reserves', { token: coach })).status === 403);
+  // Back to paying directly, for the checks below.
+  await call('DELETE', `/referees/payments/${paidR.data.payment.id}`, { token: admin });
+  await call('PUT', `/reserves/${nfh.id}/settings`, { token: admin, body: { mode: 'direct' } });
+}
 {
   const { leagueTimestamp } = await import('../utils/leagueTime.js');
   // 6:00 PM Pacific on game night is already the next day in UTC.

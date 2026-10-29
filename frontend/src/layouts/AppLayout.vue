@@ -26,6 +26,7 @@ const primaryNav = computed(() => [
   { to: '/assignments', label: 'Assignments', show: role.value === 'referee_assignor' },
   { to: '/referees', label: 'Referees', show: role.value === 'referee_assignor' },
   { to: '/payouts', label: 'Payouts', show: role.value === 'referee_assignor' },
+  { to: '/reserve', label: 'Reserves', show: role.value === 'referee_assignor' },
   { to: '/requests', label: 'Requests', show: ['super_admin', 'program_director', 'league_coach'].includes(role.value), badge: true },
   { to: '/slots', label: 'Gym slots', show: auth.canManage },
   { to: '/blackouts', label: 'Blackouts', show: auth.canManage },
@@ -51,6 +52,7 @@ const menuGroups = computed(() => {
       { to: '/assignments', label: 'Assignments', show: role.value === 'referee_assignor' },
       { to: '/referees', label: 'Referees', show: role.value === 'referee_assignor' },
       { to: '/payouts', label: 'Payouts', show: role.value === 'referee_assignor' },
+      { to: '/reserve', label: 'Reserves', show: role.value === 'referee_assignor' },
     ] },
     { id: 'program', label: sa ? 'Programs & gyms' : 'My program', items: [
       { to: '/slots', label: 'Gym slots', show: auth.canManage },
@@ -59,6 +61,7 @@ const menuGroups = computed(() => {
       { to: '/teams', label: 'Teams', show: coachOrDirector },
       { to: '/directory', label: 'Directory', show: auth.canManage },
       { to: '/payouts', label: 'Referee payouts', show: role.value === 'program_director' },
+      { to: '/reserve', label: 'Referee reserve', show: role.value === 'program_director' },
       { to: '/activity', label: 'Activity', show: auth.canManage && !sa },
     ] },
     { id: 'scheduling', label: 'Scheduling', items: [
@@ -69,6 +72,7 @@ const menuGroups = computed(() => {
       { to: '/assignments', label: 'Referee assignments', show: sa },
       { to: '/referees', label: 'Referees', show: sa },
       { to: '/payouts', label: 'Referee payouts', show: sa },
+      { to: '/reserve', label: 'Referee reserves', show: sa },
     ] },
     { id: 'admin', label: 'League admin', items: [
       { to: '/programs', label: 'Programs', show: sa },

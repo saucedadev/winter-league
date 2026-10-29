@@ -196,6 +196,35 @@ Venmo's link fills in the amount and note on most phones. If it ever opens witho
 
 ![A payment the referee has confirmed](/help/img/pd-payouts-paid.png)
 
+## Referee reserve
+
+Instead of paying referees yourself, your program can **prepay the Referee Assignor**, who then pays your referees and takes each payment out of your reserve. The league switches a program to a reserve; ask them if you'd like to. Once it's on, **Referee payouts** shows *Assignor pays* instead of a Pay button, and the assignor pays your referees.
+
+![Payouts for a program on a reserve](/help/img/pd-payouts-reserve.png)
+
+**Menu → My program → Referee reserve.**
+
+| Figure | What it means |
+|---|---|
+| **Balance** | What you've deposited (and the assignor has confirmed), minus what's been paid out to referees: the money the assignor is holding for you. Below zero means your program owes the reserve. |
+| **Available** | Balance minus referees **owed** (worked your games, not yet paid) and **upcoming** (an estimate for referees already assigned to your future games). This is what's really left; it says roughly how many more referee fees it covers, or how short you are. |
+| **Deposited**, **Paid out** | The totals so far this season. |
+
+![Referee reserve](/help/img/pd-reserve.png)
+
+### Adding a deposit
+1. Pay the Referee Assignor (check, cash, Venmo).
+2. Choose **Add a deposit**, enter the amount, how you paid, the date, and an optional note (e.g. *Check #1001*).
+3. It shows under **Deposits waiting for the referee assignor to confirm**. It counts toward your reserve once they confirm they received it; you're emailed either way. Entered it by mistake? **Withdraw** it while it's still waiting.
+
+![Adding a deposit](/help/img/pd-reserve-deposit.png)
+
+**Low-balance email:** under **Email me when available drops below**, enter an amount (e.g. *100.00*) and **Save**. You're emailed once when Available drops below it, and again the next time it dips after you've topped it up.
+
+**Statement:** every confirmed deposit, referee payout (expand a payout to see its games), refund, and correction, with a running balance and opening and closing balances. Choose **From** and **To** dates for part of the season, **Download (CSV)** for a spreadsheet, or **Print / Save as PDF**.
+
+Entries are never edited or deleted. If something is wrong, the assignor adds a correction, and the statement shows both. At the end of the season the assignor refunds whatever is left and records it here.
+
 ## Final scores
 
 After a game, you or a coach of either team enter the final score. On **Schedule**, played games have an **Enter score** button from tip-off on game day; tick **Needs a score** to see the ones still waiting. Your dashboard says how many of your program's games need scores.
