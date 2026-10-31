@@ -14,6 +14,7 @@ const auth = useAuthStore();
 const ctx = useProgramContext();
 const toast = useToast();
 const teams = ref([]);
+const leagueGames = ref(null); // the league's games per team
 const divisions = ref([]);
 const loading = ref(true);
 const divisionFilter = ref('');
@@ -29,6 +30,7 @@ async function load() {
   try {
     const [t, d, p] = await Promise.all([api.get('/teams', { params: ctx.query }), api.get('/league/divisions'), api.get('/preseason').catch(() => ({ data: null }))]);
     teams.value = t.data.teams;
+    leagueGames.value = t.data.leagueGamesPerTeam ?? null;
     divisions.value = d.data.divisions;
     preseason.value = p.data;
   } catch (err) { toast.error(errorMessage(err)); }
@@ -44,6 +46,12 @@ async function togglePreseason(t) {
   } catch (err) { toast.error(errorMessage(err)); }
   finally { togglingId.value = ''; }
 }
+// Team games override: fewer league games for one team (lower than the
+// league's only; 0 = no league games).
+const hasTarget = (t) => t.gamesTarget != null && leagueGames.value != null && t.gamesTarget < leagueGames.value;
+const targetLabel = (t) => (t.gamesTarget === 0 ? 'No league games' : `${t.gamesTarget} league game${t.gamesTarget === 1 ? '' : 's'}`);
+const targetTitle = (t) => `Team override: ${t.gamesTarget === 0 ? 'no league games' : `${t.gamesTarget} of the league’s ${leagueGames.value} games`}${t.gamesTargetReason ? `. Reason: ${t.gamesTargetReason}` : ''}. Takes effect the next time the league builds a draft.`;
+const targetOptions = computed(() => (leagueGames.value ? Array.from({ length: leagueGames.value }, (_, i) => leagueGames.value - 1 - i) : []));
 const canPreseason = (t) => canEdit.value && preseasonOpen.value && t.isActive && !t.programIsGuest;
 onMounted(load);
 
@@ -73,7 +81,9 @@ async function open(t) {
   const programId = t?.programId || ctx.programId || '';
   await loadCoaches(programId);
   editor.value = t
-    ? { id: t.id, form: { programId, name: t.name, divisionId: t.divisionId, coach: t.headCoachUserId ? `user:${t.headCoachUserId}` : t.headCoachContactId ? `contact:${t.headCoachContactId}` : '', isActive: t.isActive } }
+    ? { id: t.id, isGuest: t.programIsGuest, target: { was: hasTarget(t) ? t.gamesTarget : null, reasonWas: t.gamesTargetReason || '' },
+      form: { programId, name: t.name, divisionId: t.divisionId, coach: t.headCoachUserId ? `user:${t.headCoachUserId}` : t.headCoachContactId ? `contact:${t.headCoachContactId}` : '', isActive: t.isActive,
+        gamesTarget: hasTarget(t) ? String(t.gamesTarget) : '', gamesTargetReason: t.gamesTargetReason || '' } }
     : { id: null, form: { programId, name: '', divisionId: divisionFilter.value || '', coach: '' } };
 }
 watch(() => editor.value?.form.programId, async (pid, old) => {
@@ -83,13 +93,22 @@ async function save() {
   formError.value = '';
   saving.value = true;
   try {
-    const { coach, ...f } = editor.value.form;
+    const { coach, gamesTarget, gamesTargetReason, ...f } = editor.value.form;
     // One picker, two kinds of coach: a Coach account or a Directory coach.
     f.headCoachUserId = coach.startsWith('user:') ? coach.slice(5) : null;
     f.headCoachContactId = coach.startsWith('contact:') ? coach.slice(8) : null;
-    if (editor.value.id) await api.put(`/teams/${editor.value.id}`, f);
-    else await api.post('/teams', f);
-    toast.success(editor.value.id ? 'Team saved.' : `Added ${f.name}.`);
+    let targetNote = '';
+    if (editor.value.id) {
+      await api.put(`/teams/${editor.value.id}`, f);
+      // Games this season, only when it changed.
+      const tg = editor.value.target;
+      const next = gamesTarget === '' ? null : Number(gamesTarget);
+      if (tg && (next !== tg.was || (next != null && gamesTargetReason.trim() !== tg.reasonWas))) {
+        await api.put(`/teams/${editor.value.id}/games-target`, { gamesTarget: next, reason: gamesTargetReason });
+        targetNote = ' The new games target takes effect the next time the league builds a draft.';
+      }
+    } else await api.post('/teams', f);
+    toast.success(editor.value.id ? `Team saved.${targetNote}` : `Added ${f.name}.`);
     editor.value = null;
     await load();
   } catch (err) { formError.value = errorMessage(err); }
@@ -135,6 +154,7 @@ async function doDelete() {
               :aria-pressed="t.preseasonOpen" :title="t.preseasonOpen ? 'Open for preseason scrimmages and joint practices. Click to close.' : 'Click to open this team for preseason scrimmages and joint practices.'"
               @click="togglePreseason(t)">{{ t.preseasonOpen ? 'Preseason: open ✓' : 'Open for preseason' }}</button>
             <span v-else-if="t.preseasonOpen && preseasonOpen" class="badge bg-success text-black">Preseason</span>
+            <span v-if="hasTarget(t)" class="badge badge-outline" :title="targetTitle(t)">{{ targetLabel(t) }}</span>
             <p class="text-sm" :class="t.headCoachName ? '' : 'text-text-muted'">
               {{ t.headCoachName ? `Coach ${t.headCoachName}` : 'No head coach assigned' }}
               <span v-if="t.headCoachIsContact" class="badge badge-outline ml-1" title="From the program’s Directory: no app account yet">Directory</span>
@@ -175,6 +195,23 @@ async function doDelete() {
             <template v-else-if="!coaches.length">No Coach accounts in this program yet. You can pick a coach from your Directory until the league admin creates their account.</template>
           </p>
         </div>
+        <fieldset v-if="editor.id && !editor.isGuest && leagueGames" class="min-w-0 space-y-2">
+          <label class="label !mb-0" for="tf-games">Games this season</label>
+          <select id="tf-games" v-model="editor.form.gamesTarget" class="input">
+            <option value="">League’s count ({{ leagueGames }} games)</option>
+            <option v-for="n in targetOptions" :key="n" :value="String(n)">{{ n === 0 ? 'No league games' : `${n} game${n === 1 ? '' : 's'}` }}</option>
+          </select>
+          <template v-if="editor.form.gamesTarget !== ''">
+            <label class="label !mb-0" for="tf-games-why">Reason</label>
+            <input id="tf-games-why" v-model="editor.form.gamesTargetReason" class="input" required maxlength="200" placeholder="e.g. Travel team, tournament schedule" />
+          </template>
+          <p class="text-xs text-text-muted">
+            <template v-if="editor.form.gamesTarget === '0'">The Matchmaker leaves this team out of league games. It can still play preseason, or the league can add a game by hand.</template>
+            <template v-else-if="editor.form.gamesTarget !== ''">For a team that plays mostly tournaments: the Matchmaker spreads its games across the season and its opponents make up games elsewhere. Block tournament weekends with blackout dates, too.</template>
+            <template v-else>Fewer games than the league’s count can be set for one team, such as a travel team. More can’t.</template>
+            Takes effect the next time the league builds a draft; the league can see and change it.
+          </p>
+        </fieldset>
         <label v-if="editor.id" class="flex items-center gap-2 text-sm"><input v-model="editor.form.isActive" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Active this season</label>
         <p v-if="formError" class="text-sm text-danger" role="alert">{{ formError }}</p>
       </form>

@@ -437,6 +437,83 @@ check('the activity log names program overrides', (await call('GET', '/activity?
 await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules } });
 check('program overrides cleared when the rules are reset', Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.programOverrides).length === 0);
 
+console.log('\nTeam games overrides');
+{
+  const tlist = (await call('GET', '/teams', { token: pd })).data;
+  check('the Teams list says the league’s games per team', tlist.leagueGamesPerTeam === defaultRules.gamesPerTeam, JSON.stringify(tlist.leagueGamesPerTeam));
+  // A Northfield team in a division with several other programs' teams.
+  const allTeams = (await call('GET', '/teams', { token: admin })).data.teams.filter((t) => t.isActive && !t.programIsGuest);
+  const divSize = (d) => allTeams.filter((t) => t.divisionId === d && t.programId !== nfh.id).length;
+  const travel = tlist.teams.filter((t) => t.isActive).sort((a, b) => divSize(b.divisionId) - divSize(a.divisionId))[0];
+  const sitOut = tlist.teams.filter((t) => t.isActive && t.id !== travel.id && t.divisionId !== travel.divisionId)[0];
+  const league = tlist.leagueGamesPerTeam;
+  const setT = (token, id, gamesTarget, reason) => call('PUT', `/teams/${id}/games-target`, { token, body: { gamesTarget, reason } });
+  const high = await setT(pd, travel.id, league, 'More games please');
+  check('a team can’t ask for as many or more games than the league’s', high.status === 400 && high.data.error.includes('fewer'), high.data.error);
+  check('a reason is required', (await setT(pd, travel.id, 4, '  ')).status === 400);
+  check('a director can’t set another program’s team', (await setT(mbell, travel.id, 4, 'Nope')).status === 403);
+  check('a coach can’t set a games target', (await setT(coach, travel.id, 4, 'Nope')).status === 403);
+  const before = (await call('GET', '/schedule/overview', { token: admin })).data;
+  const set = await setT(pd, travel.id, 4, 'Travel team, tournament schedule');
+  check('a director sets a team to 4 league games', set.status === 200 && set.data.team.gamesTarget === 4 && set.data.team.gamesTargetReason === 'Travel team, tournament schedule', JSON.stringify(set.data).slice(0, 200));
+  check('the Teams list shows who set it', (await call('GET', '/teams', { token: pd })).data.teams.find((t) => t.id === travel.id)?.gamesTargetByName?.length > 0);
+  const act = (await call('GET', '/activity?category=team', { token: admin })).data.entries;
+  check('the change is in the activity log, with the reason', act.some((e) => e.details.includes(`Set ${travel.name} to 4 league games`) && e.details.includes('Travel team')), act[0]?.details);
+  const ov = (await call('GET', '/schedule/overview', { token: admin })).data;
+  const row = ov.teamOverrides?.find((t) => t.teamId === travel.id);
+  check('the builder lists the team override', row?.gamesTarget === 4 && row.inEffect && row.programName === nfh.name && !!row.setByName, JSON.stringify(row));
+  if (before.draft) check('an existing draft shows “changed since this draft”', ov.draft?.teamOverridesChanged === true);
+  check('team overrides aren’t saved with the league rules', Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.teamOverrides || {}).length === 0);
+  const sneak = await call('PUT', '/schedule/rules', { token: admin, body: { ...defaultRules, teamOverrides: { [sitOut.id]: { gamesPerTeam: 1 } } } });
+  check('team overrides can’t be slipped in through the rules', sneak.status === 200 && Object.keys((await call('GET', '/schedule/rules', { token: admin })).data.rules.teamOverrides || {}).length === 0);
+
+  const leagueGames = (games, id) => games.filter((g) => g.status !== 'cancelled' && !g.isGuestGame && (g.homeTeamId === id || g.awayTeamId === id));
+  const d = await draftWith({});
+  check('the draft is built with the team override', d.draft.rules.teamOverrides?.[travel.id]?.gamesPerTeam === 4 && d.draft.rules.teamOverrides[travel.id].name === travel.name, JSON.stringify(d.draft.rules.teamOverrides));
+  const tg = leagueGames(d.games, travel.id);
+  check('the team gets no more than its own target', tg.length > 0 && tg.length <= 4, `${tg.length} games`);
+  const others = allTeams.filter((t) => t.divisionId === travel.divisionId && t.id !== travel.id);
+  check('its opponents still aim for the league’s count', others.some((t) => leagueGames(d.games, t.id).length > 4), others.map((t) => leagueGames(d.games, t.id).length).join(','));
+  check('the notes list the team overrides used', d.draft.warnings.some((w) => w.startsWith('Team overrides:') && w.includes(`${travel.name}: 4 games`)), d.draft.warnings.join(' | ').slice(0, 300));
+  check('a new draft clears “changed since this draft”', (await call('GET', '/schedule/overview', { token: admin })).data.draft?.teamOverridesChanged === false);
+  const addList = (await call('GET', `/schedule/add-game/teams?runId=${d.draft.id}`, { token: admin })).data;
+  check('Add game shows the team’s own target', addList.teams?.find((t) => t.id === travel.id)?.target === 4 && addList.teams.find((t) => t.id === travel.id).teamOverride === true, JSON.stringify(addList).slice(0, 200));
+  check('the activity log notes team overrides on generate', (await call('GET', '/activity?category=schedule', { token: admin })).data.entries.some((e) => e.details.includes('team override')));
+
+  // 0 = no league games: the Matchmaker leaves the team out.
+  check('“No league games” can be set', (await setT(pd, sitOut.id, 0, 'Tournament-only team')).status === 200);
+  const d0 = await draftWith({});
+  check('a team with no league games gets none', leagueGames(d0.games, sitOut.id).length === 0);
+  check('the notes say it has no league games', d0.draft.warnings.some((w) => w.includes(`${sitOut.name}: no league games`)), d0.draft.warnings.join(' | ').slice(0, 300));
+
+  // The league can change or remove a team override.
+  const adj = await setT(admin, travel.id, 6, 'Travel team, tournament schedule');
+  check('the System Admin can adjust a team override', adj.status === 200 && adj.data.team.gamesTarget === 6);
+  const rm = await setT(admin, travel.id, null);
+  check('the System Admin can remove a team override (no reason needed)', rm.status === 200 && rm.data.team.gamesTarget == null);
+  check('removing it is logged', (await call('GET', '/activity?category=team', { token: admin })).data.entries.some((e) => e.details.includes(`Removed the team override for ${travel.name}`)));
+  await setT(pd, sitOut.id, null);
+  check('no team overrides left', ((await call('GET', '/schedule/overview', { token: admin })).data.teamOverrides || []).length === 0);
+  // Made-up league: a 4-game team's games are spread over the season, and its
+  // opponents' shortfall is explained by name.
+  const { buildSchedule } = await import('../scheduling/matchmaker.js');
+  const { normalizeRules } = await import('../scheduling/core.js');
+  const tms = ['A', 'B', 'C', 'D', 'E'].map((x, i) => ({ id: x, name: `${x} 7th Boys`, programId: `P${x}`, divisionId: 'd7', divisionName: '7th Grade Boys' }));
+  const homes = Object.fromEntries(tms.map((t, i) => [t.programId, { lat: 45 + i * 0.01, lng: -122.9 }]));
+  const windows = [];
+  for (let k = 0; k < 63; k++) {
+    const date = new Date(Date.UTC(2026, 10, 30) + k * 86400000).toISOString().slice(0, 10);
+    for (const t of tms) windows.push({ slotId: `${t.programId}${date}`, courtId: `${t.programId}-c`, courtName: 'Main', venueId: t.programId, venueName: `${t.programId} Gym`, programId: t.programId, date, startTime: '18:00', endTime: '19:00', ...homes[t.programId] });
+  }
+  const out = buildSchedule({ teams: tms, windows, homes, programBlackouts: new Set(), rules: normalizeRules({ gamesPerTeam: 8, teamOverrides: { A: { gamesPerTeam: 4, name: 'A 7th Boys' } } }), programNames: {} });
+  const aDates = out.games.filter((g) => g.window && (g.homeTeamId === 'A' || g.awayTeamId === 'A')).map((g) => g.window.date).sort();
+  check('a reduced team plays exactly its own target (made-up league)', aDates.length === 4, aDates.join(','));
+  check('its games are spread across the season, not bunched at the start', aDates.at(-1) > '2026-12-31', aDates.join(','));
+  check('opponents left short say which team plays fewer games', out.warnings.some((w) => /^B 7th Boys got \d of 8 games: A 7th Boys plays only 4 \(team override\)/.test(w)), out.warnings.join(' | ').slice(0, 300));
+  const stA = out.summary.teamStats.find((s) => s.teamId === 'A');
+  check('team stats carry each team’s own target', stA.target === 4 && stA.teamOverride === true && out.summary.teamStats.find((s) => s.teamId === 'B').target === 8);
+}
+
 console.log('\nDay preferences (tagged slots)');
 {
   const seasonNow = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
@@ -915,6 +992,7 @@ check('guest programs have no gym slots', (await call('POST', '/slots', { token:
 check('guest programs have no blackouts', (await call('POST', '/blackouts', { token: admin, body: { programId: guestId, startDate: '2026-12-01', endDate: '2026-12-01', reason: 'Closed' } })).status === 400);
 check('guest programs have no director or coach accounts', (await call('POST', '/users', { token: admin, body: { firstName: 'Guest', lastName: 'Director', username: 'guestdir', email: 'guestdir@example.com', password: 'Temp-Pass-123!', role: 'program_director', programId: guestId } })).status === 400);
 const gt = await call('POST', '/teams', { token: admin, body: { programId: guestId, name: 'Sherwood 5th Boys', divisionId: myTeam.divisionId } });
+check('guest teams can’t have a games target', (await call('PUT', `/teams/${gt.data.team?.id}/games-target`, { token: admin, body: { gamesTarget: 2, reason: 'x' } })).status === 400);
 check('the league adds a guest team in a division', gt.status === 201 && gt.data.team.programIsGuest === 1);
 const gt2 = await call('POST', '/teams', { token: admin, body: { programId: guestId, name: 'Sherwood 5th Boys B', divisionId: myTeam.divisionId } });
 const dash = (await call('GET', '/dashboard', { token: admin })).data;
@@ -1261,8 +1339,12 @@ console.log('\nPreseason');
   const rybCourt = (await call('GET', '/venues', { token: mbell })).data.venues[0].courts[0];
   const ps1 = await call('POST', '/slots', { token: pd, body: { courtId: nfhCourt.id, date: plus(2), startTime: '18:00', endTime: '20:00', category: 'WEEKNIGHT_GAME' } });
   check('directors add gym time in the preseason', ps1.status === 201, JSON.stringify(ps1.data).slice(0, 160));
-  const ps2 = await call('POST', '/slots', { token: mbell, body: { courtId: rybCourt.id, date: plus(3), startTime: '18:00', endTime: '19:00', category: 'WEEKNIGHT_GAME' } });
-  check('…both programs', ps2.status === 201);
+  // A day when Riverbend's court is free at 6 PM (the demo gym time varies by weekday).
+  const rybBusy = (await call('GET', `/slots?from=${plus(3)}&to=${plus(9)}`, { token: mbell })).data.slots
+    .filter((x) => x.courtId === rybCourt.id && x.startTime < '19:00' && x.endTime > '18:00').map((x) => x.date);
+  const rybDay = [3, 4, 5, 6, 7, 8, 9].map(plus).find((d) => d !== plus(2) && !rybBusy.includes(d)) || plus(3);
+  const ps2 = await call('POST', '/slots', { token: mbell, body: { courtId: rybCourt.id, date: rybDay, startTime: '18:00', endTime: '19:00', category: 'WEEKNIGHT_GAME' } });
+  check('…both programs', ps2.status === 201, JSON.stringify(ps2.data).slice(0, 200));
   const rybTeams = (await call('GET', '/teams', { token: mbell })).data.teams;
   const nfhTeams = (await call('GET', `/teams?programId=${nfh.id}`, { token: pd })).data.teams.filter((t) => t.isActive);
   const pair = nfhTeams.map((t) => [t, rybTeams.find((r) => r.divisionId === t.divisionId && r.isActive)]).find(([, r]) => r);
@@ -1275,7 +1357,7 @@ console.log('\nPreseason');
   check('the board lists open teams in the same division', board.opponents.some((o) => o.id === theirs.id) && board.opponents.every((o) => o.sameDivision && o.programId !== nfh.id));
   check('…and can widen to a grade either side', (await call('GET', `/preseason/board?teamId=${mine.id}&wider=1`, { token: pd })).data.opponents.length >= board.opponents.length);
   const times = (await call('GET', `/preseason/times?teamId=${mine.id}&opponentId=${theirs.id}&kind=scrimmage`, { token: pd })).data.times;
-  check('suggested times come from both programs’ preseason gym time', times.some((t) => t.host === 'you' && t.date === plus(2)) && times.some((t) => t.host === 'them' && t.date === plus(3)), JSON.stringify(times.map((t) => [t.date, t.host])));
+  check('suggested times come from both programs’ preseason gym time', times.some((t) => t.host === 'you' && t.date === plus(2)) && times.some((t) => t.host === 'them' && t.date === rybDay), JSON.stringify(times.map((t) => [t.date, t.host])));
   check('…and never from the regular season', times.every((t) => t.date < plus(10)));
   const pick = times.find((t) => t.host === 'you');
   const leagueGamesBefore = (await call('GET', '/schedule/games', { token: admin })).data.games.length;

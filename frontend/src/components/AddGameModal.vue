@@ -77,7 +77,9 @@ const reason = ref('');
 const needsException = computed(() => !!opponent.value?.exceptions.length);
 const reasonRequired = computed(() => !isAdmin.value || needsException.value);
 // Guest games don't count toward the target, so there's nothing to warn about.
-const overTarget = computed(() => (opponent.value && !isGuestGame.value ? [team.value, opponent.value] : []).filter((t) => t && gamesPerTeam.value && t.games >= gamesPerTeam.value));
+// A team's own target (its team override in this draft), else the league's.
+const targetOf = (t) => t?.target ?? gamesPerTeam.value;
+const overTarget = computed(() => (opponent.value && !isGuestGame.value ? [team.value, opponent.value] : []).filter((t) => t && gamesPerTeam.value && t.games >= targetOf(t)));
 
 const canSubmit = computed(() => team.value && opponent.value
   && (unplaced.value || placement.value)
@@ -122,7 +124,7 @@ const nextStep = computed(() => {
           <select id="add-team" v-model="teamId" class="input">
             <option value="">Choose a team…</option>
             <optgroup v-for="[div, list] in byDivision" :key="div" :label="div">
-              <option v-for="t in list" :key="t.id" :value="t.id">{{ t.name }}{{ t.isGuest ? ` (${t.divisionName})` : ` · ${t.games} game${t.games === 1 ? '' : 's'}` }}</option>
+              <option v-for="t in list" :key="t.id" :value="t.id">{{ t.name }}{{ t.isGuest ? ` (${t.divisionName})` : ` · ${t.games} game${t.games === 1 ? '' : 's'}${t.teamOverride ? ` of ${t.target} (team override)` : ''}` }}</option>
             </optgroup>
           </select>
         </div>
@@ -153,7 +155,7 @@ const nextStep = computed(() => {
         </label>
       </div>
       <p v-if="isGuestGame" class="text-xs text-text-muted">A guest game: it’s played at the league team’s gym and doesn’t count toward games per team or home/away balance.</p>
-      <p v-for="t in overTarget" :key="t.id" class="text-xs font-medium">{{ t.name }} already has {{ t.games }} games; this makes {{ t.games + 1 }} (target {{ gamesPerTeam }}).</p>
+      <p v-for="t in overTarget" :key="t.id" class="text-xs font-medium">{{ t.name }} already has {{ t.games }} games; this makes {{ t.games + 1 }} (target {{ targetOf(t) }}{{ t.teamOverride ? ', team override' : '' }}).</p>
 
       <div v-if="opponent">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-1">

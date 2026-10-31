@@ -4,6 +4,7 @@ import { requireAuth, requirePasswordCurrent, requireRole, readScope, assertCanM
 import { ah, badRequest, conflict, notFound } from '../utils/http.js';
 import { requireFields, trimOrNull } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
+import { getRules } from '../scheduling/data.js';
 
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent);
@@ -12,10 +13,12 @@ const managers = requireRole('super_admin', 'program_director');
 const SELECT = `SELECT t.*, p.name AS program_name, p.short_code, p.is_guest AS program_is_guest, d.name AS division_name, d.sort_order AS division_order,
   COALESCE(u.first_name || ' ' || u.last_name, dc.first_name || ' ' || dc.last_name) AS head_coach_name,
   (t.head_coach_contact_id IS NOT NULL) AS head_coach_is_contact,
-  dc.email AS head_coach_contact_email, dc.phone AS head_coach_contact_phone
+  dc.email AS head_coach_contact_email, dc.phone AS head_coach_contact_phone,
+  gu.first_name || ' ' || gu.last_name AS games_target_by_name
   FROM teams t JOIN programs p ON p.id = t.program_id JOIN divisions d ON d.id = t.division_id
   LEFT JOIN users u ON u.id = t.head_coach_user_id
-  LEFT JOIN directory_contacts dc ON dc.id = t.head_coach_contact_id`;
+  LEFT JOIN directory_contacts dc ON dc.id = t.head_coach_contact_id
+  LEFT JOIN users gu ON gu.id = t.games_target_by`;
 
 // Head coach: a Coach account (headCoachUserId) OR, until one exists, a Coach
 // from the program's Directory (headCoachContactId). Never both.
@@ -43,7 +46,9 @@ router.get('/', requireRole('super_admin', 'program_director', 'league_coach'), 
   if (req.query.divisionId) { where.push('t.division_id = ?'); args.push(req.query.divisionId); }
   const teams = await all(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY d.sort_order, d.name COLLATE NOCASE, p.name COLLATE NOCASE, t.name COLLATE NOCASE`, args);
-  res.json({ teams: teams.map((t) => ({ ...t, isActive: !!t.isActive, programIsGuest: !!t.programIsGuest, headCoachIsContact: !!t.headCoachIsContact, preseasonOpen: !!t.preseasonOpen })) });
+  // The league's games per team, so the page can show each team's target.
+  const { gamesPerTeam } = await getRules();
+  res.json({ leagueGamesPerTeam: gamesPerTeam, teams: teams.map((t) => ({ ...t, isActive: !!t.isActive, programIsGuest: !!t.programIsGuest, headCoachIsContact: !!t.headCoachIsContact, preseasonOpen: !!t.preseasonOpen })) });
 }));
 
 // ---- GET /api/teams/coaches ---- (active Coach accounts a PD can assign as head coach)
@@ -98,6 +103,41 @@ router.put('/:id', managers, ah(async (req, res) => {
     [next.name, next.divisionId, next.coachId, next.contactId, next.isActive, t.id]);
   await logActivity({ category: 'team', action: 'edited', actor: req.user, programId: t.programId, details: `Updated team ${next.name}` });
   res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]) });
+}));
+
+// ---- PUT /api/teams/:id/games-target ----
+// Team games override: fewer league games for one team (a travel team that
+// mostly plays tournaments, say). Body: { gamesTarget: 0..league-1 | null,
+// reason }. null = back to the league's count. Lower than the league's only:
+// a higher count would push extra games onto opponents who didn't ask for
+// them. Takes effect the next time a draft is built.
+const gamesWord = (n) => (n === 0 ? 'no league games' : `${n} league game${n === 1 ? '' : 's'}`);
+router.put('/:id/games-target', managers, ah(async (req, res) => {
+  const t = await one(`SELECT t.*, p.is_guest AS program_is_guest FROM teams t JOIN programs p ON p.id = t.program_id WHERE t.id = ?`, [req.params.id]);
+  if (!t) throw notFound('Team');
+  assertCanManageProgram(req, t.programId);
+  if (t.programIsGuest) throw badRequest('Guest teams aren’t scheduled by the Matchmaker, so they don’t have a games target.');
+  const { gamesPerTeam } = await getRules();
+  const raw = req.body?.gamesTarget;
+  if (raw === null || raw === undefined || raw === '') {
+    if (t.gamesTarget == null) return res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]), leagueGamesPerTeam: gamesPerTeam });
+    await run(`UPDATE teams SET games_target = NULL, games_target_reason = NULL, games_target_by = ?, games_target_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, [req.user.id, t.id]);
+    await logActivity({ category: 'team', action: 'games_target', actor: req.user, programId: t.programId,
+      details: `Removed the team override for ${t.name}: back to the league’s ${gamesPerTeam} games (was ${gamesWord(t.gamesTarget)}). Takes effect at the next draft.` });
+    return res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]), leagueGamesPerTeam: gamesPerTeam });
+  }
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n >= gamesPerTeam) {
+    throw badRequest(`Games this season must be a whole number from 0 to ${gamesPerTeam - 1}. A team can only play fewer league games than the league’s ${gamesPerTeam}, not more.`);
+  }
+  const reason = trimOrNull(req.body?.reason);
+  if (!reason) throw badRequest('Add a reason (for example, “Travel team, tournament schedule”) so the league knows why.');
+  if (reason.length > 200) throw badRequest('Keep the reason to 200 characters or fewer.');
+  await run(`UPDATE teams SET games_target = ?, games_target_reason = ?, games_target_by = ?, games_target_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, [n, reason, req.user.id, t.id]);
+  const was = t.gamesTarget == null ? `the league’s ${gamesPerTeam}` : gamesWord(t.gamesTarget);
+  await logActivity({ category: 'team', action: 'games_target', actor: req.user, programId: t.programId,
+    details: `Set ${t.name} to ${gamesWord(n)} this season (team override; was ${was}). Reason: ${reason}. Takes effect at the next draft.` });
+  res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]), leagueGamesPerTeam: gamesPerTeam });
 }));
 
 // ---- DELETE /api/teams/:id ----

@@ -26,6 +26,21 @@ Each venue has one or more **courts**. Type a name in **New court name** and cho
 
 A team that has games on the schedule can't be deleted. Untick **Active** instead.
 
+### Fewer games for one team (travel teams)
+If one of your teams plays mostly tournaments, for example a travel team, it can play fewer league games than the league's count.
+
+1. On **Teams**, click **Edit** on the team.
+2. Under **Games this season**, choose a number lower than the league's, for example **4 games**, or **No league games**. It can't be higher than the league's count; that would push extra games onto opponents who didn't ask for them.
+3. Enter a **Reason**, for example *Travel team, tournament schedule*, and click **Save team**.
+
+![Games this season](/help/img/pd-team-games.png)
+
+The team shows a badge such as **4 league games**. It takes effect the next time the league builds a draft; a draft or schedule already built doesn't change. The Matchmaker spreads the team's games across the season, and its opponents make up their games against other teams. With **No league games**, the team is left out of the league schedule, but it can still play [preseason](#preseason) games, and the league can add a game by hand.
+
+**Tip:** add [blackout dates](#blackout-dates) for tournament weekends too, so league games aren't scheduled then.
+
+Only your program and the league see the team's target and reason. The league can change or remove it, and every change is in the Activity log.
+
 ## Directory
 
 Your program's contact list: coaches, referees, team managers, gym contacts, anyone you need to reach quickly. **Menu → My program → Directory.**

@@ -133,6 +133,20 @@ How the matchmaker uses it:
 
 Directors can't set a cap themselves; they send a [rule request](#rule-requests-from-programs), and accepting it adds the override here for you. After you generate, a line above the notes shows it (*Built with program override: Northfield Hawks — 15-mile travel cap*). When you move a game by hand, times where a team would travel past its program's cap are flagged with that cap.
 
+#### Team overrides (games per team)
+A program can ask for **fewer league games for one team**, for example a travel team on a tournament schedule. Directors set this themselves on the **Teams** page (**Edit → Games this season**), with a reason; it can only be lower than **Games per team**, and **No league games** leaves the team out. You can do the same from the Teams page.
+
+Under **Team overrides** in the rules panel you see every team override with its program, division, reason and who set it. Change the number with **Games this season**, or click **Remove** to put the team back on the league's count. Unlike the other rules, these are saved straight away (not when you generate), and the program sees the change on its Teams page. Each change is in the Activity log.
+
+![Team overrides in the Schedule builder](/help/img/sa-team-overrides.png)
+
+How the matchmaker uses them:
+- Each team aims for its own target. A team with 4 games plays roughly every other round, so its games are spread across the season, and home/away balance is worked out on its own count.
+- Its opponents make up the games against other teams in the division, within the rematch limit. If they can't, the notes say why, for example: *"Lakeview 7th Boys got 7 of 8 games: Northfield 7th Boys plays only 4 (team override), so there are fewer games to go around in 7th Grade Boys. Raise “Most games against the same opponent” so other opponents can make up the games, or add a game by hand."*
+- Teams with **No league games** get none. If that leaves a division with only one team, the notes say so.
+
+Each draft keeps its own copy of the team overrides. After you generate, a line above the notes shows them (*Built with team override: Northfield 5th Boys — 4 league games*), and the notes list them. If a program changes a target after the draft was built, the rules panel says **Team overrides have changed since this draft**; generate again to use them. The **Team balance** tab shows each team against its own target, for example *4 of 4 (team override)*, and **Add game** warns against the team's own target.
+
 ### 2. Generate a draft
 Click **Generate draft** (or **Regenerate draft** to start over). It takes a few seconds. Changed rules are saved when you generate.
 

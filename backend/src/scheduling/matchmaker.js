@@ -25,16 +25,21 @@
 // takes a slot tagged for it before an untagged one in the same week; a
 // slot tagged "priority" for other games is used only if nothing else fits
 // anywhere; a slot tagged "only" for other games is never used.
-// Soft goals: every team reaches rules.gamesPerTeam, home/away near 50/50,
+// Soft goals: every team reaches its target (rules.gamesPerTeam, or its own
+// team override — lower, or 0 to sit out), home/away near 50/50,
 // games spread evenly across the season, and games STACKED back to back at a
 // gym (referees work two games in a row; a single game at a gym is hard to
 // staff): within a week a game takes a time right next to a game already at
 // that venue that day when it can, and a final pass moves leftover single
 // games next to another game. Stacking never breaks a hard constraint.
-import { toMinutes, milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride, reservationFit, isReserved, reservationLabel } from './core.js';
+import { toMinutes, milesBetween, weekOf, teamProblems, windowKey, rulesForDivision, hasOverride, travelCapFor, hasTravelOverride, targetFor, hasTeamOverride, reservationFit, isReserved, reservationLabel } from './core.js';
 
 export function buildSchedule({ teams, windows, homes, programBlackouts, rules, programNames = {} }) {
   const warnings = [];
+  // Each team's own games target (a team override, or the league's count).
+  const tgt = (t) => targetFor(rules, t.id);
+  const isOverridden = (t) => hasTeamOverride(rules, t.id);
+  const ofTarget = (t, got) => `${got} of ${tgt(t)} games${isOverridden(t) ? ' (team override)' : ''}`;
   const byDivision = new Map();
   for (const t of teams) {
     if (!byDivision.has(t.divisionId)) byDivision.set(t.divisionId, []);
@@ -53,11 +58,11 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     byProgramWeek.get(w.programId)[wi].push(w);
   }
 
-  const programsWithoutWindows = new Set(teams.map((t) => t.programId).filter((pid) => !byProgramWeek.has(pid)));
+  const programsWithoutWindows = new Set(teams.filter((t) => tgt(t) > 0).map((t) => t.programId).filter((pid) => !byProgramWeek.has(pid)));
   for (const pid of programsWithoutWindows) {
     warnings.push(`${programNames[pid] || 'A program'} has no open game slots this season, so its teams can only play away.`);
   }
-  const noCoords = new Set(teams.map((t) => t.programId).filter((pid) => !homes[pid]));
+  const noCoords = new Set(teams.filter((t) => tgt(t) > 0).map((t) => t.programId).filter((pid) => !homes[pid]));
   for (const pid of noCoords) {
     warnings.push(`${programNames[pid] || 'A program'} has no venue coordinates, so travel distance couldn’t be checked for its games.`);
   }
@@ -69,9 +74,15 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   const progName = (pid) => programNames[pid] || 'A program';
   const outOfReach = new Map(); // team id -> opponents lost to a program's own (lower) travel cap
   const pairingShort = []; // teams the opponent rules left short, with a plain-English reason
-  for (const [divisionId, divTeams] of byDivision) {
+  for (const [divisionId, allDivTeams] of byDivision) {
+    if (allDivTeams.length < 2) {
+      warnings.push(`${allDivTeams[0].divisionName} has only one team (${allDivTeams[0].name}), so no games were created for it.`);
+      continue;
+    }
+    // Teams with a "no league games" override sit out the Matchmaker.
+    const divTeams = allDivTeams.filter((t) => tgt(t) > 0);
     if (divTeams.length < 2) {
-      warnings.push(`${divTeams[0].divisionName} has only one team (${divTeams[0].name}), so no games were created for it.`);
+      if (divTeams.length === 1) warnings.push(`${divTeams[0].name} has no one to play in ${divTeams[0].divisionName}: the other team${allDivTeams.length > 2 ? 's have' : ' has'} “No league games” set (team override).`);
       continue;
     }
     // This division's rematch limit: its override if it has one, else the league's.
@@ -103,7 +114,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
         opponents.get(b.id).push(a);
       }
     }
-    const canStillPlay = (a, b) => count.get(a.id) < rules.gamesPerTeam && count.get(b.id) < rules.gamesPerTeam
+    const canStillPlay = (a, b) => count.get(a.id) < tgt(a) && count.get(b.id) < tgt(b)
       && (maxVs == null || meetings(a, b) < maxVs);
     const optionsLeft = (t) => opponents.get(t.id).filter((o) => canStillPlay(t, o)).length;
 
@@ -117,15 +128,19 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     const homeSuggested = new Map();  // team -> times suggested as home
     let round = 0;
     const byName = (a, b) => a.name.localeCompare(b.name);
+    // How far along a team is toward its own target. Choosing by this (not the
+    // raw count) spreads a team with fewer games evenly across the rounds, and
+    // so across the season, instead of bunching them at the start.
+    const progress = (t) => count.get(t.id) / tgt(t);
     while (round < rules.gamesPerTeam * 4) {
       const busy = new Set();
       let added = 0;
       const choosers = divTeams.filter((t) => optionsLeft(t) > 0)
-        .sort((a, b) => count.get(a.id) - count.get(b.id) || optionsLeft(a) - optionsLeft(b) || byName(a, b));
+        .sort((a, b) => progress(a) - progress(b) || count.get(a.id) - count.get(b.id) || optionsLeft(a) - optionsLeft(b) || byName(a, b));
       for (const t of choosers) {
         if (busy.has(t.id)) continue;
         const picks = opponents.get(t.id).filter((o) => !busy.has(o.id) && canStillPlay(t, o))
-          .sort((a, b) => meetings(t, a) - meetings(t, b) || count.get(a.id) - count.get(b.id) || optionsLeft(a) - optionsLeft(b) || byName(a, b));
+          .sort((a, b) => meetings(t, a) - meetings(t, b) || progress(a) - progress(b) || count.get(a.id) - count.get(b.id) || optionsLeft(a) - optionsLeft(b) || byName(a, b));
         if (!picks.length) continue;
         const o = picks[0];
         // Don't take a rematch just because the opponents this team hasn't met
@@ -176,7 +191,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     };
     const nearbyRound = (r) => (r + 1 < Math.max(round, 1) ? r + 1 : Math.max(r - 1, 0));
     for (let guard = 0; guard < divTeams.length * rules.gamesPerTeam; guard++) {
-      const short = divTeams.filter((t) => count.get(t.id) < rules.gamesPerTeam);
+      const short = divTeams.filter((t) => count.get(t.id) < tgt(t));
       let fixed = false;
       for (let i = 0; i < short.length && !fixed; i++) {
         const A = short[i];
@@ -194,7 +209,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
             break;
           }
         }
-        if (!fixed && rules.gamesPerTeam - count.get(A.id) >= 2) {
+        if (!fixed && tgt(A) - count.get(A.id) >= 2) {
           for (const m of divMatches) {
             const { a: C, b: D } = m;
             if (C === A || D === A || !legal(A, C) || !legal(A, D)) continue;
@@ -211,7 +226,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     // Explain teams the rules left short of the target, before placement.
     for (const t of divTeams) {
       const got = count.get(t.id);
-      if (got >= rules.gamesPerTeam) continue;
+      if (got >= tgt(t)) continue;
       const others = divTeams.filter((o) => o.id !== t.id);
       const sister = others.filter((o) => o.programId === t.programId).length;
       const eligible = opponents.get(t.id).length;
@@ -220,13 +235,31 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
         + (lost ? ` (${lost} more ${lost > 1 ? 'are' : 'is'} out of reach under the programs’ own travel caps)` : '');
       if (!eligible) {
         pairingShort.push({ team: t, text: `${t.name} has no possible opponents in ${t.divisionName}${excluded}, so it has no games. Turn on “Teams from the same program can play each other” or move it to another division.` });
-      } else if (maxVs != null && eligible * maxVs < rules.gamesPerTeam) {
+      } else if (maxVs != null && eligible * maxVs < tgt(t)) {
         const limit = `${overridden ? `the ${t.divisionName} division override of ` : 'a limit of '}${maxVs} game${maxVs > 1 ? 's' : ''} against each`;
         const fix = overridden
           ? `Raise the ${t.divisionName} division override, or lower “Games per team”.`
           : `Raise “Most games against the same opponent” (or add a division override for ${t.divisionName}), or lower “Games per team”.`;
-        pairingShort.push({ team: t, overrideNote: overridden ? `division override: ${maxVs} game${maxVs > 1 ? 's' : ''} against each` : '', text: `${t.name} got ${got} of ${rules.gamesPerTeam} games: it has ${eligible} possible opponent${eligible > 1 ? 's' : ''} in ${t.divisionName}${excluded} and ${limit}. ${fix}` });
+        pairingShort.push({ team: t, overrideNote: overridden ? `division override: ${maxVs} game${maxVs > 1 ? 's' : ''} against each` : '', text: `${t.name} got ${ofTarget(t, got)}: it has ${eligible} possible opponent${eligible > 1 ? 's' : ''} in ${t.divisionName}${excluded} and ${limit}. ${fix}` });
       }
+    }
+    // Teams left short because opponents play fewer games (team overrides):
+    // there are fewer games to go around, so name the teams involved.
+    for (const t of divTeams) {
+      const got = count.get(t.id);
+      if (got >= tgt(t) || pairingShort.some((p) => p.team === t)) continue;
+      const reduced = opponents.get(t.id).filter((o) => isOverridden(o));
+      if (!reduced.length) continue;
+      // Games the other opponents could still give it under the rematch limit.
+      const fromOthers = opponents.get(t.id).filter((o) => !isOverridden(o)).reduce((n, o) => n + (maxVs == null ? Infinity : maxVs), 0);
+      const fromReduced = reduced.reduce((n, o) => n + Math.min(maxVs == null ? Infinity : maxVs, tgt(o)), 0);
+      if (fromOthers + fromReduced >= tgt(t) && maxVs == null) continue;
+      const names = reduced.slice(0, 2).map((o) => `${o.name} plays only ${tgt(o)} (team override)`).join('; ');
+      const more = reduced.length > 2 ? `; ${reduced.length - 2} more with team overrides` : '';
+      const fix = maxVs != null
+        ? (overridden ? `Raise the ${t.divisionName} division override` : `Raise “Most games against the same opponent”`) + ' so other opponents can make up the games, or add a game by hand.'
+        : 'Add a game by hand, or lower “Games per team”.';
+      pairingShort.push({ team: t, overrideNote: 'team overrides', text: `${t.name} got ${ofTarget(t, got)}: ${names}${more}, so there are fewer games to go around in ${t.divisionName}. ${fix}` });
     }
     const totalRounds = Math.max(round, 1);
     for (const m of divMatches) m.targetWeek = Math.floor((m.round * weeks.length) / totalRounds);
@@ -484,7 +517,7 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
   // ---- 3. summary ----
   const scheduled = games.filter((g) => g.window);
   const teamStats = teams.map((t) => ({
-    teamId: t.id, name: t.name, divisionId: t.divisionId,
+    teamId: t.id, name: t.name, divisionId: t.divisionId, target: tgt(t), teamOverride: isOverridden(t),
     home: homeCount.get(t.id), away: awayCount.get(t.id), games: homeCount.get(t.id) + awayCount.get(t.id),
   }));
   // Teams short for other reasons (not enough open gym time, travel), so the
@@ -499,16 +532,23 @@ export function buildSchedule({ teams, windows, homes, programBlackouts, rules, 
     const cap = capOf(pid);
     const cantReach = [...new Set(teams.map((t) => t.programId))]
       .filter((q) => q !== pid && homes[q] && milesBetween(homes[pid], homes[q]) > cap);
-    const shortHere = own.map((t) => statById.get(t.id)).filter((x) => x.games < rules.gamesPerTeam && byDivision.get(x.divisionId).length > 1 && !explained.has(x.teamId));
+    const shortHere = own.map((t) => statById.get(t.id)).filter((x) => x.games < x.target && byDivision.get(x.divisionId).length > 1 && !explained.has(x.teamId));
     if (!cantReach.length || !shortHere.length) continue;
     const names = cantReach.map(progName);
-    const who = shortHere.slice(0, 3).map((x) => `${x.name} got ${x.games} of ${rules.gamesPerTeam} games`).join('; ');
+    const who = shortHere.slice(0, 3).map((x) => `${x.name} got ${ofTarget(x, x.games)}`).join('; ');
     warnings.push(`${who}${shortHere.length > 3 ? `; ${shortHere.length - 3} more ${progName(pid)} team${shortHere.length - 3 > 1 ? 's' : ''} too` : ''}: ${progName(pid)}’s own ${cap}-mile travel cap means its teams can’t travel to ${names.length > 3 ? `${names.length} programs` : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]}, so those games have to be at ${progName(pid)}’s gyms. More ${progName(pid)} game slots, or a higher cap, would help.`);
     for (const x of shortHere) explained.add(x.teamId);
   }
-  const short = teamStats.filter((s) => s.games < rules.gamesPerTeam && byDivision.get(s.divisionId).length > 1 && !explained.has(s.teamId));
+  const short = teamStats.filter((s) => s.games < s.target && byDivision.get(s.divisionId).length > 1 && !explained.has(s.teamId));
   if (short.length) {
-    warnings.push(`${short.length} team${short.length > 1 ? 's' : ''} ended up with fewer than ${rules.gamesPerTeam} games: ${short.slice(0, 6).map((s) => `${s.name} (${s.games})`).join(', ')}${short.length > 6 ? ', …' : ''}.`);
+    const anyOwn = short.some((s) => s.teamOverride);
+    warnings.push(`${short.length} team${short.length > 1 ? 's' : ''} ended up with fewer games than ${anyOwn ? 'their target' : `${rules.gamesPerTeam}`}: ${short.slice(0, 6).map((s) => `${s.name} (${s.teamOverride ? `${s.games} of ${s.target}, team override` : s.games})`).join(', ')}${short.length > 6 ? ', …' : ''}.`);
+  }
+  // Which team overrides this draft was built with.
+  const owned = teams.filter((t) => isOverridden(t));
+  if (owned.length) {
+    const say = (t) => (tgt(t) === 0 ? `${t.name}: no league games` : `${t.name}: ${tgt(t)} game${tgt(t) > 1 ? 's' : ''}`);
+    warnings.push(`Team overrides: ${owned.slice(0, 6).map(say).join('; ')}${owned.length > 6 ? `; and ${owned.length - 6} more` : ''}. Their opponents make up the games against other teams where the rules allow.`);
   }
   // Day preferences: how the tagged slots were used.
   const tagged = new Map(); // "Girls|prefer" -> { label, mode, total, mine, others }

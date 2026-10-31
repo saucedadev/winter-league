@@ -20,6 +20,11 @@ export const DEFAULT_RULES = Object.freeze({
   // and may only be LOWER than the league cap: a higher one would push longer
   // trips onto opponents who didn't agree to them.
   programOverrides: Object.freeze({}),
+  // Per-team games targets: { [teamId]: { gamesPerTeam, reason } }. Set by
+  // the team's program on the Teams page (never stored with the league
+  // rules) and copied into each draft when it's built. Lower than the
+  // league's only; 0 = no league games (the Matchmaker skips the team).
+  teamOverrides: Object.freeze({}),
 });
 export const MAX_VS_SAME_OPPONENT_LIMIT = 6;
 export const DIVISION_OVERRIDE_KEYS = ['maxVsSameOpponent'];
@@ -31,6 +36,14 @@ export function travelCapFor(rules, programId) {
   const own = rules?.programOverrides?.[programId]?.maxTravelMiles;
   return own != null ? Math.min(own, rules.maxTravelMiles) : rules.maxTravelMiles;
 }
+// How many league games a team aims for: its own target if it has one, else
+// the league's (never more than the league's).
+export function targetFor(rules, teamId) {
+  const own = rules?.teamOverrides?.[teamId]?.gamesPerTeam;
+  return own != null ? Math.min(own, rules.gamesPerTeam) : rules.gamesPerTeam;
+}
+export const hasTeamOverride = (rules, teamId) => rules?.teamOverrides?.[teamId]?.gamesPerTeam != null;
+
 export const hasTravelOverride = (rules, programId) => rules?.programOverrides?.[programId]?.maxTravelMiles != null;
 
 // The rematch limit: 1–6, or "no limit" (null, '', or 'none'). Returns
@@ -70,7 +83,7 @@ const RULE_LIMITS = {
 // given, an override for a division not in it is an error, and messages use
 // division names.
 export function normalizeRules(input = {}, { divisionNames, programNames } = {}) {
-  const out = { ...DEFAULT_RULES, divisionOverrides: {}, programOverrides: {} };
+  const out = { ...DEFAULT_RULES, divisionOverrides: {}, programOverrides: {}, teamOverrides: {} };
   const errors = [];
   for (const [key, [min, max, label]] of Object.entries(RULE_LIMITS)) {
     if (input[key] === undefined || input[key] === null || input[key] === '') continue;
@@ -124,6 +137,17 @@ export function normalizeRules(input = {}, { divisionNames, programNames } = {})
           errors.push(`${name || 'A program'}’s travel cap must be a whole number from 1 to ${out.maxTravelMiles} miles. A program can only set a lower cap than the league’s.`);
         } else out.programOverrides[programId] = { maxTravelMiles: n };
       }
+    }
+  }
+  // Team overrides (games target, lower than the league's only). These come
+  // from the Teams page and are copied into a draft's rules; an entry that
+  // isn't valid is dropped rather than failing the whole set.
+  const to = input.teamOverrides;
+  if (to && typeof to === 'object' && !Array.isArray(to)) {
+    for (const [teamId, values] of Object.entries(to)) {
+      const n = Number(values?.gamesPerTeam);
+      if (!Number.isInteger(n) || n < 0 || n >= out.gamesPerTeam) continue;
+      out.teamOverrides[teamId] = { gamesPerTeam: n, ...(values.reason ? { reason: String(values.reason).slice(0, 200) } : {}), ...(values.name ? { name: String(values.name).slice(0, 120) } : {}) };
     }
   }
   if (errors.length) {

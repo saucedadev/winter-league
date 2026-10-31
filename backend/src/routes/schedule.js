@@ -4,9 +4,9 @@ import { requireAuth, requirePasswordCurrent, requireRole, isSuperAdmin } from '
 import { ah, badRequest, conflict, forbidden, notFound } from '../utils/http.js';
 import { assertDate, assertTime, isValidDate, formatTime12 } from '../utils/validate.js';
 import { logActivity } from '../utils/activityLog.js';
-import { normalizeRules } from '../scheduling/core.js';
+import { normalizeRules, targetFor, hasTeamOverride } from '../scheduling/core.js';
 import {
-  getRules, saveRules, divisionNameMap, programNameMap, generateDraft, GAME_SELECT, GAME_ORDER, shapeGame, getGame,
+  getRules, saveRules, teamTargets, teamTargetsChanged, divisionNameMap, programNameMap, generateDraft, GAME_SELECT, GAME_ORDER, shapeGame, getGame,
   checkPlacement, placementOptions, placementUpdate, todayStr, describeGame, activeSeason, publishedRun,
 } from '../scheduling/data.js';
 import { onGamesChanged, syncSlots, carryOverAssignments, upcomingAssignmentCount, leagueNow, notifyUsers } from '../referees/data.js';
@@ -105,7 +105,9 @@ function overridesText(rules, divisionNames, programNames = {}) {
     .map(([id, o]) => `${divisionNames[id] || 'a division'}: ${limitText(o.maxVsSameOpponent)} against the same opponent`);
   const plist = Object.entries(rules.programOverrides || {})
     .map(([id, o]) => `${programNames[id] || 'a program'}: ${o.maxTravelMiles}-mile travel cap`);
-  return (list.length ? `; division overrides — ${list.join(', ')}` : '') + (plist.length ? `; program overrides — ${plist.join(', ')}` : '');
+  const tn = Object.keys(rules.teamOverrides || {}).length;
+  return (list.length ? `; division overrides — ${list.join(', ')}` : '') + (plist.length ? `; program overrides — ${plist.join(', ')}` : '')
+    + (tn ? `; ${tn} team override${tn > 1 ? 's' : ''} (fewer games)` : '');
 }
 
 router.put('/rules', adminOnly, ah(async (req, res) => {
@@ -144,7 +146,20 @@ router.get('/overview', adminOnly, ah(async (req, res) => {
   // League programs, for program overrides (guests have no gyms, so no travel cap).
   const programs = (await all('SELECT id, name, short_code, is_active FROM programs WHERE is_guest = 0 ORDER BY name COLLATE NOCASE'))
     .map((p) => ({ id: p.id, name: p.name, shortCode: p.shortCode, isActive: !!p.isActive }));
-  res.json({ season, rules: await getRules(), divisions, programs, draft: shapeRun(draft), published: shapeRun(published), openRequests: Number(openRequests.n), assignedAhead });
+  const rules = await getRules();
+  // Team overrides (set by programs on the Teams page), for the rules panel.
+  const teamOverrides = (await all(`SELECT t.id, t.name, t.games_target, t.games_target_reason, t.games_target_at, t.program_id,
+      p.name AS program_name, d.name AS division_name, d.id AS division_id, u.first_name || ' ' || u.last_name AS set_by_name
+    FROM teams t JOIN programs p ON p.id = t.program_id JOIN divisions d ON d.id = t.division_id LEFT JOIN users u ON u.id = t.games_target_by
+    WHERE t.games_target IS NOT NULL AND t.is_active = 1 AND p.is_guest = 0
+    ORDER BY d.sort_order, p.name COLLATE NOCASE, t.name COLLATE NOCASE`))
+    .map((t) => ({ teamId: t.id, teamName: t.name, programId: t.programId, programName: t.programName, divisionId: t.divisionId, divisionName: t.divisionName,
+      gamesTarget: t.gamesTarget, reason: t.gamesTargetReason, setByName: t.setByName, setAt: t.gamesTargetAt,
+      // A target at or above the league's count does nothing (the league's count was lowered since).
+      inEffect: t.gamesTarget < rules.gamesPerTeam }));
+  const shaped = shapeRun(draft);
+  if (shaped) shaped.teamOverridesChanged = teamTargetsChanged(shaped.rules?.teamOverrides, await teamTargets(rules.gamesPerTeam));
+  res.json({ season, rules, divisions, programs, teamOverrides, draft: shaped, published: shapeRun(published), openRequests: Number(openRequests.n), assignedAhead });
 }));
 
 // ---------------------------------------------------------------------
@@ -165,7 +180,7 @@ router.post('/generate', adminOnly, ah(async (req, res) => {
   divisionNames ||= await divisionNameMap();
   programNames ||= await programNameMap();
   await logActivity({ category: 'schedule', action: 'generated', actor: req.user,
-    details: `Generated a draft schedule for ${season.name}: ${result.summary.scheduledGames} games placed, ${result.summary.unscheduledGames} unplaced${overridesText(rules, divisionNames, programNames)}` });
+    details: `Generated a draft schedule for ${season.name}: ${result.summary.scheduledGames} games placed, ${result.summary.unscheduledGames} unplaced${overridesText(result.rules, divisionNames, programNames)}` });
   const draft = await one('SELECT * FROM schedule_runs WHERE id = ?', [result.runId]);
   res.status(201).json({ draft: shapeRun(draft), ms: Date.now() - started });
 }));
@@ -282,6 +297,10 @@ export const canAddFor = (user, team) => isSuperAdmin(user)
 const requesterOnly = (req) => {
   if (!isSuperAdmin(req.user) && !['program_director', 'league_coach'].includes(req.user.role)) throw forbidden('Only coaches, directors, and the league can add games.');
 };
+// A team's games target in this draft (its team override, if the draft was
+// built with one, else the league's count).
+const targetInfo = (rules, t) => ({ target: targetFor(rules, t.id), teamOverride: hasTeamOverride(rules, t.id) });
+
 async function teamFor(req, id, label = 'Team') {
   const t = await getTeam(id);
   if (!t) throw notFound(label);
@@ -297,7 +316,7 @@ router.get('/add-game/teams', ah(async (req, res) => {
   const teams = await teamsForRun(r.id);
   res.json({ run: { id: r.id, status: r.status }, gamesPerTeam: rules.gamesPerTeam,
     teams: teams.map((t) => ({ id: t.id, name: t.name, divisionId: t.divisionId, divisionName: t.divisionName, programId: t.programId, programName: t.programName,
-      isGuest: t.isGuest, games: t.games, guestGames: t.guestGames, mine: canAddFor(req.user, t) })) });
+      isGuest: t.isGuest, games: t.games, guestGames: t.guestGames, mine: canAddFor(req.user, t), ...targetInfo(rules, t) })) });
 }));
 
 // GET /api/schedule/add-game/opponents?runId=&teamId= — possible opponents.
@@ -316,12 +335,12 @@ router.get('/add-game/opponents', ah(async (req, res) => {
     if (c.errors.length) continue;
     if (!isSuperAdmin(req.user) && c.exceptions.length) continue;
     opponents.push({ id: o.id, name: o.name, divisionId: o.divisionId, divisionName: o.divisionName, programName: o.programName, isGuest: o.isGuest,
-      games: o.games, meetings: c.meetings, sameDivision: o.divisionId === team.divisionId, exceptions: c.exceptions });
+      games: o.games, meetings: c.meetings, sameDivision: o.divisionId === team.divisionId, exceptions: c.exceptions, ...targetInfo(rules, o) });
   }
   // Same division first, league teams before guests, then fewest meetings so far.
   opponents.sort((a, b) => Number(b.sameDivision) - Number(a.sameDivision) || a.exceptions.length - b.exceptions.length
     || Number(a.isGuest) - Number(b.isGuest) || a.meetings - b.meetings || a.name.localeCompare(b.name));
-  res.json({ team: { id: team.id, name: team.name, divisionName: team.divisionName, isGuest: !!team.isGuest, games: ctx.games(team.id), guestGames: ctx.guestGames(team.id) }, gamesPerTeam: rules.gamesPerTeam, opponents });
+  res.json({ team: { id: team.id, name: team.name, divisionName: team.divisionName, isGuest: !!team.isGuest, games: ctx.games(team.id), guestGames: ctx.guestGames(team.id), ...targetInfo(rules, team) }, gamesPerTeam: rules.gamesPerTeam, opponents });
 }));
 
 // GET /api/schedule/add-game/options?runId=&teamId=&opponentId= — open times

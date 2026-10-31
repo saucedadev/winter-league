@@ -176,6 +176,25 @@ function removeProgramOverride(id) {
   delete next[id];
   rules.value.programOverrides = next;
 }
+// ---- team overrides (fewer games for one team, set on the Teams page) ----
+// Saved straight away (not with the rules); they take effect at the next draft.
+const teamOverrideRows = computed(() => (overview.value?.teamOverrides || [])
+  .filter((t) => !ctx.programId || t.programId === ctx.programId));
+const teamTargetChoices = computed(() => { const n = Number(overview.value?.rules?.gamesPerTeam) || 0; return Array.from({ length: n }, (_, i) => n - 1 - i); });
+const teamTargetBusy = ref('');
+const gamesText = (n) => (n === 0 ? 'no league games' : `${n} league game${n === 1 ? '' : 's'}`);
+async function setTeamTarget(row, value) {
+  teamTargetBusy.value = row.teamId;
+  try {
+    await api.put(`/teams/${row.teamId}/games-target`, { gamesTarget: value, reason: row.reason || 'Changed by the league' });
+    toast.success(value == null ? `${row.teamName} is back to the league’s ${overview.value.rules.gamesPerTeam} games. Generate again to use it.` : `${row.teamName} now plays ${gamesText(value)}. Generate again to use it.`);
+    await loadOverview();
+  } catch (err) { toast.error(errorMessage(err)); }
+  finally { teamTargetBusy.value = ''; }
+}
+const removingTarget = ref(null);
+async function doRemoveTarget() { const row = removingTarget.value; await setTeamTarget(row, null); removingTarget.value = null; }
+
 const programOverridesKey = (o) => JSON.stringify(Object.keys(o || {}).sort().map((id) => [id, Number(o[id].maxTravelMiles)]));
 
 const overridesKey = (o) => JSON.stringify(Object.keys(o || {}).sort().map((id) => [id, o[id].maxVsSameOpponent ?? null]));
@@ -192,6 +211,10 @@ const runOverrides = computed(() => Object.entries(run.value?.rules?.divisionOve
   .map(([id, o]) => ({ id, name: divisionName(id), value: o.maxVsSameOpponent ?? null })));
 const runProgramOverrides = computed(() => Object.entries(run.value?.rules?.programOverrides || {})
   .map(([id, o]) => ({ id, name: programName(id), miles: o.maxTravelMiles })));
+const runTeamOverrides = computed(() => Object.entries(run.value?.rules?.teamOverrides || {})
+  .filter(([id]) => !ctx.programId || (overview.value?.teamOverrides || []).some((t) => t.teamId === id && t.programId === ctx.programId)
+    || games.value.some((g) => (g.homeTeamId === id && g.homeProgramId === ctx.programId) || (g.awayTeamId === id && g.awayProgramId === ctx.programId)))
+  .map(([id, o]) => ({ id, name: o.name || overview.value?.teamOverrides?.find((t) => t.teamId === id)?.teamName || 'A team', games: o.gamesPerTeam, reason: o.reason || '' })));
 
 // ---- live summary (recomputed from the games, so it reflects edits) ----
 const stats = computed(() => {
@@ -225,6 +248,10 @@ const stats = computed(() => {
   };
 });
 const target = computed(() => run.value?.rules?.gamesPerTeam || 0);
+// Each team's own target in this run: its team override (never more than the
+// league's), else the league's.
+const teamOverrideOf = (id) => run.value?.rules?.teamOverrides?.[id]?.gamesPerTeam ?? null;
+const targetOf = (id) => { const own = teamOverrideOf(id); return own != null ? Math.min(own, target.value) : target.value; };
 
 // ---- list filters ----
 const tab = ref('date');
@@ -492,6 +519,28 @@ const publishMessage = computed(() => {
             <button type="button" class="btn btn-secondary" :disabled="!newOverrideProgram" @click="addProgramOverride">Add override</button>
           </div>
         </div>
+        <!-- Team overrides -->
+        <div class="mt-4 pt-4 border-t border-border">
+          <h3 class="font-semibold text-sm">Team overrides</h3>
+          <p class="text-sm text-text-muted mb-3">Teams playing fewer league games than the league’s {{ overview.rules.gamesPerTeam }}, such as travel teams on a tournament schedule. Programs set these on the Teams page, with a reason. Changes here are saved straight away and take effect the next time you generate.</p>
+          <p v-if="overview.draft?.teamOverridesChanged" class="text-sm font-medium mb-3" role="status">Team overrides have changed since this draft was built. Generate again to use them.</p>
+          <ul v-if="teamOverrideRows.length" class="card card-blocky divide-y divide-border">
+            <li v-for="row in teamOverrideRows" :key="row.teamId" class="px-4 py-2.5 flex flex-wrap items-center gap-3">
+              <div class="min-w-48 flex-1">
+                <p class="font-medium text-sm">{{ row.teamName }} <span class="font-normal text-text-muted">· {{ row.programName }} · {{ row.divisionName }}</span></p>
+                <p class="text-xs text-text-muted">{{ row.reason || 'No reason given' }}<template v-if="row.setByName"> · set by {{ row.setByName }}</template><template v-if="row.setAt"> · {{ timestamp(row.setAt) }}</template></p>
+              </div>
+              <label class="text-sm text-text-muted" :for="`toverride-${row.teamId}`">Games this season</label>
+              <select :id="`toverride-${row.teamId}`" class="input !w-auto" :value="row.inEffect ? String(row.gamesTarget) : ''" :disabled="teamTargetBusy === row.teamId"
+                @change="setTeamTarget(row, $event.target.value === '' ? null : Number($event.target.value))">
+                <option v-if="!row.inEffect" value="" disabled>{{ row.gamesTarget }} (not lower than the league’s, so no effect)</option>
+                <option v-for="n in teamTargetChoices" :key="n" :value="String(n)">{{ n === 0 ? 'No league games' : `${n} game${n === 1 ? '' : 's'}` }}</option>
+              </select>
+              <button type="button" class="btn btn-ghost text-xs hover:!text-danger ml-auto" :disabled="teamTargetBusy === row.teamId" :aria-label="`Remove the override for ${row.teamName}`" @click="removingTarget = row">Remove</button>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-text-muted">No team overrides{{ ctx.programId ? ' for this program' : '' }}. Every team aims for {{ overview.rules.gamesPerTeam }} games.</p>
+        </div>
         <p v-if="rulesDirty" class="text-xs mt-3 font-medium">Changed rules are saved when you generate.</p>
       </section>
 
@@ -526,10 +575,15 @@ const publishMessage = computed(() => {
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Games placed</p><p class="text-2xl font-bold">{{ stats.placed }}</p><p class="text-xs text-text-muted">{{ stats.unplaced ? `${stats.unplaced} still to place` : 'Every pairing placed' }}</p></div>
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Home/away balance</p><p class="text-2xl font-bold">{{ stats.balanced }}<span class="text-sm font-medium text-text-muted"> / {{ stats.teams.length }}</span></p><p class="text-xs text-text-muted">teams within one game of 50/50</p></div>
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Longest trip</p><p class="text-2xl font-bold">{{ stats.maxTravel ?? '—' }}<span v-if="stats.maxTravel != null" class="text-sm font-medium text-text-muted"> mi</span></p><p class="text-xs text-text-muted">average {{ stats.avgTravel ?? '—' }} mi · cap {{ run.rules.maxTravelMiles }}</p></div>
-          <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Season span</p><p class="text-base font-bold mt-1.5">{{ stats.first ? dateRange(stats.first, stats.last) : '—' }}</p><p class="text-xs text-text-muted">{{ run.rules.gamesPerTeam }} games per team target</p></div>
+          <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Season span</p><p class="text-base font-bold mt-1.5">{{ stats.first ? dateRange(stats.first, stats.last) : '—' }}</p><p class="text-xs text-text-muted">{{ run.rules.gamesPerTeam }} games per team target<template v-if="runTeamOverrides.length"> · {{ runTeamOverrides.length }} team override{{ runTeamOverrides.length === 1 ? '' : 's' }}</template></p></div>
           <div class="card card-blocky p-4"><p class="text-xs text-text-muted">Needs attention</p><p class="text-2xl font-bold">{{ stats.conflicts + stats.unplaced }}</p><p class="text-xs text-text-muted">{{ stats.conflicts }} blackout conflict{{ stats.conflicts === 1 ? '' : 's' }} · {{ stats.unplaced }} unplaced</p></div>
         </div>
 
+        <p v-if="runTeamOverrides.length" class="text-sm text-text-muted" :class="runOverrides.length || runProgramOverrides.length ? 'mb-1' : 'mb-4'">
+          Built with team override{{ runTeamOverrides.length === 1 ? '' : 's' }}:
+          <span v-for="(o, i) in runTeamOverrides" :key="o.id" :title="o.reason"><strong class="text-text">{{ o.name }}</strong> — {{ gamesText(o.games) }}{{ i < runTeamOverrides.length - 1 ? '; ' : '.' }}</span>
+          <template v-if="view === 'draft' && overview.draft?.teamOverridesChanged"> <span class="font-medium text-text">Changed since this draft.</span></template>
+        </p>
         <p v-if="runProgramOverrides.length" class="text-sm text-text-muted" :class="runOverrides.length ? 'mb-1' : 'mb-4'">
           Built with program override{{ runProgramOverrides.length === 1 ? '' : 's' }}:
           <span v-for="(o, i) in runProgramOverrides" :key="o.id"><strong class="text-text">{{ o.name }}</strong> — {{ o.miles }}-mile travel cap{{ i < runProgramOverrides.length - 1 ? '; ' : '.' }}</span>
@@ -619,7 +673,7 @@ const publishMessage = computed(() => {
               <tr v-for="t in balanceRows" :key="t.id" class="border-b border-border last:border-0">
                 <td class="px-4 py-2 font-medium">{{ t.name }}</td>
                 <td class="px-4 py-2 text-text-muted">{{ t.division }}</td>
-                <td class="px-4 py-2 text-right tabular-nums" :class="t.games < target && 'font-bold'">{{ t.games }}<span v-if="t.games < target" class="text-xs font-medium text-text-muted"> of {{ target }}</span></td>
+                <td class="px-4 py-2 text-right tabular-nums" :class="t.games < targetOf(t.id) && 'font-bold'">{{ t.games }}<span v-if="t.games < targetOf(t.id) || teamOverrideOf(t.id) != null" class="text-xs font-medium text-text-muted"> of {{ targetOf(t.id) }}<template v-if="teamOverrideOf(t.id) != null"> (team override)</template></span></td>
                 <td class="px-4 py-2 text-right tabular-nums" :class="Math.abs(t.gap) > 1 && 'font-bold'">{{ t.home }}</td>
                 <td class="px-4 py-2 text-right tabular-nums" :class="Math.abs(t.gap) > 1 && 'font-bold'">{{ t.away }}</td>
                 <td v-if="stats.teams.some((x) => x.guest)" class="px-4 py-2 text-right tabular-nums text-text-muted">{{ t.guest || '' }}</td>
@@ -661,6 +715,9 @@ const publishMessage = computed(() => {
         <button class="btn btn-primary" :disabled="busy" @click="publish">{{ busy ? 'Publishing…' : 'Publish anyway' }}</button>
       </template>
     </Modal>
+    <ConfirmDialog v-if="removingTarget" title="Remove the team override?" confirm-label="Remove override" :busy="teamTargetBusy === removingTarget.teamId"
+      :message="`${removingTarget.teamName} goes back to the league’s ${overview.rules.gamesPerTeam} games at the next draft. ${removingTarget.programName} will see the change on its Teams page.`"
+      @confirm="doRemoveTarget" @close="removingTarget = null" />
     <ConfirmDialog v-if="confirmDiscard" title="Discard the draft?" confirm-label="Discard draft" :busy="busy"
       message="The draft and any edits to it are deleted. The published schedule isn’t affected." @confirm="discard" @close="confirmDiscard = false" />
     <ConfirmDialog v-if="removing" title="Remove this game from the draft?" confirm-label="Remove game" :busy="saving"

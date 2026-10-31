@@ -33,6 +33,8 @@ export async function getRules() {
   if (!row) return normalizeRules({});
   let rules;
   try { rules = normalizeRules(JSON.parse(row.value)); } catch { return normalizeRules({}); }
+  // Team targets live on the teams themselves, never with the league rules.
+  rules.teamOverrides = {};
   const ids = Object.keys(rules.divisionOverrides);
   if (ids.length) {
     const names = await divisionNameMap();
@@ -47,10 +49,37 @@ export async function getRules() {
 }
 
 export async function saveRules(rules) {
+  const { teamOverrides, ...league } = rules;
   await db.execute({
     sql: "INSERT INTO app_settings (key, value) VALUES ('schedule_rules', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    args: [JSON.stringify(rules)],
+    args: [JSON.stringify(league)],
   });
+}
+
+// Team games targets as set on the Teams page, for active league teams:
+// { teamId: { gamesPerTeam, reason } }. Only targets lower than the league's
+// count; a team whose target is now at or above it plays the league's.
+export async function teamTargets(gamesPerTeam) {
+  const rows = await all(`SELECT t.id, t.name, t.games_target, t.games_target_reason FROM teams t JOIN programs p ON p.id = t.program_id
+    WHERE t.games_target IS NOT NULL AND t.is_active = 1 AND p.is_guest = 0`);
+  const out = {};
+  for (const r of rows) {
+    if (gamesPerTeam != null && r.gamesTarget >= gamesPerTeam) continue;
+    out[r.id] = { gamesPerTeam: r.gamesTarget, name: r.name, ...(r.gamesTargetReason ? { reason: r.gamesTargetReason } : {}) };
+  }
+  return out;
+}
+
+// The rules a new draft is built with: the league's, plus every team target.
+export async function rulesWithTeamTargets(rules) {
+  return { ...rules, teamOverrides: await teamTargets(rules.gamesPerTeam) };
+}
+
+// True when the team targets now differ from the ones a draft was built with.
+export function teamTargetsChanged(draftOverrides = {}, current = {}) {
+  const ids = new Set([...Object.keys(draftOverrides || {}), ...Object.keys(current || {})]);
+  for (const id of ids) if ((draftOverrides?.[id]?.gamesPerTeam ?? null) !== (current?.[id]?.gamesPerTeam ?? null)) return true;
+  return false;
 }
 
 // ---------------------------------------------------------------------
@@ -133,7 +162,8 @@ async function loadInputs(season, rules) {
 
 // Builds a new draft for the season. Any earlier draft for the season is
 // replaced — there is only ever one draft at a time.
-export async function generateDraft(season, rules, userId) {
+export async function generateDraft(season, leagueRules, userId) {
+  const rules = await rulesWithTeamTargets(leagueRules);
   const inputs = await loadInputs(season, rules);
   const result = buildSchedule({ ...inputs, rules });
 
@@ -159,7 +189,7 @@ export async function generateDraft(season, rules, userId) {
   }
   // One atomic write: a failed generation never leaves half a draft behind.
   await db.batch(stmts, 'write');
-  return { runId, ...result };
+  return { runId, rules, ...result };
 }
 
 // ---------------------------------------------------------------------

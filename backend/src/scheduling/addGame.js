@@ -10,7 +10,7 @@
 //      travel). These are never bypassed; times are picked from a list that
 //      already passes them.
 import { one, all } from '../db/client.js';
-import { rulesForDivision } from './core.js';
+import { rulesForDivision, targetFor, hasTeamOverride } from './core.js';
 import { runRules, checkPlacement, placementOptions } from './data.js';
 
 // Placeholder id for a game that doesn't exist yet. It must be a real string:
@@ -108,7 +108,8 @@ export async function pairingCheck(run, team, opponent, { rules = null, ctx = nu
   if (!team.isGuest && !opponent.isGuest) {
     for (const t of [team, opponent]) {
       const n = ctx.games(t.id);
-      if (n >= rules.gamesPerTeam) warnings.push(`${t.name} will have ${n + 1} games (target ${rules.gamesPerTeam}).`);
+      const target = targetFor(rules, t.id);
+      if (n >= target) warnings.push(`${t.name} will have ${n + 1} games (target ${target}${hasTeamOverride(rules, t.id) ? ', team override' : ''}).`);
     }
   }
   return { errors, exceptions, warnings, meetings };
