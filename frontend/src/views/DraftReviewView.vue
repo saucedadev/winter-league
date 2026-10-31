@@ -89,7 +89,7 @@ async function flag() {
             <p v-if="data.review.status === 'waiting' && data.review.resetReason" class="text-sm"><strong>A game changed since your review:</strong> {{ data.review.resetReason }} Please check your games again.</p>
             <p v-else-if="data.review.status === 'waiting'" class="text-sm">Look through your games below. If they all work, sign off. If one doesn’t, flag it with a note and the league will look at it.</p>
             <p v-else-if="data.review.status === 'signed_off'" class="text-sm">Signed off {{ data.review.onBehalf ? 'by the league on your program’s behalf' : `by ${data.review.decidedByName}` }} · {{ timestamp(data.review.decidedAt) }}. If the league changes one of your games, you’ll be asked to review again.</p>
-            <p v-else class="text-sm">You flagged a game. The league will fix it or reply. When your games work, sign off.</p>
+            <p v-else class="text-sm">{{ data.review.onBehalf ? `The league (${data.review.decidedByName}) flagged a game for your program.` : 'You flagged a game.' }} The league will fix it or reply. When your games work, sign off.</p>
             <p class="text-xs text-text-muted mt-1">This is a draft: only you and the league can see it. Coaches and referees see the schedule once it’s published.</p>
           </div>
           <button v-if="data.review.status !== 'signed_off'" class="btn btn-primary shrink-0" @click="signing = true; signNote = ''">Sign off</button>

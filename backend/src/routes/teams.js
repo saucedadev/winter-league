@@ -76,7 +76,7 @@ router.post('/', managers, ah(async (req, res) => {
   }
   const id = newId();
   await run('INSERT INTO teams (id, program_id, division_id, name, head_coach_user_id, head_coach_contact_id) VALUES (?, ?, ?, ?, ?, ?)', [id, programId, req.body.divisionId, name, coachId, contactId]);
-  await logActivity({ category: 'team', action: 'created', actor: req.user, programId, details: `Added team ${name}` });
+  await logActivity({ category: 'team', action: 'created', actor: req.user, onBehalfOf: programId, programId, details: `Added team ${name}` });
   res.status(201).json({ team: await one(`${SELECT} WHERE t.id = ?`, [id]) });
 }));
 
@@ -101,7 +101,7 @@ router.put('/:id', managers, ah(async (req, res) => {
   }
   await run(`UPDATE teams SET name = ?, division_id = ?, head_coach_user_id = ?, head_coach_contact_id = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`,
     [next.name, next.divisionId, next.coachId, next.contactId, next.isActive, t.id]);
-  await logActivity({ category: 'team', action: 'edited', actor: req.user, programId: t.programId, details: `Updated team ${next.name}` });
+  await logActivity({ category: 'team', action: 'edited', actor: req.user, onBehalfOf: t.programId, programId: t.programId, details: `Updated team ${next.name}` });
   res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]) });
 }));
 
@@ -122,7 +122,7 @@ router.put('/:id/games-target', managers, ah(async (req, res) => {
   if (raw === null || raw === undefined || raw === '') {
     if (t.gamesTarget == null) return res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]), leagueGamesPerTeam: gamesPerTeam });
     await run(`UPDATE teams SET games_target = NULL, games_target_reason = NULL, games_target_by = ?, games_target_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, [req.user.id, t.id]);
-    await logActivity({ category: 'team', action: 'games_target', actor: req.user, programId: t.programId,
+    await logActivity({ category: 'team', action: 'games_target', actor: req.user, onBehalfOf: t.programId, programId: t.programId,
       details: `Removed the team override for ${t.name}: back to the league’s ${gamesPerTeam} games (was ${gamesWord(t.gamesTarget)}). Takes effect at the next draft.` });
     return res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]), leagueGamesPerTeam: gamesPerTeam });
   }
@@ -135,7 +135,7 @@ router.put('/:id/games-target', managers, ah(async (req, res) => {
   if (reason.length > 200) throw badRequest('Keep the reason to 200 characters or fewer.');
   await run(`UPDATE teams SET games_target = ?, games_target_reason = ?, games_target_by = ?, games_target_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`, [n, reason, req.user.id, t.id]);
   const was = t.gamesTarget == null ? `the league’s ${gamesPerTeam}` : gamesWord(t.gamesTarget);
-  await logActivity({ category: 'team', action: 'games_target', actor: req.user, programId: t.programId,
+  await logActivity({ category: 'team', action: 'games_target', actor: req.user, onBehalfOf: t.programId, programId: t.programId,
     details: `Set ${t.name} to ${gamesWord(n)} this season (team override; was ${was}). Reason: ${reason}. Takes effect at the next draft.` });
   res.json({ team: await one(`${SELECT} WHERE t.id = ?`, [t.id]), leagueGamesPerTeam: gamesPerTeam });
 }));
@@ -149,7 +149,7 @@ router.delete('/:id', managers, ah(async (req, res) => {
     WHERE r.status IN ('draft', 'published') AND (g.home_team_id = ? OR g.away_team_id = ?)`, [t.id, t.id]);
   if (Number(games.n) > 0) throw conflict(`${t.name} has ${games.n} game(s) on the schedule. Mark the team inactive instead.`);
   await run('DELETE FROM teams WHERE id = ?', [t.id]);
-  await logActivity({ category: 'team', action: 'deleted', actor: req.user, programId: t.programId, details: `Deleted team ${t.name}` });
+  await logActivity({ category: 'team', action: 'deleted', actor: req.user, onBehalfOf: t.programId, programId: t.programId, details: `Deleted team ${t.name}` });
   res.json({ ok: true });
 }));
 

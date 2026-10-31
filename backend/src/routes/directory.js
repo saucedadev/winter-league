@@ -70,7 +70,7 @@ router.post('/', ah(async (req, res) => {
   const id = newId();
   await run(`INSERT INTO directory_contacts (id, program_id, first_name, last_name, email, phone, role, role_other, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, programId, c.firstName, c.lastName, c.email, c.phone, c.role, c.roleOther, req.user.id]);
-  await logActivity({ category: 'program', action: 'directory', actor: req.user, programId, details: `Added ${c.firstName} ${c.lastName} to the directory` });
+  await logActivity({ category: 'program', action: 'directory', actor: req.user, onBehalfOf: programId, programId, details: `Added ${c.firstName} ${c.lastName} to the directory` });
   res.status(201).json({ contact: shape(await one(`${SELECT} WHERE c.id = ?`, [id])) });
 }));
 
@@ -86,7 +86,7 @@ router.put('/:id', ah(async (req, res) => {
   }
   await run(`UPDATE directory_contacts SET first_name = ?, last_name = ?, email = ?, phone = ?, role = ?, role_other = ?, updated_at = datetime('now') WHERE id = ?`,
     [c.firstName, c.lastName, c.email, c.phone, c.role, c.roleOther, existing.id]);
-  await logActivity({ category: 'program', action: 'directory', actor: req.user, programId: existing.programId, details: `Updated ${c.firstName} ${c.lastName} in the directory` });
+  await logActivity({ category: 'program', action: 'directory', actor: req.user, onBehalfOf: existing.programId, programId: existing.programId, details: `Updated ${c.firstName} ${c.lastName} in the directory` });
   res.json({ contact: shape(await one(`${SELECT} WHERE c.id = ?`, [existing.id])) });
 }));
 
@@ -98,7 +98,7 @@ router.delete('/:id', ah(async (req, res) => {
   const used = await one('SELECT COUNT(*) AS n FROM teams WHERE head_coach_contact_id = ?', [existing.id]);
   await run("UPDATE teams SET head_coach_contact_id = NULL, updated_at = datetime('now') WHERE head_coach_contact_id = ?", [existing.id]);
   await run('DELETE FROM directory_contacts WHERE id = ?', [existing.id]);
-  await logActivity({ category: 'program', action: 'directory', actor: req.user, programId: existing.programId,
+  await logActivity({ category: 'program', action: 'directory', actor: req.user, onBehalfOf: existing.programId, programId: existing.programId,
     details: `Removed ${existing.firstName} ${existing.lastName} from the directory${Number(used.n) ? ` (was head coach of ${used.n} team${used.n > 1 ? 's' : ''})` : ''}` });
   res.json({ ok: true, teamsCleared: Number(used.n) });
 }));
@@ -113,7 +113,7 @@ router.post('/:id/switch-to-account', ah(async (req, res) => {
   const user = await one("SELECT id, first_name, last_name, program_id FROM users WHERE id = ? AND role = 'league_coach' AND is_active = 1", [req.body?.userId]);
   if (!user || user.programId !== existing.programId) throw badRequest('Choose an active Coach account in the same program.');
   const r = await run(`UPDATE teams SET head_coach_user_id = ?, head_coach_contact_id = NULL, updated_at = datetime('now') WHERE head_coach_contact_id = ?`, [user.id, existing.id]);
-  await logActivity({ category: 'team', action: 'coach', actor: req.user, programId: existing.programId,
+  await logActivity({ category: 'team', action: 'coach', actor: req.user, onBehalfOf: existing.programId, programId: existing.programId,
     details: `Made ${user.firstName} ${user.lastName}’s Coach account the head coach of ${r.rowsAffected} team${r.rowsAffected === 1 ? '' : 's'} (replacing the directory entry)` });
   res.json({ teamsUpdated: r.rowsAffected });
 }));

@@ -236,6 +236,13 @@ function signOut() {
       </div>
     </header>
 
+    <!-- League Admin helping one program: say so on every page. -->
+    <div v-if="auth.isSuperAdmin && ctx.current" class="bg-highlight text-black border-b border-border" role="status">
+      <div class="max-w-7xl mx-auto px-4 md:px-6 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <p class="flex-1 min-w-0"><strong>Working for {{ ctx.current.name }}.</strong> Changes you make to its teams, gym slots and other records are logged as on behalf of {{ ctx.current.name }}.</p>
+        <button type="button" class="underline font-medium shrink-0" @click="ctx.select('')">Back to all programs</button>
+      </div>
+    </div>
     <main class="flex-1 w-full max-w-7xl mx-auto px-4 md:px-6 py-6">
       <RouterView :key="ctx.programId" />
     </main>

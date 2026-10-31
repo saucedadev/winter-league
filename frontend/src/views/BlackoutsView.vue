@@ -6,6 +6,7 @@ import { useProgramContext } from '../stores/programContext';
 import { useToast } from '../stores/toast';
 import { dateRange, todayISO } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
+import HelpProgramPrompt from '../components/HelpProgramPrompt.vue';
 import Modal from '../components/Modal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -86,6 +87,7 @@ async function doDelete() {
     <PageHeader title="Blackout dates" subtitle="Days a gym can’t be used. Gym slots on these dates are kept but marked blacked out, and weekly repeats skip them.">
       <button class="btn btn-primary" :disabled="auth.isSuperAdmin && !ctx.activePrograms.length" @click="open()">Add blackout</button>
     </PageHeader>
+    <HelpProgramPrompt what="blackout dates" />
 
     <div v-if="pastCount" class="mb-3">
       <label class="text-sm flex items-center gap-2"><input v-model="showPast" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> Show {{ pastCount }} past blackout{{ pastCount === 1 ? '' : 's' }}</label>

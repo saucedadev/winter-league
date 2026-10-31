@@ -118,7 +118,7 @@ router.put('/teams', directors, ah(async (req, res) => {
   const changed = teams.filter((t) => !!t.preseasonOpen !== open);
   for (const t of changed) await run(`UPDATE teams SET preseason_open = ?, preseason_open_at = ${open ? "datetime('now')" : 'NULL'}, updated_at = datetime('now') WHERE id = ?`, [open ? 1 : 0, t.id]);
   if (changed.length) {
-    await logActivity({ category: 'preseason', action: open ? 'opened' : 'closed', actor: req.user, programId: changed[0].programId,
+    await logActivity({ category: 'preseason', action: open ? 'opened' : 'closed', actor: req.user, programId: changed[0].programId, onBehalfOf: changed[0].programId,
       details: `${open ? 'Opened' : 'Closed'} for preseason: ${changed.map((t) => t.name).join(', ')}` });
   }
   res.json({ changed: changed.length });
@@ -219,7 +219,7 @@ router.post('/requests', directors, ah(async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   [id, season.id, kind, fit.hostTeamId, fit.visitorTeamId, team.id, fit.courtId, fit.slotId, fit.date, fit.startTime, fit.endTime, b.refereesWanted ? 1 : 0, note, req.user.id]);
   const what = `${KIND_LABEL[kind].toLowerCase()}: ${team.name} and ${opp.name}, ${fmtWhen(fit)} at ${fit.venueName} – ${fit.courtName}`;
-  await logActivity({ category: 'preseason', action: 'requested', actor: req.user, programIds: [team.programId, opp.programId], details: `Asked for a ${what}` });
+  await logActivity({ category: 'preseason', action: 'requested', actor: req.user, programIds: [team.programId, opp.programId], details: `Asked for a ${what}`, onBehalfOf: team.programId });
   await toPrograms([opp.programId], `${team.programName} asked for a preseason ${KIND_LABEL[kind].toLowerCase()}`,
     `${team.programName} would like a preseason ${KIND_LABEL[kind].toLowerCase()} between ${team.name} and your ${opp.name}:\n${fit.date}, ${fit.startTime}–${fit.endTime}\n${fit.venueName} – ${fit.courtName}${fit.venueAddress ? ` (${fit.venueAddress})` : ''}${b.refereesWanted ? '\nThey’d like referees.' : ''}${note ? `\nNote: ${note}` : ''}\n\nOpen Preseason to accept or decline.`);
   res.status(201).json({ event: { id, status: 'requested' } });
@@ -242,9 +242,13 @@ async function eventRows(where, args) {
     LEFT JOIN users u ON u.id = e.requested_by LEFT JOIN users x ON x.id = e.decided_by
     WHERE ${where} ORDER BY e.date, e.start_time`, args);
 }
-function shapeEvent(e, user) {
-  const mine = user.programId && [e.hostProgramId, e.visitorProgramId].includes(user.programId);
-  const theirsToAnswer = e.status === 'requested' && user.role === 'program_director' && user.programId !== e.requestingProgramId && mine;
+// The program the user is acting for: a director's own, or the program a
+// System Admin (League Admin) has picked to help.
+const actingProgram = (user, programId) => (isSuperAdmin(user) ? programId || null : user.role === 'program_director' ? user.programId : null);
+function shapeEvent(e, user, actingFor = null) {
+  const acting = actingProgram(user, actingFor);
+  const mine = !!acting && [e.hostProgramId, e.visitorProgramId].includes(acting);
+  const theirsToAnswer = e.status === 'requested' && !!acting && acting !== e.requestingProgramId && mine;
   const actions = [];
   if (theirsToAnswer) actions.push('accept', 'decline');
   if (e.status === 'requested' && ((user.role === 'program_director' && user.programId === e.requestingProgramId) || isSuperAdmin(user))) actions.push('withdraw');
@@ -255,7 +259,7 @@ function shapeEvent(e, user) {
     hostTeamId: e.hostTeamId, hostTeamName: e.hostTeamName, hostProgramId: e.hostProgramId, hostProgramName: e.hostProgramName,
     visitorTeamId: e.visitorTeamId, visitorTeamName: e.visitorTeamName, visitorProgramId: e.visitorProgramId, visitorProgramName: e.visitorProgramName,
     divisionName: e.divisionName, refereesWanted: !!e.refereesWanted, note: e.note,
-    requestedByName: e.requestedByName, requestedAt: e.requestedAt, requestedByUs: !!user.programId && user.programId === e.requestingProgramId,
+    requestedByName: e.requestedByName, requestedAt: e.requestedAt, requestedByUs: !!acting && acting === e.requestingProgramId,
     decidedByName: e.decidedByName, decidedAt: e.decidedAt, decisionNote: e.decisionNote, actions, needsMe: theirsToAnswer,
   };
 }
@@ -269,7 +273,7 @@ router.get('/events', viewers, ah(async (req, res) => {
   else if (u.role === 'league_coach') { where.push("e.status = 'accepted' AND (ht.head_coach_user_id = ? OR vt.head_coach_user_id = ?)"); args.push(u.id, u.id); }
   else if (isSuperAdmin(u) && req.query.programId) { where.push('(ht.program_id = ? OR vt.program_id = ?)'); args.push(req.query.programId, req.query.programId); }
   if (req.query.status === 'booked') where.push("e.status = 'accepted'");
-  res.json({ events: (await eventRows(where.join(' AND '), args)).map((e) => shapeEvent(e, u)) });
+  res.json({ events: (await eventRows(where.join(' AND '), args)).map((e) => shapeEvent(e, u, req.query.programId)) });
 }));
 
 // ---- GET /api/preseason/count ----  Requests waiting on this director.
@@ -281,16 +285,17 @@ router.get('/count', viewers, ah(async (req, res) => {
   res.json({ needsAction: Number(n.n) });
 }));
 
-async function loadEvent(id, user) {
+async function loadEvent(id, user, actingFor = null) {
   const [e] = await eventRows('e.id = ?', [id]);
   if (!e) throw notFound('Preseason request');
-  return { e, shaped: shapeEvent(e, user) };
+  return { e, shaped: shapeEvent(e, user, actingFor) };
 }
 
 // ---- POST /api/preseason/events/:id/respond ----  { decision: accept|decline, note }
 router.post('/events/:id/respond', directors, ah(async (req, res) => {
-  const { e, shaped } = await loadEvent(req.params.id, req.user);
+  const { e, shaped } = await loadEvent(req.params.id, req.user, req.body?.programId);
   if (!shaped.actions.includes('accept')) throw forbidden(e.status !== 'requested' ? 'That request has already been answered.' : 'Only the other program’s director answers this request.');
+  const answering = e.requestingProgramId === e.hostProgramId ? e.visitorProgramId : e.hostProgramId;
   const decision = req.body?.decision;
   const note = trimOrNull(req.body?.note)?.slice(0, 400) || null;
   if (!['accept', 'decline'].includes(decision)) throw badRequest('Accept or decline.');
@@ -305,7 +310,10 @@ router.post('/events/:id/respond', directors, ah(async (req, res) => {
   const status = decision === 'accept' ? 'accepted' : 'declined';
   await run("UPDATE preseason_events SET status = ?, decided_by = ?, decided_at = datetime('now'), decision_note = ?, updated_at = datetime('now') WHERE id = ?", [status, req.user.id, note, e.id]);
   const what = `${KIND_LABEL[e.kind].toLowerCase()}: ${e.hostTeamName} vs ${e.visitorTeamName}, ${fmtWhen(e)} at ${e.venueName} – ${e.courtName}`;
-  await logActivity({ category: 'preseason', action: status, actor: req.user, programIds: [e.hostProgramId, e.visitorProgramId], details: `${status === 'accepted' ? 'Accepted' : 'Declined'} a preseason ${what}${note ? `: ${note}` : ''}` });
+  await logActivity({ category: 'preseason', action: status, actor: req.user, programIds: [e.hostProgramId, e.visitorProgramId], details: `${status === 'accepted' ? 'Accepted' : 'Declined'} a preseason ${what}${note ? `: ${note}` : ''}`, onBehalfOf: answering });
+  // The league answered for a program: tell that program's director too.
+  if (isSuperAdmin(req.user)) await toPrograms([answering], `The league ${status} a preseason ${KIND_LABEL[e.kind].toLowerCase()} for you`,
+    `${req.user.firstName} ${req.user.lastName} ${status} this preseason ${what} on your program’s behalf${note ? `.\nNote: ${note}` : '.'}`);
   await toPrograms([e.requestingProgramId], `Preseason ${KIND_LABEL[e.kind].toLowerCase()} ${status}`,
     `Your preseason ${what} was ${status}${note ? `.\nNote: ${note}` : '.'}${status === 'accepted' ? '\n\nIt’s now on both teams’ schedules.' : ''}`);
   if (status === 'accepted' && e.refereesWanted) {
@@ -320,7 +328,7 @@ router.post('/events/:id/withdraw', directors, ah(async (req, res) => {
   const { e, shaped } = await loadEvent(req.params.id, req.user);
   if (!shaped.actions.includes('withdraw')) throw forbidden('Only the program that asked can withdraw it, while it’s still waiting.');
   await run("UPDATE preseason_events SET status = 'withdrawn', updated_at = datetime('now') WHERE id = ?", [e.id]);
-  await logActivity({ category: 'preseason', action: 'withdrawn', actor: req.user, programIds: [e.hostProgramId, e.visitorProgramId],
+  await logActivity({ category: 'preseason', action: 'withdrawn', actor: req.user, programIds: [e.hostProgramId, e.visitorProgramId], onBehalfOf: e.requestingProgramId,
     details: `Withdrew the preseason ${KIND_LABEL[e.kind].toLowerCase()} request: ${e.hostTeamName} vs ${e.visitorTeamName}, ${fmtWhen(e)}` });
   const other = e.requestingProgramId === e.hostProgramId ? e.visitorProgramId : e.hostProgramId;
   await toPrograms([other], `Preseason ${KIND_LABEL[e.kind].toLowerCase()} request withdrawn`, `The request for a preseason ${KIND_LABEL[e.kind].toLowerCase()} (${e.hostTeamName} vs ${e.visitorTeamName}, ${fmtWhen(e)}) was withdrawn. Nothing to do.`);

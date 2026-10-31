@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth';
 import { useProgramContext } from '../stores/programContext';
 import { useToast } from '../stores/toast';
 import PageHeader from '../components/PageHeader.vue';
+import HelpProgramPrompt from '../components/HelpProgramPrompt.vue';
 import Modal from '../components/Modal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -134,6 +135,7 @@ async function doDelete() {
       </select>
       <button v-if="canEdit" class="btn btn-primary" :disabled="auth.isSuperAdmin && !ctx.activePrograms.length" @click="open()">Add team</button>
     </PageHeader>
+    <HelpProgramPrompt what="teams" />
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
     <EmptyState v-else-if="!grouped.length" :title="divisionFilter ? 'No teams in this division' : 'No teams yet'"

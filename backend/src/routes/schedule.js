@@ -591,6 +591,30 @@ router.post('/runs/:id/review/:programId/sign-off', adminOnly, ah(async (req, re
   res.json({ review: await reviewState(r) });
 }));
 
+// POST /api/schedule/runs/:id/review/:programId/flags  { gameId, note }
+// The System Admin (League Admin) flags a game for a program, e.g. when its
+// director phoned in a problem. Signing off stays with the director.
+router.post('/runs/:id/review/:programId/flags', adminOnly, ah(async (req, res) => {
+  const r = await draftRun(req.params.id);
+  if (!r.sharedAt) throw conflict('Share the draft with directors first.');
+  const rev = await one('SELECT * FROM draft_reviews WHERE run_id = ? AND program_id = ?', [r.id, req.params.programId]);
+  if (!rev) throw notFound('Program review');
+  const game = await getGame(req.body?.gameId);
+  if (!game || game.runId !== r.id || ![game.homeProgramId, game.awayProgramId].includes(rev.programId)) throw notFound('Game');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  if (note.length < 5) throw badRequest('Say what’s wrong with this game, e.g. “11/5 clashes with their school event.”');
+  const label = gameLabel(game);
+  await db.batch([
+    { sql: 'INSERT INTO draft_flags (id, run_id, program_id, game_id, game_label, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      args: [newId(), r.id, rev.programId, game.id, label, note.slice(0, 400), req.user.id] },
+    { sql: `UPDATE draft_reviews SET status = 'flagged', decided_by = ?, decided_at = datetime('now'), on_behalf = 1, note = NULL, updated_at = datetime('now') WHERE id = ?`, args: [req.user.id, rev.id] },
+  ], 'write');
+  await logActivity({ category: 'schedule', action: 'flagged', actor: req.user, programId: rev.programId, onBehalfOf: rev.programId, details: `Flagged a draft game: ${label}: ${note.slice(0, 200)}` });
+  await notifyUsers("role = 'program_director' AND program_id = ?", [rev.programId], 'The league flagged a game in the draft for you',
+    `${req.user.firstName} ${req.user.lastName} flagged this game in the draft schedule on your program’s behalf:\n${label}\n“${note.slice(0, 400)}”\n\nThe league will fix it or answer the flag. You still sign off yourself under Draft review.`, { label: 'Open Draft review', url: '/schedule/draft' });
+  res.status(201).json({ review: await reviewState(r) });
+}));
+
 // POST /api/schedule/flags/:id/resolve  { note } — the admin answers a flag.
 router.post('/flags/:id/resolve', adminOnly, ah(async (req, res) => {
   const f = await one('SELECT * FROM draft_flags WHERE id = ?', [req.params.id]);

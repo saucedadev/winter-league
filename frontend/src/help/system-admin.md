@@ -200,8 +200,9 @@ Before a draft can be published, every program with teams in it has to sign off.
 1. Pick a **Sign-off deadline** (a week from today to start with) and click **Share with directors**. Each Program Director is emailed. They see **only their own program's games**, read-only, under **Draft review**. Coaches, referees, and the assignor still see nothing until you publish.
 2. The panel shows each program's status: **Waiting**, **Signed off**, or **Flagged**, with who decided and when.
 3. **Flags.** A director who has a problem with a game flags it with a note (e.g. *"11/5 clashes with our school event"*). You're emailed, and the flag appears under **Flagged games**. Either fix the game (**Move**, **Flip**, **Remove**, **Add game**), or click **Resolve** and add a note explaining why it stays. The director is emailed either way and signs off when their games work. Signing off withdraws that program's open flags.
-4. **Programs without a director.** Click **Sign off for them**. It's recorded as signed off by you *on the program's behalf*, so the record shows nobody from the program reviewed it. Programs with a director always sign off themselves.
-5. **Changes after sign-off.** When you change a game in a shared draft, only the programs in that game go back to **Waiting**. Their directors are emailed with what changed, and the panel shows *"Needs to review again: …"*. Every other program keeps its sign-off.
+4. **Flagging for a program.** If a director tells you about a problem by phone or email, click **Flag a game** on that program's row, choose the game and say what's wrong. It's recorded as on behalf of that program, and its director is emailed. Signing off stays with the director.
+5. **Programs without a director.** Click **Sign off for them**. It's recorded as signed off by you *on the program's behalf*, so the record shows nobody from the program reviewed it. Programs with a director always sign off themselves.
+6. **Changes after sign-off.** When you change a game in a shared draft, only the programs in that game go back to **Waiting**. Their directors are emailed with what changed, and the panel shows *"Needs to review again: …"*. Every other program keeps its sign-off.
 
 ![Director review](/help/img/sa-draft-review.png)
 
@@ -298,13 +299,27 @@ If a director tells you by phone, text, or email, choose **Record a request**, p
 
 Every request, question, reply, and decision is in the **Activity** log under **Requests**. A value applied to the rules also appears under **Schedule**.
 
+## Helping a program
+
+Directors can ask you to set things up for them: venues, teams, gym slots, blackouts, directory contacts, or a team's games override. You can do anything their director can on those pages.
+
+1. Choose the program in the header (or, on a program page with **All programs** picked, under **Helping a program with its …?**).
+2. A yellow bar reads **Working for Northfield Hawks** on every page, and each page shows only that program's records. Work as the director would.
+3. Click **Back to all programs** when you're done.
+
+![Working for a program](/help/img/sa-working-for.png)
+
+Every change you make to a program's records is logged with **— on behalf of** the program, for example *Added 12 weeknight game slots at Hawks Community Center – Main court … — on behalf of Northfield Hawks*. The program's director sees these in their Activity log and on their dashboard (**The league made 3 changes for your program this week**). In **Activity**, tick **Only changes made on behalf of a program** to list them.
+
+Two things stay with the director: **signing off** a draft (you can [flag a game](#4-share-with-directors-and-collect-sign-offs) for them, and publish anyway after the deadline), and **approving change requests** as their program (you give the league's final approval, and can move a game directly).
+
 ## Preseason
 
-**Menu → Scheduling → Preseason** shows how many teams are open and every request and arranged scrimmage or joint practice across the league. Directors arrange them without league sign-off; you can **Cancel…** any of them (both programs are emailed). Choose a program in the header to open its teams or arrange one on its behalf. Preseason games are kept apart from league games: they don't count toward standings, games per team, or home/away balance, and they aren't on the referee board or in payouts. Every step is in **Activity** under **Preseason**.
+**Menu → Scheduling → Preseason** shows how many teams are open and every request and arranged scrimmage or joint practice across the league. Directors arrange them without league sign-off; you can **Cancel…** any of them (both programs are emailed). Choose a program in the header to open its teams, arrange a scrimmage on its behalf, or **Accept** or **Decline** a request waiting for that program's answer (its director is emailed). Preseason games are kept apart from league games: they don't count toward standings, games per team, or home/away balance, and they aren't on the referee board or in payouts. Every step is in **Activity** under **Preseason**.
 
 ## Activity
 
-**Menu → League admin → Activity** lists every change across the league, newest first: who did it (with their program or role) and which programs it involves. Filter by type with the buttons at the top.
+**Menu → League admin → Activity** lists every change across the league, newest first: who did it (with their program or role) and which programs it involves. Filter by type with the buttons at the top, or tick **Only changes made on behalf of a program** to see what you and other admins did for programs.
 
 ![Activity](/help/img/sa-activity.png)
 

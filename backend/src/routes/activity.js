@@ -6,9 +6,9 @@ import { ah } from '../utils/http.js';
 const router = Router();
 router.use(requireAuth, requirePasswordCurrent, requireRole('super_admin', 'program_director'));
 
-const CATEGORIES = ['program', 'season', 'division', 'venue', 'team', 'slot', 'blackout', 'user', 'schedule', 'request', 'referee'];
+const CATEGORIES = ['program', 'season', 'division', 'venue', 'team', 'slot', 'blackout', 'user', 'schedule', 'request', 'referee', 'preseason'];
 
-// ---- GET /api/activity?category=&before=&limit=&programId= ----
+// ---- GET /api/activity?category=&before=&limit=&programId=&onBehalf=1 ----
 // A Program Director sees entries that involve their program (e.g. both
 // programs in a change request). A System Admin sees everything, or one
 // program's entries with ?programId=. User-account entries are System Admin only.
@@ -23,6 +23,11 @@ router.get('/', ah(async (req, res) => {
   }
   if (!isSuperAdmin(req.user)) where.push("a.category != 'user'");
   if (CATEGORIES.includes(req.query.category)) { where.push('a.category = ?'); args.push(req.query.category); }
+  // ?onBehalf=1: changes the league made for a program (League Admin helping).
+  if (req.query.onBehalf === '1') {
+    if (programId) { where.push('a.on_behalf_program_id = ?'); args.push(programId); }
+    else where.push('a.on_behalf_program_id IS NOT NULL');
+  }
   if (req.query.before) { where.push('a.created_at < ?'); args.push(req.query.before); }
   const rows = await all(`SELECT a.id, a.category, a.action, a.actor_id, a.actor_name, a.actor_role, a.details, a.created_at,
       ap.short_code AS actor_program_code, ap.name AS actor_program_name

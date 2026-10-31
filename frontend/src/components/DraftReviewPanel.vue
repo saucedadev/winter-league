@@ -51,6 +51,29 @@ async function resolve() {
   finally { busy.value = ''; }
 }
 
+// Flag a game for a program (e.g. its director phoned in a problem). Signing
+// off stays with the director.
+const flagging = ref(null); // { r, games, gameId, note }
+const fmtGame = (g) => `${g.date ? `${g.date} ${g.startTime}` : 'Unplaced'} · ${g.homeTeamName} vs ${g.awayTeamName}`;
+async function openFlag(r) {
+  try {
+    const { data } = await api.get(`/schedule/runs/${props.runId}/games`);
+    const games = data.games.filter((g) => g.status !== 'cancelled' && [g.homeProgramId, g.awayProgramId].includes(r.programId));
+    flagging.value = { r, games, gameId: '', note: '' };
+  } catch (err) { toast.error(errorMessage(err)); }
+}
+async function saveFlag() {
+  const f = flagging.value;
+  busy.value = `flag-${f.r.programId}`;
+  try {
+    const { data } = await api.post(`/schedule/runs/${props.runId}/review/${f.r.programId}/flags`, { gameId: f.gameId, note: f.note.trim() });
+    toast.success(`Flagged for ${f.r.programName}. Its director has been told, and it’s in Activity as on behalf of ${f.r.programName}.`);
+    flagging.value = null;
+    emit('updated', data.review);
+  } catch (err) { toast.error(errorMessage(err)); }
+  finally { busy.value = ''; }
+}
+
 const openFlags = computed(() => (props.review?.flags || []).filter((f) => f.status === 'open'));
 const resolvedFlags = computed(() => (props.review?.flags || []).filter((f) => f.status === 'resolved'));
 const showResolved = ref(false);
@@ -94,13 +117,14 @@ const STATUS_STYLE = { signed_off: 'bg-success text-black', flagged: 'bg-unavail
               </td>
               <td class="px-3 py-2"><span class="badge" :class="STATUS_STYLE[r.status]">{{ r.statusLabel }}</span></td>
               <td class="px-3 py-2 text-xs text-text-muted">
-                <p v-if="r.status !== 'waiting' && r.decidedByName">{{ r.status === 'flagged' ? 'Flagged' : 'Signed off' }} by {{ r.decidedByName }}{{ r.onBehalf ? ' on the program’s behalf (no director)' : '' }} · {{ timestamp(r.decidedAt) }}</p>
+                <p v-if="r.status !== 'waiting' && r.decidedByName">{{ r.status === 'flagged' ? 'Flagged' : 'Signed off' }} by {{ r.decidedByName }}{{ r.onBehalf ? (r.status === 'flagged' ? ' on the program’s behalf' : ' on the program’s behalf (no director)') : '' }} · {{ timestamp(r.decidedAt) }}</p>
                 <p v-if="r.note" class="italic">“{{ r.note }}”</p>
                 <p v-if="r.status === 'waiting' && r.resetReason" class="font-medium text-text">Needs to review again: {{ r.resetReason }}</p>
                 <p v-if="r.openFlags">{{ r.openFlags }} open flag{{ r.openFlags === 1 ? '' : 's' }} below</p>
               </td>
               <td class="px-3 py-2 text-right whitespace-nowrap">
                 <button v-if="!r.hasDirector && r.status !== 'signed_off'" class="btn btn-secondary !py-1 !px-2.5 text-xs" :disabled="busy === r.programId" @click="signOnBehalf(r)">Sign off for them</button>
+                <button class="btn btn-ghost !py-1 !px-2.5 text-xs ml-1" :title="`Flag a game for ${r.programName}, e.g. a problem its director phoned in. Signing off stays with the director.`" @click="openFlag(r)">Flag a game</button>
               </td>
             </tr>
           </tbody>
@@ -129,6 +153,26 @@ const STATUS_STYLE = { signed_off: 'bg-success text-black', flagged: 'bg-unavail
       </div>
     </template>
 
+    <Modal v-if="flagging" :title="`Flag a game for ${flagging.r.programName}`" @close="flagging = null">
+      <form id="flag-form" class="space-y-3" @submit.prevent="saveFlag">
+        <p class="text-sm text-text-muted">For a problem the program told you about. It’s recorded as on behalf of {{ flagging.r.programName }}, and its director is emailed. Signing off stays with the director.</p>
+        <div>
+          <label class="label" for="flag-game">Game</label>
+          <select id="flag-game" v-model="flagging.gameId" class="input" required>
+            <option value="" disabled>Choose one of {{ flagging.r.programName }}’s games</option>
+            <option v-for="g in flagging.games" :key="g.id" :value="g.id">{{ fmtGame(g) }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="flag-note">What’s wrong</label>
+          <textarea id="flag-note" v-model="flagging.note" rows="2" class="input" required minlength="5" maxlength="400" placeholder="e.g. 11/5 clashes with their school event (phoned in by their director)." />
+        </div>
+      </form>
+      <template #footer>
+        <button class="btn btn-secondary" @click="flagging = null">Cancel</button>
+        <button class="btn btn-primary" type="submit" form="flag-form" :disabled="busy === `flag-${flagging.r.programId}` || !flagging.gameId || flagging.note.trim().length < 5">Flag game</button>
+      </template>
+    </Modal>
     <Modal v-if="resolving" title="Resolve this flag" @close="resolving = null">
       <p class="text-sm font-medium">{{ resolving.gameLabel }}</p>
       <p class="text-sm italic mb-3">“{{ resolving.note }}”</p>

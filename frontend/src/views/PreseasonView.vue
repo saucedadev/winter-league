@@ -124,7 +124,7 @@ async function respond() {
   const a = answering.value;
   saving.value = true;
   try {
-    await api.post(`/preseason/events/${a.e.id}/respond`, { decision: a.decision, note: a.note });
+    await api.post(`/preseason/events/${a.e.id}/respond`, { decision: a.decision, note: a.note, ...(isAdmin.value ? { programId: ctx.programId } : {}) });
     toast.success(a.decision === 'accept' ? 'Accepted. It’s on both teams’ schedules.' : 'Declined. They’ve been told.');
     answering.value = null;
     await refresh();
@@ -188,7 +188,7 @@ const ourTeamOf = (e) => (ourSide(e) === 'host' ? e.hostTeamName : e.visitorTeam
 
       <!-- Waiting for you -->
       <section v-if="waiting.length" class="space-y-2">
-        <h2 class="font-semibold">Waiting for your answer</h2>
+        <h2 class="font-semibold">{{ isAdmin && ctx.current ? `Waiting for ${ctx.current.name}’s answer` : 'Waiting for your answer' }}</h2>
         <article v-for="e in waiting" :key="e.id" class="card p-4 border-2 !border-accent">
           <p class="font-semibold">{{ e.kindLabel }}: {{ ourTeamOf(e) }} vs {{ opponentOf(e) }}</p>
           <p class="text-sm">{{ longDate(e.date) }}, {{ timeRange(e.startTime, e.endTime) }} · {{ e.venueName }} – {{ e.courtName }} <span class="text-text-muted">({{ ourSide(e) === 'host' ? 'your gym' : 'their gym' }})</span></p>

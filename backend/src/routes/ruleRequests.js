@@ -174,7 +174,7 @@ router.post('/', ah(async (req, res) => {
   await run(`INSERT INTO rule_requests (id, program_id, season_id, kind, division_id, requested_value, details, requested_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id, programId, season?.id || null, b.kind, divisionId, value, details, req.user.id]);
   const r = await shapeOne(id, req.user);
-  await logActivity({ category: 'request', action: 'rule request', actor: req.user, programId, details: `Rule request: ${r.summary}. “${details.slice(0, 200)}”` });
+  await logActivity({ category: 'request', action: 'rule request', actor: req.user, onBehalfOf: programId, programId, details: `Rule request: ${r.summary}. “${details.slice(0, 200)}”` });
   if (!isSuperAdmin(req.user)) await toAdmins(`Rule request from ${r.programName}`, `${who(req.user)} (${r.programName}) asked for:\n${r.summary}\nReason: ${details}`);
   res.status(201).json({ request: r });
 }));
@@ -259,7 +259,7 @@ router.post('/:id/confirm', ah(async (req, res) => {
   const season = await activeSeason();
   if (!season) throw conflict('No season is active.');
   await run("UPDATE rule_requests SET confirmed_season_id = ?, updated_at = datetime('now') WHERE id = ?", [season.id, r.id]);
-  await logActivity({ category: 'request', action: 'rule request', actor: req.user, programId: r.programId, details: `Confirmed the rule request “${summarize(r)}” still applies for ${season.name}` });
+  await logActivity({ category: 'request', action: 'rule request', actor: req.user, onBehalfOf: r.programId, programId: r.programId, details: `Confirmed the rule request “${summarize(r)}” still applies for ${season.name}` });
   res.json({ request: await shapeOne(r.id, req.user) });
 }));
 
@@ -272,7 +272,7 @@ router.post('/:id/withdraw', ah(async (req, res) => {
   const summary = summarize(r);
   // An override the app applied stays in the rules until the league removes it.
   const stillSet = r.appliedValue ? ' Its value is still in the Matchmaker rules: remove the override in the Schedule builder if it’s no longer wanted.' : '';
-  await logActivity({ category: 'request', action: 'rule request', actor: req.user, programId: r.programId, details: `Withdrew the rule request “${summary}”` });
+  await logActivity({ category: 'request', action: 'rule request', actor: req.user, onBehalfOf: r.programId, programId: r.programId, details: `Withdrew the rule request “${summary}”` });
   await toAdmins(`${r.programName} withdrew a rule request`, `${who(req.user)} withdrew this request:\n${summary}${stillSet ? `\n\n${stillSet.trim()}` : ''}`);
   res.json({ request: await shapeOne(r.id, req.user), overrideStillSet: !!r.appliedValue });
 }));

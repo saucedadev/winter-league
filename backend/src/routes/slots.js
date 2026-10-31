@@ -238,7 +238,7 @@ router.post('/', ah(async (req, res) => {
   })), 'write');
 
   await logActivity({
-    category: 'slot', action: 'created', actor: req.user, programId,
+    category: 'slot', action: 'created', actor: req.user, onBehalfOf: programId, programId,
     details: `Added ${created.length} ${CATEGORIES[b.category].toLowerCase()} slot${created.length > 1 ? 's' : ''} at ${court.venueName} – ${court.name}, ${formatTime12(b.startTime)}–${formatTime12(b.endTime)}${created.length > 1 ? ` (${dayNames(weekdays)}, ${created[0]} to ${created.at(-1)})` : ` on ${created[0]}`}${resv.reservedDivisions ? ` (${await resvText(resv)})` : ''}`,
   });
   const slots = await all(`${SELECT} WHERE g.id IN (${ids.map(() => '?').join(',')}) ORDER BY g.date`, ids);
@@ -323,7 +323,7 @@ router.put('/:id', ah(async (req, res) => {
         resv.reservedDivisions, resv.reservedMode, s.id] },
       ...(unplace.length ? [unplaceSql(unplace)] : []),
     ], 'write');
-    await logActivity({ category: 'slot', action: 'edited', actor: req.user, programId: s.programId,
+    await logActivity({ category: 'slot', action: 'edited', actor: req.user, onBehalfOf: s.programId, programId: s.programId,
       details: `Edited a ${CATEGORIES[next.category].toLowerCase()} slot on ${next.date}, ${formatTime12(next.startTime)}–${formatTime12(next.endTime)}${unplace.length ? ` (${unplace.length} draft game${unplace.length === 1 ? '' : 's'} went back to unplaced)` : ''}` });
     return res.json({ slot: await shapeOne(await one(`${SELECT} WHERE g.id = ?`, [s.id])), updated: 1, skipped: [], unplacedDraftGames: unplace.length });
   }
@@ -376,7 +376,7 @@ router.put('/:id', ah(async (req, res) => {
   if (unplace.length) stmts.push(unplaceSql(unplace));
   if (stmts.length) await db.batch(stmts, 'write');
   if (changed.length) {
-    await logActivity({ category: 'slot', action: 'edited', actor: req.user, programId: s.programId,
+    await logActivity({ category: 'slot', action: 'edited', actor: req.user, onBehalfOf: s.programId, programId: s.programId,
       details: `Changed the ${labels.join(', ')} of ${changed.length} gym slot${changed.length === 1 ? '' : 's'} in a block (${changed[0].date} to ${changed.at(-1).date})${skipped.length ? `; ${skipped.length} date${skipped.length === 1 ? '' : 's'} skipped` : ''}${unplace.length ? `; ${unplace.length} draft game${unplace.length === 1 ? '' : 's'} went back to unplaced` : ''}` });
   }
   res.json({ slot: await shapeOne(await one(`${SELECT} WHERE g.id = ?`, [s.id])), updated: changed.length, skipped, unplacedDraftGames: unplace.length });
@@ -407,7 +407,7 @@ router.post('/tag', ah(async (req, res) => {
     WHERE id IN (SELECT g.id FROM gym_slots g WHERE ${where.join(' AND ')})`, [resv.reservedDivisions, resv.reservedMode, ...args]);
   const n = r.rowsAffected;
   const days = dayNames(weekdays);
-  await logActivity({ category: 'slot', action: 'tagged', actor: req.user, programId,
+  await logActivity({ category: 'slot', action: 'tagged', actor: req.user, onBehalfOf: programId, programId,
     details: resv.reservedDivisions ? `Marked ${n} game slot${n === 1 ? '' : 's'} on ${days} as ${await resvText(resv)}` : `Cleared the tag on ${n} game slot${n === 1 ? '' : 's'} on ${days}` });
   res.json({ updated: n });
 }));
@@ -433,7 +433,7 @@ router.delete('/:id', ah(async (req, res) => {
             note = 'Its gym slot was deleted.', updated_at = datetime('now') WHERE gym_slot_id IN (${ph})`, args: ids },
     { sql: `DELETE FROM gym_slots WHERE id IN (${ph})`, args: ids },
   ], 'write');
-  await logActivity({ category: 'slot', action: 'deleted', actor: req.user, programId: s.programId,
+  await logActivity({ category: 'slot', action: 'deleted', actor: req.user, onBehalfOf: s.programId, programId: s.programId,
     details: following ? `Deleted ${r.rowsAffected} repeating slots from ${s.date} onward` : `Deleted a ${CATEGORIES[s.category].toLowerCase()} slot on ${s.date}` });
   res.json({ deleted: r.rowsAffected });
 }));

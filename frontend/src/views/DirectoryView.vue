@@ -6,6 +6,7 @@ import { useProgramContext } from '../stores/programContext';
 import { useToast } from '../stores/toast';
 import { formatPhone } from '../utils/phone';
 import PageHeader from '../components/PageHeader.vue';
+import HelpProgramPrompt from '../components/HelpProgramPrompt.vue';
 import Modal from '../components/Modal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -103,6 +104,7 @@ async function switchToAccount(c) {
     <PageHeader title="Directory" :subtitle="`Contacts for ${ctx.current ? ctx.current.name : auth.isSuperAdmin ? 'every program' : 'your program'}: people you need to reach. They don’t get an app account.`">
       <button class="btn btn-primary" :disabled="auth.isSuperAdmin && !ctx.programs.length" @click="open()">Add contact</button>
     </PageHeader>
+    <HelpProgramPrompt what="directory" />
 
     <div class="card card-blocky p-3 mb-4 flex flex-wrap items-center gap-2">
       <input v-model="search" type="search" class="input !w-auto flex-1 min-w-[12rem]" placeholder="Search name, email, phone, role" aria-label="Search the directory" />

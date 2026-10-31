@@ -67,7 +67,7 @@ router.post('/', managers, ah(async (req, res) => {
     },
     ...courtNames.map((c, i) => ({ sql: 'INSERT INTO courts (id, venue_id, name, sort_order) VALUES (?, ?, ?, ?)', args: [newId(), id, c, i] })),
   ], 'write');
-  await logActivity({ category: 'venue', action: 'created', actor: req.user, programId, details: `Added venue ${name} (${courtNames.length} court${courtNames.length > 1 ? 's' : ''})` });
+  await logActivity({ category: 'venue', action: 'created', actor: req.user, onBehalfOf: programId, programId, details: `Added venue ${name} (${courtNames.length} court${courtNames.length > 1 ? 's' : ''})` });
   res.status(201).json({ venue: await venueWithCourts(id) });
 }));
 
@@ -86,7 +86,7 @@ router.put('/:id', managers, ah(async (req, res) => {
       req.body.longitude !== undefined ? parseCoord(req.body.longitude, 'Longitude', -180, 180) : v.longitude,
       pick('notes'), req.body.isActive !== undefined ? (req.body.isActive ? 1 : 0) : v.isActive, v.id]
   );
-  await logActivity({ category: 'venue', action: 'edited', actor: req.user, programId: v.programId, details: `Updated venue ${name}` });
+  await logActivity({ category: 'venue', action: 'edited', actor: req.user, onBehalfOf: v.programId, programId: v.programId, details: `Updated venue ${name}` });
   res.json({ venue: await venueWithCourts(v.id) });
 }));
 
@@ -104,7 +104,7 @@ router.delete('/:id', managers, ah(async (req, res) => {
     { sql: 'DELETE FROM courts WHERE venue_id = ?', args: [v.id] },
     { sql: 'DELETE FROM venues WHERE id = ?', args: [v.id] },
   ], 'write');
-  await logActivity({ category: 'venue', action: 'deleted', actor: req.user, programId: v.programId, details: `Deleted venue ${v.name}` });
+  await logActivity({ category: 'venue', action: 'deleted', actor: req.user, onBehalfOf: v.programId, programId: v.programId, details: `Deleted venue ${v.name}` });
   res.json({ ok: true });
 }));
 
@@ -118,7 +118,7 @@ router.post('/:id/courts', managers, ah(async (req, res) => {
   if (await one('SELECT 1 FROM courts WHERE venue_id = ? AND name = ?', [v.id, name])) throw conflict('This venue already has a court with that name.');
   const order = Number((await one('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM courts WHERE venue_id = ?', [v.id])).n);
   await run('INSERT INTO courts (id, venue_id, name, sort_order) VALUES (?, ?, ?, ?)', [newId(), v.id, name, order]);
-  await logActivity({ category: 'venue', action: 'edited', actor: req.user, programId: v.programId, details: `Added court ${name} at ${v.name}` });
+  await logActivity({ category: 'venue', action: 'edited', actor: req.user, onBehalfOf: v.programId, programId: v.programId, details: `Added court ${name} at ${v.name}` });
   res.status(201).json({ venue: await venueWithCourts(v.id) });
 }));
 
@@ -140,7 +140,7 @@ router.delete('/courts/:courtId', managers, ah(async (req, res) => {
   if (Number((await one('SELECT COUNT(*) AS n FROM courts WHERE venue_id = ?', [c.venueId])).n) <= 1) throw conflict('A venue needs at least one court.');
   if (await one('SELECT 1 FROM gym_slots WHERE court_id = ? LIMIT 1', [c.id])) throw conflict('This court has gym slots. Delete those slots first.');
   await run('DELETE FROM courts WHERE id = ?', [c.id]);
-  await logActivity({ category: 'venue', action: 'edited', actor: req.user, programId: c.programId, details: `Removed court ${c.name} from ${c.venueName}` });
+  await logActivity({ category: 'venue', action: 'edited', actor: req.user, onBehalfOf: c.programId, programId: c.programId, details: `Removed court ${c.name} from ${c.venueName}` });
   res.json({ venue: await venueWithCourts(c.venueId) });
 }));
 

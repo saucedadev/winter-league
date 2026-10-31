@@ -514,6 +514,24 @@ console.log('\nTeam games overrides');
   check('team stats carry each team’s own target', stA.target === 4 && stA.teamOverride === true && out.summary.teamStats.find((s) => s.teamId === 'B').target === 8);
 }
 
+console.log('\nLeague admin helping a program');
+{
+  const nfhTeam = (await call('GET', '/teams', { token: pd })).data.teams.find((t) => t.isActive);
+  const upd = await call('PUT', `/teams/${nfhTeam.id}`, { token: admin, body: { name: nfhTeam.name } });
+  check('the league edits a program’s team', upd.status === 200);
+  const mineLeague = (await call('GET', '/activity?onBehalf=1', { token: pd })).data.entries;
+  check('Activity says it was on behalf of the program', mineLeague[0]?.details === `Updated team ${nfhTeam.name} — on behalf of ${nfh.name}` && mineLeague[0].actorRole === 'super_admin', JSON.stringify(mineLeague[0]));
+  await call('PUT', `/teams/${nfhTeam.id}`, { token: pd, body: { name: nfhTeam.name } });
+  const all1 = (await call('GET', '/activity?category=team', { token: pd })).data.entries;
+  check('the director’s own change isn’t marked on behalf', all1[0]?.details === `Updated team ${nfhTeam.name}`, all1[0]?.details);
+  check('“Only changes the league made for us” leaves out the director’s own', (await call('GET', '/activity?onBehalf=1', { token: pd })).data.entries.every((e) => e.details.includes('on behalf of')));
+  check('another program doesn’t see it as made for them', !(await call('GET', '/activity?onBehalf=1', { token: mbell })).data.entries.some((e) => e.details.includes(nfh.name)));
+  const dash = (await call('GET', '/dashboard', { token: pd })).data;
+  check('the director’s dashboard counts the league’s changes this week', dash.leagueChanges?.count >= 1 && dash.leagueChanges.latest[0].details.includes('on behalf of'), JSON.stringify(dash.leagueChanges));
+  check('the league sees them across programs', (await call('GET', '/activity?onBehalf=1', { token: admin })).data.entries.length >= 1);
+  check('a coach still can’t use Activity', (await call('GET', '/activity', { token: coach })).status === 403);
+}
+
 console.log('\nDay preferences (tagged slots)');
 {
   const seasonNow = (await call('GET', '/league/seasons', { token: admin })).data.seasons.find((x) => x.isActive);
@@ -785,6 +803,20 @@ check('the admin can’t sign off for a program that has a director', (await cal
 const noDir = rv1.reviews.find((r) => !r.hasDirector);
 const behalf = await call('POST', `/schedule/runs/${draftId}/review/${noDir.programId}/sign-off`, { token: admin, body: { note: 'Confirmed by phone with their contact' } });
 check('the admin signs off on behalf of a program without a director (recorded)', behalf.data.review?.reviews.find((r) => r.programId === noDir.programId)?.onBehalf === true);
+// The league flags a game for a program that has a director (e.g. phoned in).
+{
+  const rybDraftGame = (await call('GET', `/schedule/runs/${draftId}/games`, { token: admin })).data.games.find((g) => [g.homeProgramId, g.awayProgramId].includes(ryb.id) && ![g.homeProgramId, g.awayProgramId].includes(nfh.id));
+  check('a league flag needs a note', (await call('POST', `/schedule/runs/${draftId}/review/${ryb.id}/flags`, { token: admin, body: { gameId: rybDraftGame.id, note: '' } })).status === 400);
+  check('the league can only flag the program’s own games', (await call('POST', `/schedule/runs/${draftId}/review/${ryb.id}/flags`, { token: admin, body: { gameId: pdView.games.find((g) => ![g.homeProgramId, g.awayProgramId].includes(ryb.id))?.id, note: 'Not their game at all' } })).status === 404);
+  const lf = await call('POST', `/schedule/runs/${draftId}/review/${ryb.id}/flags`, { token: admin, body: { gameId: rybDraftGame.id, note: 'Clashes with their gym rental (phoned in).' } });
+  const rr = lf.data.review?.reviews.find((r) => r.programId === ryb.id);
+  check('the league flags a game for a program with a director', lf.status === 201 && rr?.status === 'flagged' && rr.onBehalf === true, JSON.stringify(rr));
+  const mv = (await call('GET', '/schedule/draft-review', { token: mbell })).data;
+  check('the director sees the league flagged it for them', mv.review.status === 'flagged' && mv.review.onBehalf === true && mv.flags.some((f) => f.note.includes('phoned in')));
+  check('directors can’t use the league’s flag route', (await call('POST', `/schedule/runs/${draftId}/review/${ryb.id}/flags`, { token: mbell, body: { gameId: rybDraftGame.id, note: 'Trying the admin route' } })).status === 403);
+  check('it’s in Activity as on behalf of the program', (await call('GET', '/activity?onBehalf=1', { token: mbell })).data.entries.some((e) => e.details.startsWith('Flagged a draft game') && e.details.endsWith(`on behalf of ${ryb.name}`)));
+  check('signing off still stays with the director', (await call('POST', `/schedule/runs/${draftId}/review/${ryb.id}/sign-off`, { token: admin, body: {} })).status === 409);
+}
 const blocked = await call('POST', `/schedule/runs/${draftId}/publish`, { token: admin, body: { replace: true } });
 check('publishing waits for every sign-off before the deadline', blocked.status === 409 && blocked.data.code === 'SIGNOFF_REQUIRED' && blocked.data.pending.some((p) => p.programId === nfh.id));
 check('even with an override, before the deadline', (await call('POST', `/schedule/runs/${draftId}/publish`, { token: admin, body: { replace: true, override: true } })).data.code === 'SIGNOFF_REQUIRED');
@@ -1367,6 +1399,11 @@ console.log('\nPreseason');
   check('the other director has one waiting', (await call('GET', '/preseason/count', { token: mbell })).data.needsAction === 1 && (await call('GET', '/preseason/count', { token: pd })).data.needsAction === 0);
   check('the asking director can’t accept their own request', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: pd, body: { decision: 'accept' } })).status === 403);
   check('declining needs a note', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: mbell, body: { decision: 'decline' } })).status === 400);
+  const asRyb = (await call('GET', `/preseason/events?programId=${rybProg}`, { token: admin })).data.events.find((e) => e.id === rq.data.event.id);
+  check('helping the other program, the league sees it waiting for that program’s answer', asRyb?.needsMe === true && asRyb.actions.includes('accept'), JSON.stringify(asRyb?.actions));
+  const asNfh = (await call('GET', `/preseason/events?programId=${nfh.id}`, { token: admin })).data.events.find((e) => e.id === rq.data.event.id);
+  check('…but not when helping the program that asked', asNfh && !asNfh.actions.includes('accept') && asNfh.requestedByUs === true);
+  check('the league can’t answer for the program that asked', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: admin, body: { decision: 'accept', programId: nfh.id } })).status === 403);
   check('the other director accepts', (await call('POST', `/preseason/events/${rq.data.event.id}/respond`, { token: mbell, body: { decision: 'accept' } })).data.status === 'accepted');
   const coachEvents = (await call('GET', '/preseason/events', { token: coach })).data.events;
   check('a coach sees it if it’s their team', mine.headCoachUserId === coachId ? coachEvents.some((e) => e.id === rq.data.event.id) : !coachEvents.some((e) => e.id === rq.data.event.id));
@@ -1383,6 +1420,15 @@ console.log('\nPreseason');
   check('a joint practice can be asked for too', rq2.status === 201);
   check('only the asking program can withdraw it', (await call('POST', `/preseason/events/${rq2.data.event.id}/withdraw`, { token: mbell })).status === 403
     && (await call('POST', `/preseason/events/${rq2.data.event.id}/withdraw`, { token: pd })).status === 200);
+  // The league answers a request for the other program.
+  const t3 = (await call('GET', `/preseason/times?teamId=${mine.id}&opponentId=${theirs.id}&kind=scrimmage`, { token: pd })).data.times[0];
+  const rq3 = await call('POST', '/preseason/requests', { token: admin, body: { teamId: mine.id, opponentId: theirs.id, kind: 'scrimmage', ...t3 } });
+  check('the league asks for a scrimmage for a program', rq3.status === 201);
+  const dec = await call('POST', `/preseason/events/${rq3.data.event.id}/respond`, { token: admin, body: { decision: 'decline', note: 'Their coach is away that week', programId: rybProg } });
+  check('the league declines it for the other program', dec.status === 200 && dec.data.status === 'declined', JSON.stringify(dec.data));
+  const preAct = (await call('GET', '/activity?category=preseason&onBehalf=1', { token: admin })).data.entries;
+  check('both are in Activity as on behalf of each program', preAct.some((e) => e.details.startsWith('Asked for a scrimmage') && e.details.endsWith(`on behalf of ${nfh.name}`))
+    && preAct.some((e) => e.details.startsWith('Declined') && e.details.endsWith(`on behalf of ${ryb.name}`)), preAct.map((e) => e.details).join(' | ').slice(0, 300));
   // Back to how it was, for the checks below.
   await call('PUT', '/preseason/teams', { token: pd, body: { all: true, open: false } });
   await call('PUT', '/preseason/teams', { token: mbell, body: { all: true, open: false } });

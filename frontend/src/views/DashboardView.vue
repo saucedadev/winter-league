@@ -88,6 +88,13 @@ const greeting = computed(() => {
         </span>
         <span class="btn btn-primary">Review the draft</span>
       </RouterLink>
+      <RouterLink v-if="data.leagueChanges" to="/activity?by=league" class="card card-blocky px-5 py-4 mb-6 flex flex-wrap items-start gap-x-4 gap-y-1 hover:border-accent">
+        <span class="flex-1 min-w-[14rem]">
+          <span class="font-semibold block">The league made {{ data.leagueChanges.count }} change{{ data.leagueChanges.count === 1 ? '' : 's' }} for your program this week</span>
+          <span v-for="c in data.leagueChanges.latest" :key="c.createdAt + c.details" class="text-sm text-text-muted block truncate">{{ c.actorName }}: {{ c.details.replace(/ — on behalf of .*$/, '') }}</span>
+        </span>
+        <span class="text-sm underline shrink-0">See {{ data.leagueChanges.count === 1 ? 'it' : 'them' }} in Activity</span>
+      </RouterLink>
       <SetupChecklistCard v-if="data.setup" :setup="data.setup" class="mb-6" />
       <MyNextGamesCard v-if="auth.user.role === 'referee'" class="mb-6" />
       <RefCoverageCard v-if="data.referees" :referees="data.referees" class="mb-6" />

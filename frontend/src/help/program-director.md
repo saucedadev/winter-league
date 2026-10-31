@@ -10,6 +10,10 @@ Program Directors run one program in the league. You tell the league when and wh
 
 ![A director's dashboard](/help/img/pd-dashboard.png)
 
+If the league set something up for you (for example gym slots you asked them to add), the dashboard says **The league made 3 changes for your program this week**. Click it to see them in Activity.
+
+![Changes the league made for you](/help/img/pd-league-changes.png)
+
 ## Venues and courts
 
 **Menu → My program → Venues → Add venue.** Add each gym your program can host games in, with its address and **map coordinates** (latitude and longitude). The coordinates let the league keep travel reasonable for visiting teams.
@@ -364,6 +368,8 @@ Accepted and noted requests move to **In effect** and stay there season after se
 ## Activity
 
 **Menu → My program → Activity** shows every change involving your program, newest first, including changes made by other programs and the league: who made it and which programs it involves.
+
+When the league does something for your program (you asked them to add gym time, set up a team, flag a draft game, or answer a preseason request), the entry ends with **— on behalf of** your program. Tick **Only changes the league made for us** to list just those. The league can help with anything you can do on your program's pages, except signing off the draft schedule and approving change requests, which stay with you.
 
 ![Activity for a director](/help/img/pd-activity.png)
 

@@ -121,7 +121,16 @@ router.get('/', ah(async (req, res) => {
     if (d) draftReview = { status: d.status, deadline: d.reviewDeadline, changed: !!d.resetReason };
   }
 
+  // Changes the league made for this program in the last 7 days.
+  let leagueChanges = null;
+  if (u.role === 'program_director' && programId) {
+    const recent = await all(`SELECT details, actor_name, created_at FROM activity_log
+      WHERE on_behalf_program_id = ? AND created_at >= datetime('now', '-7 days') ORDER BY created_at DESC, rowid DESC`, [programId]);
+    if (recent.length) leagueChanges = { count: recent.length, latest: recent.slice(0, 3) };
+  }
+
   res.json({
+    leagueChanges,
     schedule,
     referees,
     setup,

@@ -58,7 +58,7 @@ router.post('/', ah(async (req, res) => {
   await run('INSERT INTO blackout_dates (id, program_id, venue_id, start_date, end_date, reason, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [id, programId, venueId, req.body.startDate, req.body.endDate, req.body.reason.trim(), req.user.id]);
   const b = await one(`${SELECT} WHERE b.id = ?`, [id]);
-  await logActivity({ category: 'blackout', action: 'created', actor: req.user, programId,
+  await logActivity({ category: 'blackout', action: 'created', actor: req.user, onBehalfOf: programId, programId,
     details: `Blacked out ${b.venueName || 'all venues'} ${b.startDate === b.endDate ? `on ${b.startDate}` : `from ${b.startDate} to ${b.endDate}`}: ${b.reason}` });
   res.status(201).json({ blackout: b, affectedGames: await affectedGames(programId, venueId, b.startDate, b.endDate) });
 }));
@@ -75,7 +75,7 @@ router.put('/:id', ah(async (req, res) => {
   };
   await validate(b.programId, next);
   await run('UPDATE blackout_dates SET venue_id = ?, start_date = ?, end_date = ?, reason = ? WHERE id = ?', [next.venueId, next.startDate, next.endDate, next.reason, b.id]);
-  await logActivity({ category: 'blackout', action: 'edited', actor: req.user, programId: b.programId, details: `Updated blackout: ${next.reason}` });
+  await logActivity({ category: 'blackout', action: 'edited', actor: req.user, onBehalfOf: b.programId, programId: b.programId, details: `Updated blackout: ${next.reason}` });
   res.json({ blackout: await one(`${SELECT} WHERE b.id = ?`, [b.id]), affectedGames: await affectedGames(b.programId, next.venueId, next.startDate, next.endDate) });
 }));
 
@@ -84,7 +84,7 @@ router.delete('/:id', ah(async (req, res) => {
   if (!b) throw notFound('Blackout');
   assertCanManageProgram(req, b.programId);
   await run('DELETE FROM blackout_dates WHERE id = ?', [b.id]);
-  await logActivity({ category: 'blackout', action: 'deleted', actor: req.user, programId: b.programId, details: `Removed blackout: ${b.reason}` });
+  await logActivity({ category: 'blackout', action: 'deleted', actor: req.user, onBehalfOf: b.programId, programId: b.programId, details: `Removed blackout: ${b.reason}` });
   res.json({ ok: true });
 }));
 

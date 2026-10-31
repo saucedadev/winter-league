@@ -6,6 +6,7 @@ import { useProgramContext } from '../stores/programContext';
 import { useToast } from '../stores/toast';
 import { CATEGORY, addDays, startOfWeek, todayISO, weekday, monthDay, dateRange, timeRange, hoursBetween, longDate } from '../utils/format';
 import PageHeader from '../components/PageHeader.vue';
+import HelpProgramPrompt from '../components/HelpProgramPrompt.vue';
 import Modal from '../components/Modal.vue';
 import SlotTagFields from '../components/SlotTagFields.vue';
 import ProgramPicker from '../components/ProgramPicker.vue';
@@ -282,6 +283,7 @@ watch(editor, () => { confirmDelete.value = false; });
       <button class="btn btn-secondary" :disabled="!season" title="Keep game slots on chosen days for certain divisions" @click="openTagging()">Tag game slots</button>
       <button class="btn btn-primary" :disabled="!season" :title="season ? '' : 'A season must be active first'" @click="openCreate()">Add gym slots</button>
     </PageHeader>
+    <HelpProgramPrompt what="gym slots" />
 
     <div v-if="season?.preseasonStart && weekStart < season.startDate" class="card card-blocky border-l-4 border-l-accent px-4 py-3 mb-4 text-sm">
       <span class="font-medium">Preseason.</span> Gym time before {{ dateRange(season.startDate, season.startDate) }} is preseason time: it’s offered for <RouterLink to="/preseason" class="underline">scrimmages and joint practices</RouterLink>, and the Schedule builder doesn’t use it for league games.

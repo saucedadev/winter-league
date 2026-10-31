@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { api, errorMessage } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useProgramContext } from '../stores/programContext';
@@ -13,6 +14,10 @@ const toast = useToast();
 const entries = ref([]);
 const hasMore = ref(false);
 const category = ref('');
+// Only changes the league made for a program (League Admin helping); the
+// director's dashboard links here with ?by=league.
+const route = useRoute();
+const leagueOnly = ref(route.query.by === 'league');
 const loading = ref(false);
 
 const CATEGORY_LABELS = { slot: 'Gym slots', blackout: 'Blackouts', venue: 'Venues', team: 'Teams', program: 'Programs', season: 'Seasons', division: 'Divisions', user: 'Users', schedule: 'Schedule', request: 'Requests', referee: 'Referees', preseason: 'Preseason' };
@@ -32,7 +37,7 @@ const showInvolves = (e) => e.programs.length > 1 || (auth.isSuperAdmin && e.pro
 async function load(more = false) {
   loading.value = true;
   try {
-    const params = { ...ctx.query, ...(category.value ? { category: category.value } : {}), ...(more ? { before: entries.value.at(-1)?.createdAt } : {}) };
+    const params = { ...ctx.query, ...(category.value ? { category: category.value } : {}), ...(leagueOnly.value ? { onBehalf: '1' } : {}), ...(more ? { before: entries.value.at(-1)?.createdAt } : {}) };
     const { data } = await api.get('/activity', { params });
     entries.value = more ? [...entries.value, ...data.entries] : data.entries;
     hasMore.value = data.hasMore;
@@ -40,7 +45,7 @@ async function load(more = false) {
   finally { loading.value = false; }
 }
 onMounted(() => load());
-watch(category, () => load());
+watch([category, leagueOnly], () => load());
 </script>
 
 <template>
@@ -51,6 +56,7 @@ watch(category, () => load());
       <button class="rounded-full border px-3 py-1 text-sm" :class="!category ? 'bg-accent text-accent-contrast border-accent' : 'border-border'" @click="category = ''">All</button>
       <button v-for="c in chips" :key="c" class="rounded-full border px-3 py-1 text-sm"
         :class="category === c ? 'bg-accent text-accent-contrast border-accent' : 'border-border'" @click="category = c">{{ CATEGORY_LABELS[c] }}</button>
+      <label class="flex items-center gap-2 text-sm ml-auto"><input v-model="leagueOnly" type="checkbox" class="w-4 h-4 accent-[var(--color-accent)]" /> {{ auth.isSuperAdmin ? 'Only changes made on behalf of a program' : 'Only changes the league made for us' }}</label>
     </div>
 
     <ol class="card card-blocky divide-y divide-border">

@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth';
 import { useProgramContext } from '../stores/programContext';
 import { useToast } from '../stores/toast';
 import PageHeader from '../components/PageHeader.vue';
+import HelpProgramPrompt from '../components/HelpProgramPrompt.vue';
 import Modal from '../components/Modal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import EmptyState from '../components/EmptyState.vue';
@@ -89,6 +90,7 @@ async function doDelete() {
     <PageHeader title="Venues" :subtitle="canEdit ? 'Gyms your program can host league play in, and the courts at each one.' : 'Gyms your program uses for league play.'">
       <button v-if="canEdit" class="btn btn-primary" :disabled="auth.isSuperAdmin && !ctx.activePrograms.length" @click="open()">Add venue</button>
     </PageHeader>
+    <HelpProgramPrompt what="venues" />
 
     <p v-if="loading" class="text-sm text-text-muted">Loading…</p>
     <EmptyState v-else-if="!venues.length" title="No venues yet" :body="canEdit ? 'Add each gym your program can use. You’ll pick a venue and court whenever you enter gym slots.' : 'Your program director hasn’t added venues yet.'">
